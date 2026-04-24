@@ -1,0 +1,7 @@
+[env]
+WGPU_BACKEND = "vulkan"
+WGPU_ADAPTER_TYPE = "discrete"
+
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold"]
