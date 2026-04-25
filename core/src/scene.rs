@@ -24,18 +24,11 @@ pub fn new_simple_scene(
 
         root_grid.spawn_spatial((
             Camera3d::default(),
-            bevy::light::AmbientLight {
-                brightness: 10.,
-                ..default()
-            },
             Transform::from_translation(cell_offset).looking_at(target_pos, up),
             grid_cell,
             big_space::floating_origins::FloatingOrigin,
             big_space::camera::BigSpaceCameraController::default(),
         ));
-
-        // Add ambient light
-        //commands.spawn((bevy::light::AmbientLight { ..default() },));
 
         //Add directional light
         root_grid.spawn_spatial((
