@@ -1,23 +1,26 @@
+# Top-level Cargo.toml for this workspace.
+#
+# Note. Use `cargo sort` to keep dependencies in this Cargo.toml somewhat organised.
+
 [workspace]
 resolver = "3"
-members = ["game", "core", "editor"]
+members = ["core", "editor", "game"]
 
 [workspace.dependencies]
 bevy = { version = "0.18.1", default-features = true, features = ["dynamic_linking"] }
-bevy-inspector-egui = { version = "0.36.0", features = [ "highlight_changes" ] }
-big_space = { version = "*", features = [ "debug", "camera"] }
-log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+bevy-inspector-egui = { version = "0.36.0", features = ["highlight_changes"] }
 bevy_camera = "0.18.1"
+bevy_egui = "0.39"
+bevy_input = "0.18.1"
 bevy_reflect = "0.18.1"
 bevy_window = "0.18.1"
+big_space = { version = "*", features = ["debug", "camera"] }
 core = { path = "core" }
 editor = { path = "editor" }
-transform-gizmo-bevy = "0.9.0"
-bevy_input = "0.18.1"
-bevy_egui = "0.39"
-egui_dock = "0.18.0"
 egui = "0.33.3"
-
+egui_dock = "0.18.0"
+log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+transform-gizmo-bevy = "0.9.0"
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
