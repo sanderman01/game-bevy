@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use big_space::commands::*;
 
 /// Sets up a basic game world with a 3D scene containing a cube, plane, and lighting
 pub fn new_simple_scene(
@@ -13,55 +14,64 @@ pub fn new_simple_scene(
     let target_pos = Vec3::ZERO;
     let up = Vec3::Y;
 
-    // Setup PerspectiveCamera for 3D rendering
-    commands.spawn((
-        Camera::default(),
-        Camera3d::default(),
-        Transform::from_translation(cam_pos).looking_at(target_pos, up),
-        bevy::camera_controller::free_camera::FreeCamera::default(),
-        bevy::light::AmbientLight {
-            brightness: 10.,
-            ..default()
-        },
-    ));
+    // Setup big space
+    let grid = big_space::grid::Grid::new(2_000f32, 100f32);
+    commands.spawn_big_space(grid, |root_grid| {
+        // Setup PerspectiveCamera for 3D rendering
+        let (grid_cell, cell_offset) = root_grid
+            .grid()
+            .translation_to_grid(bevy::math::DVec3::from(cam_pos));
 
-    // Add ambient light
-    //commands.spawn((bevy::light::AmbientLight { ..default() },));
+        root_grid.spawn_spatial((
+            Camera3d::default(),
+            bevy::light::AmbientLight {
+                brightness: 10.,
+                ..default()
+            },
+            Transform::from_translation(cell_offset).looking_at(target_pos, up),
+            grid_cell,
+            big_space::floating_origins::FloatingOrigin,
+            big_space::camera::BigSpaceCameraController::default(),
+        ));
 
-    //Add directional light
-    commands.spawn((
-        bevy::light::DirectionalLight {
-            illuminance: 1000.,
-            shadows_enabled: true,
-            ..default()
-        },
-        Transform::from_translation(light_pos).looking_at(target_pos, up),
-    ));
+        // Add ambient light
+        //commands.spawn((bevy::light::AmbientLight { ..default() },));
 
-    let mat = materials.add(Color::WHITE);
-    let meshmat = MeshMaterial3d(mat);
+        //Add directional light
+        root_grid.spawn_spatial((
+            bevy::light::DirectionalLight {
+                illuminance: 1000.,
+                shadows_enabled: true,
+                ..default()
+            },
+            Transform::from_translation(light_pos).looking_at(target_pos, up),
+        ));
 
-    // Create a plane entity
-    let plane = Plane3d::new(Vec3::new(0.0, 1.0, 0.0), Vec2::new(10.0, 10.0));
-    let plane_mesh = meshes.add(Mesh::from(plane).with_computed_normals());
+        let mat = materials.add(Color::WHITE);
+        let meshmat = MeshMaterial3d(mat);
 
-    commands.spawn((
-        Mesh3d(plane_mesh),
-        meshmat.clone(),
-        Transform::from_translation(plane_pos),
-    ));
+        // Create a plane entity
+        let plane = Plane3d::new(Vec3::new(0.0, 1.0, 0.0), Vec2::new(10.0, 10.0));
+        let plane_mesh = meshes.add(Mesh::from(plane).with_computed_normals());
 
-    // Create a cube entity
-    let cube = Cuboid::new(1.0, 1.0, 1.0);
-    let cube_mesh = meshes.add(
-        Mesh::from(cube)
-            .with_duplicated_vertices()
-            .with_computed_flat_normals(),
-    );
+        root_grid.spawn_spatial((
+            Mesh3d(plane_mesh),
+            meshmat.clone(),
+            Transform::from_translation(plane_pos),
+        ));
 
-    commands.spawn((
-        Mesh3d(cube_mesh),
-        meshmat.clone(),
-        Transform::from_translation(cube_pos),
-    ));
+        // Create a cube entity
+        let cube = Cuboid::new(1.0, 1.0, 1.0);
+        let cube_mesh = meshes.add(
+            Mesh::from(cube)
+                .with_duplicated_vertices()
+                .with_computed_flat_normals(),
+        );
+
+        root_grid.spawn_spatial((
+            Mesh3d(cube_mesh),
+            meshmat.clone(),
+            Transform::from_translation(cube_pos),
+        ));
+    });
 }

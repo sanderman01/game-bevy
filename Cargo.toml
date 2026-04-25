@@ -1,10 +1,11 @@
 [workspace]
+resolver = "3"
 members = ["game", "core"]
 
-resolver = "3"
-
 [workspace.dependencies]
-bevy = { version = "0.18.1", default-features = true, features = ["dynamic_linking", "free_camera"] }
+bevy = { version = "0.18.1", default-features = true, features = ["dynamic_linking"] }
+bevy_input = { version = "*" }
+big_space = { version = "*", features = [ "debug", "camera"] }
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
 
 

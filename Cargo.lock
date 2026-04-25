@@ -558,23 +558,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bevy_camera_controller"
-version = "0.18.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f64d812cc9b31d01726ca089843b2491b4b9a11a3e09f7a0d484413a45c2f3b"
-dependencies = [
- "bevy_app",
- "bevy_camera",
- "bevy_ecs",
- "bevy_input",
- "bevy_log",
- "bevy_math",
- "bevy_time",
- "bevy_transform",
- "bevy_window",
-]
-
-[[package]]
 name = "bevy_color"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -952,7 +935,6 @@ dependencies = [
  "bevy_asset",
  "bevy_audio",
  "bevy_camera",
- "bevy_camera_controller",
  "bevy_color",
  "bevy_core_pipeline",
  "bevy_derive",
@@ -1669,6 +1651,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "big_space"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d8b22d702722940f894101e0d2225439030093a173c069f2cdd35a06d886daf"
+dependencies = [
+ "bevy_app",
+ "bevy_camera",
+ "bevy_color",
+ "bevy_ecs",
+ "bevy_gizmos",
+ "bevy_input",
+ "bevy_log",
+ "bevy_math",
+ "bevy_platform",
+ "bevy_reflect",
+ "bevy_tasks",
+ "bevy_time",
+ "bevy_transform",
+ "bevy_utils",
+ "smallvec",
+]
+
+[[package]]
 name = "bindgen"
 version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1979,6 +1984,8 @@ name = "core"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "bevy_input",
+ "big_space",
 ]
 
 [[package]]
@@ -2639,7 +2646,7 @@ dependencies = [
  "vec_map",
  "wasm-bindgen",
  "web-sys",
- "windows 0.58.0",
+ "windows 0.61.3",
 ]
 
 [[package]]
