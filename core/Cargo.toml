@@ -7,3 +7,4 @@ edition = "2024"
 bevy = { workspace = true }
 bevy_input = { workspace = true }
 big_space = { workspace = true }
+editor = { path = "../editor" }

@@ -1,12 +1,22 @@
 [workspace]
 resolver = "3"
-members = ["game", "core"]
+members = ["game", "core", "editor"]
 
 [workspace.dependencies]
 bevy = { version = "0.18.1", default-features = true, features = ["dynamic_linking"] }
-bevy_input = { version = "*" }
+bevy-inspector-egui = { version = "0.36.0", features = [ "highlight_changes" ] }
 big_space = { version = "*", features = [ "debug", "camera"] }
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+bevy_camera = "0.18.1"
+bevy_reflect = "0.18.1"
+bevy_window = "0.18.1"
+core = { path = "core" }
+editor = { path = "editor" }
+transform-gizmo-bevy = "0.9.0"
+bevy_input = "0.18.1"
+bevy_egui = "0.39"
+egui_dock = "0.18.0"
+egui = "0.33.3"
 
 
 # Enable a small amount of optimization in the dev profile.
