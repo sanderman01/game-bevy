@@ -2127,7 +2127,7 @@ dependencies = [
 
 [[package]]
 name = "core"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "bevy",
  "bevy_input",
@@ -2515,7 +2515,7 @@ dependencies = [
 
 [[package]]
 name = "editor"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "bevy",
  "bevy-inspector-egui",
@@ -2991,7 +2991,7 @@ dependencies = [
 
 [[package]]
 name = "game"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "bevy",
  "core",
