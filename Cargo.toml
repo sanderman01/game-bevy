@@ -1,10 +1,7 @@
 
 [workspace]
 resolver = "3"
-members = ["core", "editor", "game"]
-# Top-level Cargo.toml for this workspace.
-#
-# Note. Use `cargo sort` to keep dependencies in this Cargo.toml somewhat organised.
+members = ["crates/*"]
 
 [workspace.package]
 version = "0.0.0"
@@ -12,7 +9,7 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 authors = ["Alexander Verbeek <sanderman@gmail.com>"]
 
-[workspace.dependencies]
+[workspace.dependencies] # Note: Use `cargo sort` to keep dependencies somewhat organised.
 bevy = { version = "0.18.1", default-features = true, features = ["dynamic_linking"] }
 bevy-inspector-egui = { version = "0.36.0", features = ["highlight_changes"] }
 bevy_camera = "0.18.1"
