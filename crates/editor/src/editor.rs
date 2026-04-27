@@ -24,8 +24,7 @@ pub struct EditorPluginGroup;
 
 impl PluginGroup for EditorPluginGroup {
     fn build(self) -> PluginGroupBuilder {
-        PluginGroupBuilder::start::<Self>()
-            .add(EditorPlugin)
+        PluginGroupBuilder::start::<Self>().add(EditorPlugin)
     }
 }
 
@@ -33,20 +32,19 @@ pub struct EditorPlugin;
 
 impl Plugin for EditorPlugin {
     fn build(&self, app: &mut App) {
-        app
-        .add_plugins(MeshPickingPlugin)
-        .add_plugins(TransformGizmoPlugin)
-        // .add_plugins(bevy_framepace::FramepacePlugin) // reduces input lag
-        .add_plugins(bevy_egui::EguiPlugin::default())
-        .add_plugins(DefaultInspectorConfigPlugin)
-        .insert_resource(UiState::new())
-        .add_systems(Startup, setup)
-        .add_systems(EguiPrimaryContextPass, show_ui_system)
-        .add_systems(PostUpdate, set_camera_viewport.after(show_ui_system))
-        .add_systems(Update, draw_mesh_intersections)
-        .add_systems(PostUpdate, handle_pick_events)
-        .register_type::<Option<Handle<Image>>>()
-        .register_type::<AlphaMode>();
+        app.add_plugins(MeshPickingPlugin)
+            .add_plugins(TransformGizmoPlugin)
+            // .add_plugins(bevy_framepace::FramepacePlugin) // reduces input lag
+            .add_plugins(bevy_egui::EguiPlugin::default())
+            .add_plugins(DefaultInspectorConfigPlugin)
+            .insert_resource(UiState::new())
+            .add_systems(Startup, setup)
+            .add_systems(EguiPrimaryContextPass, show_ui_system)
+            .add_systems(PostUpdate, set_camera_viewport.after(show_ui_system))
+            .add_systems(Update, draw_mesh_intersections)
+            .add_systems(PostUpdate, handle_pick_events)
+            .register_type::<Option<Handle<Image>>>()
+            .register_type::<AlphaMode>();
     }
 }
 
@@ -335,10 +333,7 @@ fn select_asset(
     }
 }
 
-fn setup(
-    mut commands: Commands,
-    mut egui_global_settings: ResMut<EguiGlobalSettings>,
-) {
+fn setup(mut commands: Commands, mut egui_global_settings: ResMut<EguiGlobalSettings>) {
     egui_global_settings.auto_create_primary_context = false;
 
     // // camera
