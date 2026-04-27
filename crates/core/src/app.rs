@@ -16,8 +16,13 @@ pub fn create_app(app: &mut bevy::app::App) {
     .add_plugins(big_space::plugin::BigSpaceDefaultPlugins)
     .add_systems(Startup, crate::scene::new_simple_scene)
     .add_systems(
+        Startup,
+        crate::scene::load_model.after(crate::scene::new_simple_scene),
+    )
+    .add_systems(
         PostUpdate,
-        crate::camera_controller::custom_big_space_camera_inputs.before(big_space::camera::camera_controller),
+        crate::camera_controller::custom_big_space_camera_inputs
+            .before(big_space::camera::camera_controller),
     )
     .add_plugins(editor::editor::EditorPluginGroup);
 }

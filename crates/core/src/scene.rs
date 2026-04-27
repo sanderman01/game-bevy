@@ -17,6 +17,7 @@ pub fn new_simple_scene(
     // Setup big space
     let grid = big_space::grid::Grid::new(2_000f32, 100f32);
     commands.spawn_big_space(grid, |root_grid| {
+        root_grid.insert(Name::new("Grid"));
         // Setup PerspectiveCamera for 3D rendering
         let (grid_cell, cell_offset) = root_grid
             .grid()
@@ -27,7 +28,7 @@ pub fn new_simple_scene(
             Transform::from_translation(cell_offset).looking_at(target_pos, up),
             grid_cell,
             big_space::floating_origins::FloatingOrigin,
-            big_space::camera::BigSpaceCameraController::default(),
+            big_space::camera::BigSpaceCameraController::default().with_speed_bounds([1e1, 1e30]),
         ));
 
         //Add directional light
@@ -67,4 +68,26 @@ pub fn new_simple_scene(
             Transform::from_translation(cube_pos),
         ));
     });
+}
+
+pub fn load_model(
+    commands: Commands,
+    asset_server: ResMut<AssetServer>,
+    grid_query: Query<crate::grid::GridQuery>,
+) {
+    let grid_entity = grid_query
+        .single()
+        .expect("Failed to spawn entity on grid. Grid not present!");
+
+    crate::grid::spawn_and_position_entity_on_grid(
+        commands,
+        grid_entity.entity,
+        grid_entity.grid.clone(),
+        bevy::math::DVec3::ZERO,
+        |new_entity| {
+            let path = "map.glb#Scene0";
+            let scene = SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(path)));
+            new_entity.insert(Name::new(path)).insert(scene);
+        },
+    );
 }
