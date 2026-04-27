@@ -11,7 +11,7 @@ pub struct GridQuery {
 }
 
 pub fn spawn_and_position_entity_on_grid(
-    mut commands: Commands,
+    commands: &mut Commands,
     grid_entity: Entity,
     grid: Grid,
     translation: DVec3,

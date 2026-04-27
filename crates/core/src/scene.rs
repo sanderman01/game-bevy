@@ -71,7 +71,7 @@ pub fn new_simple_scene(
 }
 
 pub fn load_model(
-    commands: Commands,
+    mut commands: Commands,
     asset_server: ResMut<AssetServer>,
     grid_query: Query<crate::grid::GridQuery>,
 ) {
@@ -80,12 +80,24 @@ pub fn load_model(
         .expect("Failed to spawn entity on grid. Grid not present!");
 
     crate::grid::spawn_and_position_entity_on_grid(
-        commands,
+        &mut commands,
         grid_entity.entity,
         grid_entity.grid.clone(),
         bevy::math::DVec3::ZERO,
         |new_entity| {
             let path = "map.glb#Scene0";
+            let scene = SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(path)));
+            new_entity.insert(Name::new(path)).insert(scene);
+        },
+    );
+
+        crate::grid::spawn_and_position_entity_on_grid(
+        &mut commands,
+        grid_entity.entity,
+        grid_entity.grid.clone(),
+        bevy::math::DVec3::ZERO,
+        |new_entity| {
+            let path = "airship.glb#Scene0";
             let scene = SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(path)));
             new_entity.insert(Name::new(path)).insert(scene);
         },
