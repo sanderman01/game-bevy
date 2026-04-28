@@ -18,7 +18,7 @@ bevy_input = "0.18.1"
 bevy_reflect = "0.18.1"
 bevy_window = "0.18.1"
 big_space = { version = "*", features = ["debug", "camera"] }
-core = { path = "core" }
+engine = { path = "engine" }
 editor = { path = "editor" }
 egui = "0.33.3"
 egui_dock = "0.18.0"
