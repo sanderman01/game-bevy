@@ -7,6 +7,6 @@ license.workspace = true
 
 [dependencies]
 bevy = { workspace = true }
-bevy_input = { workspace = true }
 big_space = { workspace = true }
 editor = { path = "../editor" }
+modloader = { path = "../modloader" }

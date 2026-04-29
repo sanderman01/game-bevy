@@ -24,5 +24,6 @@ pub fn create_app(app: &mut bevy::app::App) {
         crate::camera_controller::custom_big_space_camera_inputs
             .before(big_space::camera::camera_controller),
     )
-    .add_plugins(editor::editor::EditorPluginGroup);
+    .add_plugins(editor::editor::EditorPluginGroup)
+    .add_plugins(modloader::ModLoaderPlugin);
 }

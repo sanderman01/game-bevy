@@ -1,0 +1,12 @@
+[package]
+name = "modloader"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+bevy.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+toml.workspace = true

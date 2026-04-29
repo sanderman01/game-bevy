@@ -18,11 +18,15 @@ bevy_input = "0.18.1"
 bevy_reflect = "0.18.1"
 bevy_window = "0.18.1"
 big_space = { version = "*", features = ["debug", "camera"] }
-engine = { path = "engine" }
 editor = { path = "editor" }
 egui = "0.33.3"
 egui_dock = "0.18.0"
+engine = { path = "engine" }
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+serde = "1.0.228"
+serde_json = "1.0.149"
+thiserror = "2.0.18"
+toml = "1.1.2"
 transform-gizmo-bevy = "0.9.0"
 
 # Enable a small amount of optimization in the dev profile.
