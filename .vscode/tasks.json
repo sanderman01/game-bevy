@@ -1,0 +1,96 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "cargo",
+			"command": "build",
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "rust: cargo build"
+		},
+		{
+			"type": "cargo",
+			"command": "run",
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "rust: cargo run"
+		},
+		{
+			"type": "cargo",
+			"command": "test",
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "rust: cargo test"
+		},
+		{
+			"type": "cargo",
+			"command": "fmt",
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "rust: cargo fmt"
+		},
+		{
+			"type": "cargo",
+			"command": "doc",
+			"args": ["--no-deps"],
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "rust: cargo doc --no-deps"
+		},
+		{	"type": "cargo",
+			"command": "machete",
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "rust: cargo machete"
+		},
+		{	"type": "cargo",
+			"command": "license",
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "none",
+			"label": "rust: cargo license"
+		},
+		{
+			"type": "shell",
+			"command": "bacon",
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "rust: bacon"
+		},
+		{
+			"type": "shell",
+			"command": "pre-commit",
+			"args": ["run", "--all-files"],
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "none",
+			"label": "general: pre-commit"
+		},
+				{
+			"type": "shell",
+			"command": "convco",
+			"args": ["check"],
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "none",
+			"label": "general: convco check"
+		},
+	]
+}
