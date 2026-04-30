@@ -1,5 +1,6 @@
 use bevy::{
     asset::{Asset, AssetLoader, LoadContext, io::Reader},
+    platform::collections::HashMap,
     prelude::*,
     reflect::{Reflect, TypePath},
 };
@@ -8,20 +9,28 @@ use std::{fmt::Display, str::FromStr};
 use thiserror::Error;
 use toml::de::Error as TomlError;
 
+/// A Mod Package Manifest contains metadata defining a base game content, or mod, or dlc, or other extension package.
+///
+/// The manifest can be considered the 'entry-point' of the package.
+/// Similar to a shipping manifest document, this file contains data such as the id, name, description, authors and other relevant information used to identify the mod package and its origin.
+///
+/// Additionally the manifest contains information declaring all assets in the package and how they are to be inserted and used inside the game.
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, Reflect, Asset)]
+pub struct Manifest {
+    pub package: PackageInfo,
+    pub assets: AssetsInfo,
+}
+
+/// Resource containing all loaded package Manifests
 #[derive(Default, Debug, Clone, Resource, Reflect)]
 #[reflect(Default, Debug, Clone, Resource)]
 pub struct Manifests {
     pub items: Vec<Handle<Manifest>>,
 }
 
-/// A Mod Package Manifest contains metadata defining a game base content, mod or dlc or other extension package.
-///
-/// The manifest can be considered the 'entry-point' of the package.
-/// Similar to a shipping manifest document, this file contains data such as the id, name, description, authors and other relevant information used to identify the mod package and its origin.
-///
-/// Additionally the manifest contains lists declaring all assets in the package and how they are to be inserted and used inside the game.
+/// Package section of a package [Manifest](Manifest). Contains all the information required to unique identify and load a package.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect, Asset)]
-pub struct Manifest {
+pub struct PackageInfo {
     /// Unique human readable mod package identifier. eg. 'spacewar'
     pub id: String,
 
@@ -47,7 +56,7 @@ pub struct Manifest {
     pub load_priority: i32,
 }
 
-impl Default for Manifest {
+impl Default for PackageInfo {
     fn default() -> Self {
         Self {
             id: String::new(),
@@ -58,6 +67,13 @@ impl Default for Manifest {
             load_priority: 0,
         }
     }
+}
+
+/// Assets section of a package [Manifest](Manifest). Used to declare assets added or modified by this package.
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, Reflect, Asset)]
+pub struct AssetsInfo {
+    pub add: HashMap<String, String>,
+    pub replace: HashMap<String, String>,
 }
 
 impl Display for Manifest {
