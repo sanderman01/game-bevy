@@ -91,7 +91,7 @@ pub fn load_model(
         },
     );
 
-        crate::grid::spawn_and_position_entity_on_grid(
+    crate::grid::spawn_and_position_entity_on_grid(
         &mut commands,
         grid_entity.entity,
         grid_entity.grid.clone(),

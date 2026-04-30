@@ -4,9 +4,9 @@ use bevy::{
     reflect::{Reflect, TypePath},
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use toml::de::Error as TomlError;
 use std::{fmt::Display, str::FromStr};
 use thiserror::Error;
+use toml::de::Error as TomlError;
 
 #[derive(Default, Debug, Clone, Resource, Reflect)]
 #[reflect(Default, Debug, Clone, Resource)]
