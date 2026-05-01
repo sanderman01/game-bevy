@@ -15,6 +15,7 @@ bevy-inspector-egui = { version = "0.36.0", features = ["highlight_changes"] }
 bevy_camera = "0.18.1"
 bevy_egui = "0.39"
 bevy_input = "0.18.1"
+bevy_log = "0.18.1"
 bevy_reflect = "0.18.1"
 bevy_window = "0.18.1"
 big_space = { version = "*", features = ["debug", "camera"] }

@@ -25,5 +25,5 @@ pub fn create_app(app: &mut bevy::app::App) {
             .before(big_space::camera::camera_controller),
     )
     .add_plugins(editor::editor::EditorPluginGroup)
-    .add_plugins(modloader::ModLoaderPlugin);
+    .add_plugins(modloader::ModLoaderPlugin::default());
 }

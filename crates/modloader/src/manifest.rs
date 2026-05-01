@@ -1,8 +1,9 @@
 use bevy::{
-    asset::{Asset, AssetLoader, LoadContext, io::Reader},
+    asset::{Asset, AssetLoader, AssetPath, LoadContext, io::Reader},
     platform::collections::HashMap,
     prelude::*,
     reflect::{Reflect, TypePath},
+    tasks::{BoxedFuture, futures_lite::StreamExt},
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{fmt::Display, str::FromStr};
@@ -204,4 +205,63 @@ impl AssetLoader for ManifestAssetLoader {
     fn extensions(&self) -> &[&str] {
         &["custom"]
     }
+}
+
+pub fn scan_for_package_manifests(
+    path: AssetPath,
+    server: AssetServer,
+) -> BoxedFuture<'static, Vec<Handle<Manifest>>> {
+    let path = path.into_owned();
+
+    // TODO Figure out how to support discovering and loading manifest and other assets from archive assets eg. .zip
+    // For now just load from package directories.
+
+    let asset_server = server.clone();
+
+    Box::pin(async move {
+        let source = path.source();
+        let reader = match asset_server.get_source(source) {
+            Ok(reader) => reader,
+            Err(e) => {
+                error!("Failed to get asset source for '{}': {}", path, e);
+                return Vec::new();
+            }
+        };
+        let reader = reader.reader();
+
+        let mut dir_entries = match reader.read_directory(path.path()).await {
+            Ok(entries) => entries,
+            Err(e) => {
+                error!("Failed to scan assets directory '{}': {}", path, e);
+                return Vec::new();
+            }
+        };
+
+        let mut manifests = Vec::new();
+        while let Some(entry) = dir_entries.next().await {
+            let entry_path = entry.as_path();
+            if !reader.is_directory(entry_path).await.unwrap_or(false) {
+                continue;
+            }
+
+            let mut sub_entries = match reader.read_directory(entry_path).await {
+                Ok(entries) => entries,
+                Err(e) => {
+                    error!(
+                        "Failed to read directory '{}': {}",
+                        entry_path.to_string_lossy(),
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            if let Some(found) = sub_entries.find(|e| e.ends_with("manifest.toml")).await {
+                let handle = asset_server.load::<Manifest>(found);
+                manifests.push(handle);
+            }
+        }
+
+        manifests
+    })
 }

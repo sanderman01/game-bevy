@@ -3913,6 +3913,7 @@ name = "modloader"
 version = "0.0.0"
 dependencies = [
  "bevy",
+ "bevy_log",
  "serde",
  "thiserror 2.0.18",
  "toml",
