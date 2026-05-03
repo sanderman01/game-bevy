@@ -73,13 +73,14 @@ impl Default for PackageInfo {
 /// Assets section of a package [Manifest](Manifest). Used to declare assets added or modified by this package.
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, Reflect, Asset)]
 pub struct AssetsInfo {
-    pub add: HashMap<String, String>,
-    pub replace: HashMap<String, String>,
+    pub add: Option<HashMap<String, String>>,
+    pub replace: Option<HashMap<String, String>>,
+    pub remove: Option<HashMap<String, String>>,
 }
 
 impl Display for Manifest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.to_string())
+        write!(f, "(id: {}, v: {})", self.package.id, self.package.version)
     }
 }
 
@@ -106,7 +107,7 @@ impl std::fmt::Display for VersionError {
 /// - 1.0.0 -> 2.0.0 (major change and/or breaking changes)
 ///
 /// See also: <https://semver.org/>
-#[derive(Debug, Default, Copy, Clone, PartialEq, Reflect)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Reflect)]
 pub struct Version {
     pub major: u64,
     pub minor: u64,
@@ -203,10 +204,12 @@ impl AssetLoader for ManifestAssetLoader {
     }
 
     fn extensions(&self) -> &[&str] {
-        &["custom"]
+        &["toml"]
     }
 }
 
+/// Scan for package directories at the provided directory path.
+/// Note. Does not recurse further.
 pub fn scan_for_package_manifests(
     path: AssetPath,
     server: AssetServer,
@@ -240,15 +243,24 @@ pub fn scan_for_package_manifests(
         let mut manifests = Vec::new();
         while let Some(entry) = dir_entries.next().await {
             let entry_path = entry.as_path();
-            if !reader.is_directory(entry_path).await.unwrap_or(false) {
-                continue;
+            match reader.is_directory(entry_path).await {
+                Ok(true) => {}
+                Ok(false) => continue,
+                Err(e) => {
+                    error!(
+                        "Failed to read path '{}': {}",
+                        entry_path.to_string_lossy(),
+                        e
+                    );
+                    continue;
+                }
             }
 
             let mut sub_entries = match reader.read_directory(entry_path).await {
                 Ok(entries) => entries,
                 Err(e) => {
                     error!(
-                        "Failed to read directory '{}': {}",
+                        "Failed to read path '{}': {}",
                         entry_path.to_string_lossy(),
                         e
                     );
