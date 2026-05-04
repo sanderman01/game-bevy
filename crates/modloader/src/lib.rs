@@ -113,6 +113,7 @@ pub enum LoaderState {
     PackagesRegistering,
     PackagesRegistered,
     AssetsRegistering,
+    AssetsRegistered,
 }
 
 pub fn on_init(loader: Res<PackageLoader>, mut state: ResMut<NextState<LoaderState>>) {
@@ -235,6 +236,7 @@ pub fn register_packages_assets(
     packages: Res<Packages>,
     manifests_assets: Res<Assets<Manifest>>,
     registry: Res<AssetRegistry>,
+    mut state: ResMut<NextState<LoaderState>>,
 ) {
     let registry = registry.clone();
 
@@ -258,6 +260,7 @@ pub fn register_packages_assets(
             register_package_assets(&registry, manifest, &pkg_root_path);
         }
     }
+    state.set(LoaderState::AssetsRegistered);
 }
 
 pub fn register_package_assets(registry: &AssetRegistry, manifest: &Manifest, pkg_root_path: &str) {

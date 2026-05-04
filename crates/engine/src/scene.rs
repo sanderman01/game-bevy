@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use big_space::commands::*;
+use modloader::AssetRegistry;
 
 /// Sets up a basic game world with a 3D scene containing a cube, plane, and lighting
 pub fn new_simple_scene(
@@ -73,33 +74,45 @@ pub fn new_simple_scene(
 pub fn load_model(
     mut commands: Commands,
     asset_server: ResMut<AssetServer>,
+    asset_registry: ResMut<AssetRegistry>,
     grid_query: Query<crate::grid::GridQuery>,
 ) {
+    info!("{}", "Loading models");
     let grid_entity = grid_query
         .single()
         .expect("Failed to spawn entity on grid. Grid not present!");
 
+    let alias = "core::map";
+    let Some(path) = asset_registry.get_path(alias) else {
+        return;
+    };
+    info!("{}", &path);
+    let label = GltfAssetLabel::Scene(0).from_asset(path + "#Scene0");
     crate::grid::spawn_and_position_entity_on_grid(
         &mut commands,
         grid_entity.entity,
         grid_entity.grid.clone(),
         bevy::math::DVec3::ZERO,
         |new_entity| {
-            let path = "map.glb#Scene0";
-            let scene = SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(path)));
-            new_entity.insert(Name::new(path)).insert(scene);
+            let scene = SceneRoot(asset_server.load(label));
+            new_entity.insert(Name::new(alias)).insert(scene);
         },
     );
 
+    let alias = "core::airship";
+    let Some(path) = asset_registry.get_path(alias) else {
+        return;
+    };
+    info!("{}", &path);
+    let label = GltfAssetLabel::Scene(0).from_asset(path + "#Scene0");
     crate::grid::spawn_and_position_entity_on_grid(
         &mut commands,
         grid_entity.entity,
         grid_entity.grid.clone(),
         bevy::math::DVec3::ZERO,
         |new_entity| {
-            let path = "airship.glb#Scene0";
-            let scene = SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(path)));
-            new_entity.insert(Name::new(path)).insert(scene);
+            let scene = SceneRoot(asset_server.load(label));
+            new_entity.insert(Name::new(alias)).insert(scene);
         },
     );
 }
