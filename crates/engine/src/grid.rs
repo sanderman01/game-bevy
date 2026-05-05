@@ -10,6 +10,7 @@ pub struct GridQuery {
     pub grid: &'static big_space::grid::Grid,
 }
 
+// TODO This is ugly. find a different way.
 pub fn spawn_and_position_entity_on_grid(
     commands: &mut Commands,
     grid_entity: Entity,
@@ -26,4 +27,31 @@ pub fn spawn_and_position_entity_on_grid(
         });
         spatial(new_entity);
     });
+}
+
+pub fn from_grid_translation(grid: &Grid, translation: DVec3) -> (CellCoord, Transform) {
+    let (coord, offset) = grid.translation_to_grid(translation);
+    let tr = Transform::from_translation(offset);
+    (coord, tr)
+}
+
+pub fn from_grid_translation_looking_at(
+    grid: &Grid,
+    translation: DVec3,
+    target: DVec3,
+    up: Vec3,
+) -> (CellCoord, Transform) {
+    let dir = target - translation;
+    from_grid_translation_looking_to(grid, translation, dir.as_vec3(), up)
+}
+
+pub fn from_grid_translation_looking_to(
+    grid: &Grid,
+    translation: DVec3,
+    direction: Vec3,
+    up: Vec3,
+) -> (CellCoord, Transform) {
+    let (coord, pos_offset) = grid.translation_to_grid(translation);
+    let tr = Transform::from_translation(pos_offset).looking_to(direction, up);
+    (coord, tr)
 }

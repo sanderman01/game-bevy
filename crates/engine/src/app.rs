@@ -1,8 +1,10 @@
+use ::editor::editor::EditorPluginGroup;
 use bevy::{prelude::*, transform::TransformPlugin, window::WindowResolution};
 use big_space::{camera::camera_controller, plugin::BigSpaceDefaultPlugins};
-use modloader::LoaderState;
+use modloader::{LoaderState, ModLoaderPlugin};
 
 use crate::{
+    camera::VirtualCameraPlugin,
     camera_controller::custom_big_space_camera_inputs,
     scene::{load_model, new_simple_scene},
 };
@@ -25,8 +27,9 @@ pub fn create_app(app: &mut bevy::app::App) {
         PostUpdate,
         custom_big_space_camera_inputs.before(camera_controller),
     )
-    .add_plugins(editor::editor::EditorPluginGroup)
-    .add_plugins(modloader::ModLoaderPlugin::default())
+    .add_plugins(VirtualCameraPlugin)
+    .add_plugins(EditorPluginGroup)
+    .add_plugins(ModLoaderPlugin::default())
     .insert_state(GameState::Loading)
     .add_systems(Update, check_loading.run_if(in_state(GameState::Loading)))
     .add_systems(OnEnter(GameState::Scene), new_simple_scene)
@@ -47,7 +50,7 @@ enum GameState {
 }
 
 fn check_loading(
-    mut loader_state: ResMut<State<LoaderState>>,
+    loader_state: ResMut<State<LoaderState>>,
     mut game_state: ResMut<NextState<GameState>>,
 ) {
     info!("check_loading");

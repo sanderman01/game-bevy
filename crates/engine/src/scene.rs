@@ -1,6 +1,11 @@
-use bevy::prelude::*;
+use bevy::{math::DVec3, prelude::*};
 use big_space::commands::*;
 use modloader::AssetRegistry;
+
+use crate::{
+    camera::{CameraDriver, MainCamera, VirtualCamera},
+    grid::from_grid_translation_looking_at,
+};
 
 /// Sets up a basic game world with a 3D scene containing a cube, plane, and lighting
 pub fn new_simple_scene(
@@ -20,17 +25,9 @@ pub fn new_simple_scene(
     commands.spawn_big_space(grid, |root_grid| {
         root_grid.insert(Name::new("Grid"));
         // Setup PerspectiveCamera for 3D rendering
-        let (grid_cell, cell_offset) = root_grid
-            .grid()
-            .translation_to_grid(bevy::math::DVec3::from(cam_pos));
+        let grid = root_grid.grid().clone();
 
-        root_grid.spawn_spatial((
-            Camera3d::default(),
-            Transform::from_translation(cell_offset).looking_at(target_pos, up),
-            grid_cell,
-            big_space::floating_origins::FloatingOrigin,
-            big_space::camera::BigSpaceCameraController::default().with_speed_bounds([1e1, 1e30]),
-        ));
+        let (grid_cell, cell_offset) = grid.translation_to_grid(bevy::math::DVec3::from(cam_pos));
 
         //Add directional light
         root_grid.spawn_spatial((
@@ -40,6 +37,59 @@ pub fn new_simple_scene(
                 ..default()
             },
             Transform::from_translation(light_pos).looking_at(target_pos, up),
+        ));
+
+        // Add camera
+        root_grid.spawn_spatial((
+            Name::new("Main Camera"),
+            Camera3d::default(),
+            CameraDriver::default(),
+            MainCamera,
+            from_grid_translation_looking_at(&grid, DVec3::ZERO, DVec3::ZERO, up),
+        ));
+
+        root_grid.spawn_spatial((
+            Name::new("BigSpaceCameraController"),
+            VirtualCamera {
+                priority: 1,
+                ..default()
+            },
+            Transform::from_translation(cell_offset).looking_at(target_pos, up),
+            grid_cell,
+            big_space::floating_origins::FloatingOrigin,
+            big_space::camera::BigSpaceCameraController::default().with_speed_bounds([1e1, 1e30]),
+        ));
+
+        // Add virtual cameras
+        root_grid.spawn_spatial((
+            Name::new("VirtualCamera"),
+            VirtualCamera::default(),
+            from_grid_translation_looking_at(
+                &grid,
+                DVec3::new(4000., 2000., 4000.),
+                DVec3::ZERO,
+                up,
+            ),
+        ));
+        root_grid.spawn_spatial((
+            Name::new("VirtualCamera"),
+            VirtualCamera::default(),
+            from_grid_translation_looking_at(
+                &grid,
+                DVec3::new(-4000., 2000., 4000.),
+                DVec3::ZERO,
+                up,
+            ),
+        ));
+        root_grid.spawn_spatial((
+            Name::new("VirtualCamera"),
+            VirtualCamera::default(),
+            from_grid_translation_looking_at(
+                &grid,
+                DVec3::new(-4000., 2000., -4000.),
+                DVec3::ZERO,
+                up,
+            ),
         ));
 
         let mat = materials.add(Color::WHITE);
