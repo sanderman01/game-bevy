@@ -179,8 +179,7 @@ pub fn update_camera_drivers(
                 match cam_driver.default_blend {
                     Blend::Cut => {
                         cam_driver_transform.translation += translation_offset;
-                        cam_driver_transform.rotation =
-                            rotation_offset * cam_driver_transform.rotation;
+                        cam_driver_transform.rotation = target_rot;
                     }
                     // TODO Replace with proper interpolation methods
                     Blend::Damping(translation_damping, rotation_damping) => {
