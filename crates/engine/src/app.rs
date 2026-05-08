@@ -1,4 +1,7 @@
 use ::editor::editor::EditorPluginGroup;
+use avian3d::{
+    PhysicsPlugins, debug_render::PhysicsDebugPlugin, physics_transform::PhysicsTransformConfig,
+};
 use bevy::{prelude::*, transform::TransformPlugin, window::WindowResolution};
 use big_space::{camera::camera_controller, plugin::BigSpaceDefaultPlugins};
 use modloader::{LoaderState, ModLoaderPlugin};
@@ -30,6 +33,14 @@ pub fn create_app(app: &mut bevy::app::App) {
     .add_plugins(VirtualCameraPlugin)
     .add_plugins(EditorPluginGroup)
     .add_plugins(ModLoaderPlugin::default())
+    .add_plugins(PhysicsPlugins::default())
+    .add_plugins(PhysicsDebugPlugin)
+    .insert_resource(PhysicsTransformConfig {
+        propagate_before_physics: false,
+        transform_to_position: true,
+        position_to_transform: true,
+        ..default()
+    })
     .insert_state(GameState::Loading)
     .add_systems(Update, check_loading.run_if(in_state(GameState::Loading)))
     .add_systems(OnEnter(GameState::Scene), new_simple_scene)

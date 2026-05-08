@@ -6,7 +6,8 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
-bevy = { workspace = true }
-big_space = { workspace = true }
-editor = { path = "../editor" }
-modloader = { path = "../modloader" }
+avian3d.workspace = true
+bevy.workspace = true
+big_space.workspace = true
+editor.path = "../editor"
+modloader.path = "../modloader"

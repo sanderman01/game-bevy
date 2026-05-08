@@ -1,10 +1,14 @@
+use avian3d::{
+    collision::collider::{Collider, ColliderConstructorHierarchy},
+    dynamics::rigid_body::RigidBody,
+};
 use bevy::{math::DVec3, prelude::*};
 use big_space::commands::*;
 use modloader::AssetRegistry;
 
 use crate::{
     camera::{CameraDriver, MainCamera, VirtualCamera},
-    grid::from_grid_translation_looking_at,
+    grid::{on_grid, on_grid_looking_at},
 };
 
 /// Sets up a basic game world with a 3D scene containing a cube, plane, and lighting
@@ -45,7 +49,7 @@ pub fn new_simple_scene(
             Camera3d::default(),
             CameraDriver::default(),
             MainCamera,
-            from_grid_translation_looking_at(&grid, DVec3::ZERO, DVec3::ZERO, up),
+            on_grid_looking_at(&grid, DVec3::ZERO, DVec3::ZERO, up),
         ));
 
         root_grid.spawn_spatial((
@@ -64,32 +68,17 @@ pub fn new_simple_scene(
         root_grid.spawn_spatial((
             Name::new("VirtualCamera"),
             VirtualCamera::default(),
-            from_grid_translation_looking_at(
-                &grid,
-                DVec3::new(4000., 2000., 4000.),
-                DVec3::ZERO,
-                up,
-            ),
+            on_grid_looking_at(&grid, DVec3::new(4000., 2000., 4000.), DVec3::ZERO, up),
         ));
         root_grid.spawn_spatial((
             Name::new("VirtualCamera"),
             VirtualCamera::default(),
-            from_grid_translation_looking_at(
-                &grid,
-                DVec3::new(-4000., 2000., 4000.),
-                DVec3::ZERO,
-                up,
-            ),
+            on_grid_looking_at(&grid, DVec3::new(-4000., 2000., 4000.), DVec3::ZERO, up),
         ));
         root_grid.spawn_spatial((
             Name::new("VirtualCamera"),
             VirtualCamera::default(),
-            from_grid_translation_looking_at(
-                &grid,
-                DVec3::new(-4000., 2000., -4000.),
-                DVec3::ZERO,
-                up,
-            ),
+            on_grid_looking_at(&grid, DVec3::new(-4000., 2000., -4000.), DVec3::ZERO, up),
         ));
 
         let mat = materials.add(Color::WHITE);
@@ -98,11 +87,12 @@ pub fn new_simple_scene(
         // Create a plane entity
         let plane = Plane3d::new(Vec3::new(0.0, 1.0, 0.0), Vec2::new(10.0, 10.0));
         let plane_mesh = meshes.add(Mesh::from(plane).with_computed_normals());
-
         root_grid.spawn_spatial((
             Mesh3d(plane_mesh),
             meshmat.clone(),
             Transform::from_translation(plane_pos),
+            Collider::cuboid(20.0, 1.0, 20.0),
+            RigidBody::Static,
         ));
 
         // Create a cube entity
@@ -138,16 +128,12 @@ pub fn load_model(
     };
     info!("{}", &path);
     let label = GltfAssetLabel::Scene(0).from_asset(path + "#Scene0");
-    crate::grid::spawn_and_position_entity_on_grid(
-        &mut commands,
-        grid_entity.entity,
-        grid_entity.grid.clone(),
-        bevy::math::DVec3::ZERO,
-        |new_entity| {
-            let scene = SceneRoot(asset_server.load(label));
-            new_entity.insert(Name::new(alias)).insert(scene);
-        },
-    );
+    commands.spawn((
+        Name::new(alias),
+        SceneRoot(asset_server.load(label)),
+        ChildOf(grid_entity.entity),
+        on_grid(grid_entity.grid, DVec3::ZERO),
+    ));
 
     let alias = "core::airship";
     let Some(path) = asset_registry.get_path(alias) else {
@@ -155,14 +141,18 @@ pub fn load_model(
     };
     info!("{}", &path);
     let label = GltfAssetLabel::Scene(0).from_asset(path + "#Scene0");
-    crate::grid::spawn_and_position_entity_on_grid(
-        &mut commands,
-        grid_entity.entity,
-        grid_entity.grid.clone(),
-        bevy::math::DVec3::ZERO,
-        |new_entity| {
-            let scene = SceneRoot(asset_server.load(label));
-            new_entity.insert(Name::new(alias)).insert(scene);
+    commands.spawn((
+        Name::new(alias),
+        SceneRoot(asset_server.load(label)),
+        ChildOf(grid_entity.entity),
+        on_grid(grid_entity.grid, DVec3::new(0.0, 5.0, 0.0)),
+        ColliderConstructorHierarchy {
+            default_constructor: Some(
+                avian3d::collision::collider::ColliderConstructor::ConvexHullFromMesh,
+            ),
+            ..default()
         },
-    );
+        //Collider::capsule(0.5, 2.0),
+        RigidBody::Dynamic,
+    ));
 }
