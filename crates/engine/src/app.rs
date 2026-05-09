@@ -1,14 +1,16 @@
-use ::editor::editor::EditorPluginGroup;
 use avian3d::{
     PhysicsPlugins, debug_render::PhysicsDebugPlugin, physics_transform::PhysicsTransformConfig,
+    prelude::PhysicsSystems,
 };
 use bevy::{prelude::*, transform::TransformPlugin, window::WindowResolution};
 use big_space::{camera::camera_controller, plugin::BigSpaceDefaultPlugins};
+use editor::editor::EditorPluginGroup;
 use modloader::{LoaderState, ModLoaderPlugin};
 
 use crate::{
     camera::VirtualCameraPlugin,
     camera_controller::custom_big_space_camera_inputs,
+    physics_compat::physics_position_to_transform,
     scene::{load_model, new_simple_scene},
 };
 
@@ -38,9 +40,13 @@ pub fn create_app(app: &mut bevy::app::App) {
     .insert_resource(PhysicsTransformConfig {
         propagate_before_physics: false,
         transform_to_position: true,
-        position_to_transform: true,
+        position_to_transform: false, // disabled -- we use physics_compat::physics_position_to_transform instead
         ..default()
     })
+    .add_systems(
+        FixedPostUpdate,
+        physics_position_to_transform.after(PhysicsSystems::Writeback),
+    )
     .insert_state(GameState::Loading)
     .add_systems(Update, check_loading.run_if(in_state(GameState::Loading)))
     .add_systems(OnEnter(GameState::Scene), new_simple_scene)

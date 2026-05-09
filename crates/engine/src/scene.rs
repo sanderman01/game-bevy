@@ -88,6 +88,7 @@ pub fn new_simple_scene(
         let plane = Plane3d::new(Vec3::new(0.0, 1.0, 0.0), Vec2::new(10.0, 10.0));
         let plane_mesh = meshes.add(Mesh::from(plane).with_computed_normals());
         root_grid.spawn_spatial((
+            Name::new("Plane"),
             Mesh3d(plane_mesh),
             meshmat.clone(),
             Transform::from_translation(plane_pos),
@@ -104,6 +105,7 @@ pub fn new_simple_scene(
         );
 
         root_grid.spawn_spatial((
+            Name::new("Cube"),
             Mesh3d(cube_mesh),
             meshmat.clone(),
             Transform::from_translation(cube_pos),
