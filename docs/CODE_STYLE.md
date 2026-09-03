@@ -7,8 +7,9 @@ own everything they can decide themselves, and they always win. Nothing here res
 an experienced Rust programmer already follows.
 
 `docs/bevy-best-practices.md` is separate background reading on entity hygiene, state-scoped
-cleanup, preludes, and build profiles. It was written against an older Bevy and this document
-overrides it wherever they disagree. Two known conflicts are marked below.
+cleanup, preludes, and build profiles. Its patterns still hold, but it was written against
+Bevy 0.11 to 0.14 and many of its API names are dead. Read the outdated-API table at the top
+of that file before copying any code out of it.
 
 Bevy is pinned at 0.18. Where a rule names an API symbol, the concept is the rule. If a symbol
 here no longer exists after an upgrade, fix this document in the same commit as the upgrade.
@@ -95,8 +96,8 @@ Filter in the query, not in the body. `With`, `Without`, `Changed`, and `Added` 
 into the ECS and let Bevy skip the system entirely when nothing matches. An `if` at the top of
 a loop that skips most entities is a filter in the wrong place.
 
-Use `Single` when exactly one entity should match, and `Populated` when the system has nothing
-to do on an empty set. Both express the expectation in the signature where a reader sees it.
+Express cardinality in the signature with `Single` and `Populated` rather than checking it in
+the body. See Failure below for what they do when the expectation does not hold.
 
 ## Change detection
 
@@ -142,22 +143,38 @@ without it, delete it and find out.
 
 ## Failure
 
-This overrides the getter-macro advice in `docs/bevy-best-practices.md`. Do not silently
-return from a system on a failed lookup.
+A failed entity or resource lookup returns early and leaves the frame intact. It does not
+propagate as an error. This follows the getter-macro pattern in
+`docs/bevy-best-practices.md`, updated for APIs that now express it in the signature.
 
-Systems that can fail return `Result` and use `?`. Bevy's error handler logs it with the
-system name attached. This is the default and it needs no justification.
+Prefer the system parameter that encodes the expectation, because it needs no code in the body:
 
-Panic when a failed lookup means a bug rather than a state you expect. A missing camera
-during rendering is a broken invariant, and crashing at the cause beats limping to a
-confusing symptom later. Say so in the message: what was expected, and what was found.
+- `Single<T>` when exactly one entity should match. Bevy skips the system when the query
+  matches zero or many.
+- `Populated<T>` when the system has nothing to do on an empty set.
 
-Log and continue only when the failure is expected, recoverable, and the frame is still
-valid without the work. Log at `warn` with enough context to identify the entity or asset,
-and never inside a per-entity loop that could fire thousands of times.
+For a lookup inside a system body, return early at the top with `let Ok(x) = ... else { return }`
+or the project's getter macro. Keep early returns at the top of the function, never buried in a
+branch halfway down.
 
-`unwrap` and `expect` in a system body are a review question every time. In a system that
-runs every frame, an `unwrap` that can fail is a crash on a timer.
+This default trades a loud failure for a quiet one, so it needs two guards.
+
+When a missing lookup means a bug rather than a state you expect, panic in debug and return in
+release. A missing camera during rendering is a broken invariant, and finding it on the dev
+machine beats shipping a frame that silently does nothing. Say what was expected and what was
+found.
+
+Never let a silent return be the only handler for something a player would notice. If failing
+means no sound plays or no damage lands, log at `warn` with the entity or asset identified, and
+not inside a per-entity loop that could fire thousands of times.
+
+Reserve `Result` and `?` for failures that are genuinely exceptional rather than absent: asset
+loading, IO, parsing, and anything crossing a crate boundary. Bevy's error handler logs those
+with the system name attached, which is what you want for a real error and overkill for a
+missing entity.
+
+`unwrap` and `expect` in a system that runs every frame are a review question every time. An
+`unwrap` that can fail is a crash on a timer.
 
 ## Naming
 
@@ -222,7 +239,7 @@ A checklist for reviewing your own diff.
 - Modules named `systems.rs`, `components.rs`, or `resources.rs`. Split by behaviour.
 - A new crate for a feature that only one crate uses.
 - Guards that re-check something a query filter or run condition already guaranteed.
-- `if let Some(_) = ...` ladders where `?` in a fallible system does the same thing.
+- Nested `if let` ladders for lookups. One early return at the top, or `Single`/`Populated`.
 - Comments restating the line above them, or section banners made of `//` characters.
 - A trait with one implementor, or a generic parameter with one instantiation.
 - `.after(some_function)` reaching into another module.
