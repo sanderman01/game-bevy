@@ -1,0 +1,20 @@
+crates/editor/src/editor.rs
+  s_4689f8e8ac9481::t_678547ccb1d988 9-12,60-65,83-85,90,95,97-104,106-108,114-141
+  s_4689f8e8ac9481::t_5f4d6ad47187f5 142-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "02f5a795d10c08bbf7baa12d2f06bd80f706265a",
+  "prompts": {},
+  "sessions": {
+    "s_4689f8e8ac9481": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "03be905f-4869-494e-8a77-aaf5f70536fc",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
