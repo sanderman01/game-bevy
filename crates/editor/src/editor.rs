@@ -6,16 +6,16 @@ use bevy::{
     prelude::*,
 };
 use bevy_camera::{Viewport, visibility::RenderLayers};
-use bevy_egui::{EguiGlobalSettings, EguiPrimaryContextPass, PrimaryEguiContext};
+use bevy_egui::{EguiGlobalSettings, EguiPrimaryContextPass, EguiZoomFactor, PrimaryEguiContext};
 use bevy_inspector_egui::DefaultInspectorConfigPlugin;
-use bevy_inspector_egui::bevy_egui::{EguiContext, EguiContextSettings};
+use bevy_inspector_egui::bevy_egui::EguiContext;
 use bevy_inspector_egui::bevy_inspector::hierarchy::{SelectedEntities, hierarchy_ui};
 use bevy_inspector_egui::bevy_inspector::{
     self, ui_for_entities_shared_components, ui_for_entity_with_children,
 };
 use bevy_reflect::TypeRegistry;
 use bevy_window::{PrimaryWindow, Window};
-use egui::LayerId;
+use egui::{LayerId, UiBuilder};
 use egui_dock::{DockArea, DockState, NodeIndex, Style};
 use std::any::TypeId;
 use transform_gizmo_bevy::{GizmoTarget, TransformGizmoPlugin};
@@ -105,10 +105,19 @@ fn show_ui_system(world: &mut World) {
         return;
     };
     let mut egui_context = egui_context.clone();
+    let ctx = egui_context.get_mut();
 
-    world.resource_scope::<UiState, _>(|world, mut ui_state| {
-        ui_state.ui(world, egui_context.get_mut())
-    });
+    // egui 0.34 deprecated the panel `show(ctx, ..)` entry points, so an integration builds its
+    // own root `Ui` instead. Same shape as bevy-inspector-egui's egui_dock example.
+    let mut ui = egui::Ui::new(
+        ctx.clone(),
+        "viewport".into(),
+        UiBuilder::new()
+            .layer_id(LayerId::background())
+            .max_rect(ctx.viewport_rect()),
+    );
+
+    world.resource_scope::<UiState, _>(|world, mut ui_state| ui_state.ui(world, &mut ui));
 }
 
 // make camera only render to view not obstructed by UI
@@ -116,9 +125,9 @@ fn set_camera_viewport(
     ui_state: Res<UiState>,
     window: Single<&Window, With<PrimaryWindow>>,
     mut cam: Single<&mut Camera, Without<PrimaryEguiContext>>,
-    egui_settings: Single<&EguiContextSettings>,
+    zoom_factor: Single<&EguiZoomFactor, With<PrimaryEguiContext>>,
 ) {
-    let scale_factor = window.scale_factor() * egui_settings.scale_factor;
+    let scale_factor = window.scale_factor() * zoom_factor.zoom_factor;
 
     let viewport_pos = ui_state.viewport_rect.left_top().to_vec2() * scale_factor;
     let viewport_size = ui_state.viewport_rect.size() * scale_factor;
@@ -173,7 +182,7 @@ impl UiState {
         }
     }
 
-    fn ui(&mut self, world: &mut World, ctx: &mut egui::Context) {
+    fn ui(&mut self, world: &mut World, ui: &mut egui::Ui) {
         let mut tab_viewer = TabViewer {
             world,
             viewport_rect: &mut self.viewport_rect,
@@ -182,8 +191,8 @@ impl UiState {
             pointer_in_viewport: &mut self.pointer_in_viewport,
         };
         DockArea::new(&mut self.state)
-            .style(Style::from_egui(ctx.style().as_ref()))
-            .show(ctx, &mut tab_viewer);
+            .style(Style::from_egui(ui.style().as_ref()))
+            .show_inside(ui, &mut tab_viewer);
     }
 }
 

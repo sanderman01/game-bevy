@@ -3,7 +3,10 @@ use avian3d::{
     prelude::PhysicsSystems,
 };
 use bevy::{prelude::*, transform::TransformPlugin, window::WindowResolution};
-use big_space::{camera::camera_controller, plugin::BigSpaceDefaultPlugins};
+use big_space::{
+    camera::camera_controller,
+    plugin::{BigSpaceDebugPlugins, BigSpaceDefaultPlugins},
+};
 use editor::editor::EditorPluginGroup;
 use modloader::{LoaderState, ModLoaderPlugin};
 
@@ -28,6 +31,8 @@ pub fn create_app(app: &mut bevy::app::App) {
             .disable::<TransformPlugin>(),
     )
     .add_plugins(BigSpaceDefaultPlugins)
+    // No longer bundled with BigSpaceDefaultPlugins as of big_space 0.13.
+    .add_plugins(BigSpaceDebugPlugins::default())
     .add_systems(
         PostUpdate,
         custom_big_space_camera_inputs.before(camera_controller),

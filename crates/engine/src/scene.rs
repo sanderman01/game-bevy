@@ -37,7 +37,7 @@ pub fn new_simple_scene(
         root_grid.spawn_spatial((
             bevy::light::DirectionalLight {
                 illuminance: 1000.,
-                shadows_enabled: true,
+                shadow_maps_enabled: true,
                 ..default()
             },
             Transform::from_translation(light_pos).looking_at(target_pos, up),
@@ -132,7 +132,7 @@ pub fn load_model(
     let label = GltfAssetLabel::Scene(0).from_asset(path + "#Scene0");
     commands.spawn((
         Name::new(alias),
-        SceneRoot(asset_server.load(label)),
+        WorldAssetRoot(asset_server.load(label)),
         ChildOf(grid_entity.entity),
         on_grid(grid_entity.grid, DVec3::ZERO),
     ));
@@ -145,7 +145,7 @@ pub fn load_model(
     let label = GltfAssetLabel::Scene(0).from_asset(path + "#Scene0");
     commands.spawn((
         Name::new(alias),
-        SceneRoot(asset_server.load(label)),
+        WorldAssetRoot(asset_server.load(label)),
         ChildOf(grid_entity.entity),
         on_grid(grid_entity.grid, DVec3::new(0.0, 5.0, 0.0)),
         ColliderConstructorHierarchy {
