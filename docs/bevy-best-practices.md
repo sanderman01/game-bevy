@@ -5,13 +5,13 @@ Original source: https://github.com/tbillington/bevy_best_practices
 
 ## Outdated APIs in this document
 
-This document was written against Bevy 0.11 to 0.14. This project is pinned at Bevy 0.18.
+This document was written against Bevy 0.11 to 0.14. This project is pinned at Bevy 0.19.
 The patterns below still hold. Many of the API names do not. Do not copy code out of this
 file without checking the table first.
 
 `docs/code-style.md` is the authority on style. This file is background reading.
 
-| Used below | Current in 0.18 | Changed in |
+| Used below | Current in 0.19 | Changed in |
 | --- | --- | --- |
 | `Event` for buffered events | `Message` | 0.17 |
 | `EventWriter<E>` / `EventReader<E>` | `MessageWriter<M>` / `MessageReader<M>` | 0.17 |
@@ -28,11 +28,11 @@ file without checking the table first.
 | `app.enable_state_scoped_entities::<S>()` | Delete the call. Always on now. | 0.17 |
 | `#[states(scoped_entities)]` | Delete the attribute. | 0.17 |
 
-`Event` still exists in 0.18 but means something else. It is now the observer-triggered kind,
+`Event` still exists in 0.19 but means something else. It is now the observer-triggered kind,
 read in an observer through the `On<E>` parameter. The lifecycle events renamed too: `OnAdd`,
-`OnInsert`, `OnReplace`, `OnRemove`, and `OnDespawn` are now `Add`, `Insert`, `Replace`,
-`Remove`, and `Despawn`. So every `#[derive(Event)]` below wants `Message` instead, unless you
-actually want an observer.
+`OnInsert`, `OnReplace`, `OnRemove`, and `OnDespawn` are now `Add`, `Insert`, `Discard`,
+`Remove`, and `Despawn`. `OnReplace` became `Replace` in 0.17 and `Discard` in 0.19. So every
+`#[derive(Event)]` below wants `Message` instead, unless you actually want an observer.
 
 Three things arrived after this document was written and it therefore never mentions them.
 They change the advice, not just the names.

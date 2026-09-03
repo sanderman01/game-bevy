@@ -11,7 +11,7 @@ cleanup, preludes, and build profiles. Its patterns still hold, but it was writt
 Bevy 0.11 to 0.14 and many of its API names are dead. Read the outdated-API table at the top
 of that file before copying any code out of it.
 
-Bevy is pinned at 0.18. Where a rule names an API symbol, the concept is the rule. If a symbol
+Bevy is pinned at 0.19. Where a rule names an API symbol, the concept is the rule. If a symbol
 here no longer exists after an upgrade, fix this document in the same commit as the upgrade.
 
 ## Crate layers
