@@ -1,0 +1,26 @@
+crates/engine/src/lib.rs
+  s_4689f8e8ac9481::t_1c3c516ca4dd46 4
+crates/engine/src/gizmo_compat.rs
+  s_4689f8e8ac9481::t_fb037107ce1ca3 45-54
+  s_4689f8e8ac9481::t_1c3c516ca4dd46 1-11,25-44,55-69
+  s_4689f8e8ac9481::t_3a0fa6f924ccf2 12-24
+crates/engine/src/app.rs
+  s_4689f8e8ac9481::t_fb037107ce1ca3 5-9,12,20,45-51
+  s_4689f8e8ac9481::t_8c58a8846c761e 52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "275a64c82d10ce03ef9e5ea482f6434e9f632d64",
+  "prompts": {},
+  "sessions": {
+    "s_4689f8e8ac9481": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "03be905f-4869-494e-8a77-aaf5f70536fc",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
