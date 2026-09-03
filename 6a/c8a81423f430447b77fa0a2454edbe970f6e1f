@@ -1,0 +1,21 @@
+crates/editor/src/editor.rs
+  s_4689f8e8ac9481::t_208340050ee2c5 23-33,57,139,376-377
+crates/engine/src/scene.rs
+  s_4689f8e8ac9481::t_2790c513b5a629 7,53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "6ac8a81423f430447b77fa0a2454edbe970f6e1f",
+  "prompts": {},
+  "sessions": {
+    "s_4689f8e8ac9481": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "03be905f-4869-494e-8a77-aaf5f70536fc",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
