@@ -1,0 +1,19 @@
+docs/CODE_STYLE.md
+  s_9bdd5a096b81a7::t_544e674ce58b27 1-231
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "4a60d344e72c2a9da9510d289ecebbb4a304dbb0",
+  "prompts": {},
+  "sessions": {
+    "s_9bdd5a096b81a7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "382e4697-9613-4f45-bd0f-4ea16d06b310",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
