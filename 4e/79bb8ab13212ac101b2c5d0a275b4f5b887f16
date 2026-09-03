@@ -1,0 +1,19 @@
+rust-toolchain.toml
+  s_7825298a58799a::t_71751dc26085f3 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "4e79bb8ab13212ac101b2c5d0a275b4f5b887f16",
+  "prompts": {},
+  "sessions": {
+    "s_7825298a58799a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f3aa1ac9-f6a0-4b77-a495-c1756782d36b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
