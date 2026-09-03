@@ -24,3 +24,5 @@ rust-project.json
 
 # Working task trackers written beside a plan. Same class of document, same rule.
 /*-todo.md
+
+*.bak
