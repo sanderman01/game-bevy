@@ -30,7 +30,7 @@ Where the two overlap, this file wins.
 
 ## Building and testing
 
-Use `cargo check` and `cargo build` to check for correctness and build success.
+Use `cargo clippy` and `cargo build` to check for correctness and build success.
 Use `cargo run` to test at runtime.
 
 ## Code style
