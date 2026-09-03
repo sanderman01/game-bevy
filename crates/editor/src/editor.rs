@@ -1,8 +1,12 @@
 use bevy::{
-    app::PluginGroupBuilder,
+    app::{PluginGroupBuilder, TransformGizmoRenderStep},
     asset::{ReflectAsset, UntypedAssetId},
     color::palettes::tailwind::*,
-    picking::pointer::{PointerAction, PointerInput, PointerInteraction},
+    gizmos::transform_gizmo::TransformGizmoMeshMarker,
+    picking::{
+        Pickable,
+        pointer::{PointerAction, PointerInput, PointerInteraction},
+    },
     prelude::*,
 };
 use bevy_camera::{Viewport, visibility::RenderLayers};
@@ -21,7 +25,6 @@ use bevy_window::{PrimaryWindow, Window};
 use egui::{LayerId, UiBuilder};
 use egui_dock::{DockArea, DockState, NodeIndex, Style};
 use std::any::TypeId;
-use transform_gizmo_bevy::{GizmoTarget, TransformGizmoPlugin};
 
 /// Marker for the camera that renders the editor's Game View.
 ///
@@ -52,11 +55,31 @@ impl Plugin for EditorPlugin {
             .add_plugins(bevy_egui::EguiPlugin::default())
             .add_plugins(DefaultInspectorConfigPlugin)
             .insert_resource(UiState::new())
+            // The gizmo reads the raw window cursor, so it must stand down while the
+            // pointer is over a panel rather than the Game View.
+            .configure_sets(PostUpdate, TransformGizmoSystems.run_if(gizmo_should_run))
             .add_systems(Startup, setup)
             .add_systems(EguiPrimaryContextPass, show_ui_system)
-            .add_systems(PostUpdate, set_camera_viewport.after(show_ui_system))
-            .add_systems(Update, draw_mesh_intersections)
-            .add_systems(PostUpdate, handle_pick_events)
+            // The dock rect is only known once the Egui pass has run, and the gizmo's
+            // overlay camera copies the viewport during the render step, so a resize
+            // reaches the handles in the same frame.
+            .add_systems(
+                PostUpdate,
+                set_camera_viewport
+                    .after(EguiPostUpdateSet::EndPass)
+                    .before(TransformGizmoRenderStep),
+            )
+            .add_systems(
+                Update,
+                (
+                    draw_mesh_intersections,
+                    ignore_gizmo_mesh_picking,
+                    gizmo_keyboard_shortcuts,
+                ),
+            )
+            // The guard against selecting through a handle reads state that
+            // `transform_gizmo_hover` writes this frame.
+            .add_systems(PostUpdate, handle_pick_events.after(TransformGizmoSystems))
             .add_systems(
                 PostUpdate,
                 sync_gizmo_focus
@@ -66,6 +89,56 @@ impl Plugin for EditorPlugin {
             .register_type::<EditorCamera>()
             .register_type::<Option<Handle<Image>>>()
             .register_type::<AlphaMode>();
+    }
+}
+
+/// The gizmo takes `window.cursor_position()` directly and knows nothing about the egui
+/// panels covering part of the window, so it only runs while the pointer is over the Game
+/// View. A drag already in progress keeps running wherever the cursor goes: cutting it off
+/// mid-drag would strand `TransformGizmoState::active` and leave the cursor confined.
+fn gizmo_should_run(ui_state: Res<UiState>, gizmo: Res<TransformGizmoState>) -> bool {
+    ui_state.pointer_in_viewport || gizmo.active
+}
+
+/// The gizmo renders through an always-on-top overlay camera on its own render layer, and
+/// the mesh picking backend builds a ray for that camera too. Without this, clicking a
+/// handle selects the handle's mesh entity and paints a debug sphere on it.
+fn ignore_gizmo_mesh_picking(
+    handles: Query<Entity, Added<TransformGizmoMeshMarker>>,
+    mut commands: Commands,
+) {
+    for entity in &handles {
+        commands.entity(entity).insert(Pickable::IGNORE);
+    }
+}
+
+/// The gizmo reads no keyboard input by design, so the editor picks the bindings: W, E and
+/// R select the mode, X toggles between world and local space. The camera fly shares W and
+/// E but only while the right mouse button is held, so the shortcuts stand down for it.
+fn gizmo_keyboard_shortcuts(
+    ui_state: Res<UiState>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut settings: ResMut<TransformGizmoSettings>,
+) {
+    if !ui_state.pointer_in_viewport || mouse.pressed(MouseButton::Right) {
+        return;
+    }
+
+    if keys.just_pressed(KeyCode::KeyW) {
+        settings.mode = TransformGizmoMode::Translate;
+    }
+    if keys.just_pressed(KeyCode::KeyE) {
+        settings.mode = TransformGizmoMode::Rotate;
+    }
+    if keys.just_pressed(KeyCode::KeyR) {
+        settings.mode = TransformGizmoMode::Scale;
+    }
+    if keys.just_pressed(KeyCode::KeyX) {
+        settings.space = match settings.space {
+            TransformGizmoSpace::World => TransformGizmoSpace::Local,
+            TransformGizmoSpace::Local => TransformGizmoSpace::World,
+        };
     }
 }
 
@@ -87,7 +160,7 @@ fn handle_pick_events(
     mut ui_state: ResMut<UiState>,
     mut click_events: MessageReader<PointerInput>,
     pointers: Query<&PointerInteraction>,
-    gizmo_targets: Query<&GizmoTarget>,
+    gizmo: Res<TransformGizmoState>,
 ) {
     if !ui_state.pointer_in_viewport {
         return;
@@ -97,9 +170,9 @@ fn handle_pick_events(
         if !matches!(event.action, PointerAction::Press(PointerButton::Primary)) {
             continue;
         }
-        // A press that the gizmo is about to consume must not fall through to the mesh
-        // behind the handle.
-        if gizmo_targets.iter().any(GizmoTarget::is_focused) {
+        // A press the gizmo is consuming must not fall through to the mesh behind the
+        // handle. `hovered_axis` is cleared once a drag starts, so both are needed.
+        if gizmo.active || gizmo.hovered_axis.is_some() {
             continue;
         }
 
@@ -120,7 +193,7 @@ fn handle_pick_events(
 fn sync_gizmo_focus(
     ui_state: Res<UiState>,
     transformable: Query<(), With<Transform>>,
-    focused: Query<Entity, With<GizmoTarget>>,
+    focused: Query<Entity, With<TransformGizmoFocus>>,
     mut commands: Commands,
 ) {
     let target = match *ui_state.selected_entities.as_slice() {
@@ -130,14 +203,14 @@ fn sync_gizmo_focus(
 
     for entity in &focused {
         if Some(entity) != target {
-            commands.entity(entity).remove::<GizmoTarget>();
+            commands.entity(entity).remove::<TransformGizmoFocus>();
         }
     }
 
     if let Some(entity) = target
         && !focused.contains(entity)
     {
-        commands.entity(entity).insert(GizmoTarget::default());
+        commands.entity(entity).insert(TransformGizmoFocus);
     }
 }
 
@@ -388,15 +461,6 @@ fn select_asset(
 
 fn setup(mut commands: Commands, mut egui_global_settings: ResMut<EguiGlobalSettings>) {
     egui_global_settings.auto_create_primary_context = false;
-
-    // // camera
-    // commands.spawn((
-    //     Camera3d::default(),
-    //     Transform::from_xyz(0.0, box_offset, 4.0)
-    //         .looking_at(Vec3::new(0.0, box_offset, 0.0), Vec3::Y),
-    //     GizmoCamera,
-    //     // PickRaycastSource,
-    // ));
 
     // egui camera
     commands.spawn((

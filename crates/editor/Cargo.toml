@@ -14,4 +14,3 @@ bevy_reflect = { workspace = true }
 bevy_window = { workspace = true }
 egui = { workspace = true }
 egui_dock = { workspace = true }
-transform-gizmo-bevy = { workspace = true }
