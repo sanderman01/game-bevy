@@ -28,7 +28,7 @@ modloader-> engine
 a higher layer, the design is wrong. Move the shared type down into `engine` or invert the call
 into an event the higher layer observes.
 
-Record any change to the layer graph in `docs/DESIGN.md` before making it.
+Record any change to the layer graph in `docs/design.md` before making it.
 
 ## Features are modules until they earn a crate
 
@@ -83,7 +83,7 @@ Use required components to express "this cannot exist without that". It puts the
 one place instead of in every spawn call.
 
 Newtype any value with a unit or a coordinate space. `Meters(f32)` and `GridCell` prevent the
-class of bug where a local offset is used as a world position. `docs/CONVENTIONS.md` is the
+class of bug where a local offset is used as a world position. `docs/conventions.md` is the
 authority on which units and spaces exist.
 
 ## Queries

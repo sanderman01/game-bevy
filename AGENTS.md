@@ -10,9 +10,9 @@ Where the two overlap, this file wins.
 | Document | Covers |
 | --- | --- |
 | [README.md](README.md) | Overview: what this project is. |
-| [docs/DESIGN.md](docs/DESIGN.md) | Design record: every decision, its reasoning, and which questions are still open. Read it before doing design work. |
-| [docs/CONVENTIONS.md](docs/CONVENTIONS.md) | Things like coordinate system axes handedness, units, socket names, exact import/export settings. |
-| [docs/CODE_STYLE.md](docs/CODE_STYLE.md) | How the Rust code is written: modern Rust, lifetime rules, crates, dependencies, and API hygiene. Read it before writing or reviewing code. |
+| [docs/design.md](docs/design.md) | Design record: every decision, its reasoning, and which questions are still open. Read it before doing design work. |
+| [docs/conventions.md](docs/conventions.md) | Things like coordinate system axes handedness, units, socket names, exact import/export settings. |
+| [docs/code-style.md](docs/code-style.md) | How the Rust code is written: modern Rust, lifetime rules, crates, dependencies, and API hygiene. Read it before writing or reviewing code. |
 
 ## What this project is
 
@@ -35,7 +35,7 @@ Use `cargo run` to test at runtime.
 
 ## Code style
 
-See [docs/CODE_STYLE.md](docs/CODE_STYLE.md). Read it before writing Rust code. Prefer Bevy code standard over generic Rust code standards unless enforced by cargo fmt. `cargo fmt` always wins.
+See [docs/code-style.md](docs/code-style.md). Read it before writing Rust code. Prefer Bevy code standard over generic Rust code standards unless enforced by cargo fmt. `cargo fmt` always wins.
 
 ## Assets and config
 

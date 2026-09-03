@@ -9,7 +9,7 @@ This document was written against Bevy 0.11 to 0.14. This project is pinned at B
 The patterns below still hold. Many of the API names do not. Do not copy code out of this
 file without checking the table first.
 
-`docs/CODE_STYLE.md` is the authority on style. This file is background reading.
+`docs/code-style.md` is the authority on style. This file is background reading.
 
 | Used below | Current in 0.18 | Changed in |
 | --- | --- | --- |
@@ -38,7 +38,7 @@ Three things arrived after this document was written and it therefore never ment
 They change the advice, not just the names.
 
 - Observers, added in 0.15. This project prefers an observer on an event over a buffered
-  message for cross-feature reactions. See `docs/CODE_STYLE.md`.
+  message for cross-feature reactions. See `docs/code-style.md`.
 - Required components, added in 0.15. The "Name and Cleanup" section asks you to put `Name`
   and a cleanup component at the front of every spawn by hand. A `#[require(...)]` on the
   marker component does it once instead.
