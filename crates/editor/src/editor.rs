@@ -20,6 +20,17 @@ use egui_dock::{DockArea, DockState, NodeIndex, Style};
 use std::any::TypeId;
 use transform_gizmo_bevy::{GizmoTarget, TransformGizmoPlugin};
 
+/// Marker for the camera that renders the editor's Game View.
+///
+/// The editor needs to tell its own 3D camera apart from the egui camera and from the
+/// overlay camera the transform gizmo renderer spawns, and it cannot use
+/// `engine::camera::MainCamera` because `engine` depends on `editor` and not the other
+/// way around. Attach this to the main 3D camera when building a scene.
+#[derive(Component, Debug, Default, Reflect)]
+#[reflect(Component, Default)]
+#[require(TransformGizmoCamera)]
+pub struct EditorCamera;
+
 pub struct EditorPluginGroup;
 
 impl PluginGroup for EditorPluginGroup {
@@ -43,6 +54,7 @@ impl Plugin for EditorPlugin {
             .add_systems(PostUpdate, set_camera_viewport.after(show_ui_system))
             .add_systems(Update, draw_mesh_intersections)
             .add_systems(PostUpdate, handle_pick_events)
+            .register_type::<EditorCamera>()
             .register_type::<Option<Handle<Image>>>()
             .register_type::<AlphaMode>();
     }
@@ -124,7 +136,7 @@ fn show_ui_system(world: &mut World) {
 fn set_camera_viewport(
     ui_state: Res<UiState>,
     window: Single<&Window, With<PrimaryWindow>>,
-    mut cam: Single<&mut Camera, Without<PrimaryEguiContext>>,
+    mut cam: Single<&mut Camera, With<EditorCamera>>,
     zoom_factor: Single<&EguiZoomFactor, With<PrimaryEguiContext>>,
 ) {
     let scale_factor = window.scale_factor() * zoom_factor.zoom_factor;
@@ -361,7 +373,8 @@ fn setup(mut commands: Commands, mut egui_global_settings: ResMut<EguiGlobalSett
         PrimaryEguiContext,
         RenderLayers::none(),
         Camera {
-            order: 1,
+            // Above the transform gizmo's overlay camera, which hardcodes `order: 1`.
+            order: 2,
             clear_color: ClearColorConfig::None,
             ..default()
         },
