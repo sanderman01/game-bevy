@@ -1,0 +1,14 @@
+AGENTS.md
+  h_72decab43bbb75 33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "b1eaa0fa667e188f0e31b37394aeb93051fc2d48",
+  "prompts": {},
+  "humans": {
+    "h_72decab43bbb75": {
+      "author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
