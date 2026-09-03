@@ -2,10 +2,14 @@ use avian3d::{
     PhysicsPlugins, debug_render::PhysicsDebugPlugin, physics_transform::PhysicsTransformConfig,
     prelude::PhysicsSystems,
 };
-use bevy::{prelude::*, transform::TransformPlugin, window::WindowResolution};
+use bevy::{
+    prelude::*,
+    transform::{TransformPlugin, TransformSystems},
+    window::WindowResolution,
+};
 use big_space::{
     camera::camera_controller,
-    plugin::{BigSpaceDebugPlugins, BigSpaceDefaultPlugins},
+    plugin::{BigSpaceDebugPlugins, BigSpaceDefaultPlugins, BigSpaceSystems},
 };
 use editor::editor::EditorPluginGroup;
 use modloader::{LoaderState, ModLoaderPlugin};
@@ -13,6 +17,7 @@ use modloader::{LoaderState, ModLoaderPlugin};
 use crate::{
     camera::VirtualCameraPlugin,
     camera_controller::custom_big_space_camera_inputs,
+    gizmo_compat::reanchor_gizmo_drag_across_cells,
     physics_compat::physics_position_to_transform,
     scene::{load_model, new_simple_scene},
 };
@@ -36,6 +41,14 @@ pub fn create_app(app: &mut bevy::app::App) {
     .add_systems(
         PostUpdate,
         custom_big_space_camera_inputs.before(camera_controller),
+    )
+    .add_systems(
+        PostUpdate,
+        // Runs once big_space has moved the entity into its new cell, and so before the
+        // gizmo reads its drag snapshot again next frame.
+        reanchor_gizmo_drag_across_cells
+            .after(BigSpaceSystems::RecenterLargeTransforms)
+            .after(TransformSystems::Propagate),
     )
     .add_plugins(VirtualCameraPlugin)
     .add_plugins(EditorPluginGroup)
