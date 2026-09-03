@@ -6,7 +6,10 @@ use bevy::{
     prelude::*,
 };
 use bevy_camera::{Viewport, visibility::RenderLayers};
-use bevy_egui::{EguiGlobalSettings, EguiPrimaryContextPass, EguiZoomFactor, PrimaryEguiContext};
+use bevy_egui::{
+    EguiGlobalSettings, EguiPostUpdateSet, EguiPrimaryContextPass, EguiZoomFactor,
+    PrimaryEguiContext,
+};
 use bevy_inspector_egui::DefaultInspectorConfigPlugin;
 use bevy_inspector_egui::bevy_egui::EguiContext;
 use bevy_inspector_egui::bevy_inspector::hierarchy::{SelectedEntities, hierarchy_ui};
@@ -54,6 +57,12 @@ impl Plugin for EditorPlugin {
             .add_systems(PostUpdate, set_camera_viewport.after(show_ui_system))
             .add_systems(Update, draw_mesh_intersections)
             .add_systems(PostUpdate, handle_pick_events)
+            .add_systems(
+                PostUpdate,
+                sync_gizmo_focus
+                    .after(handle_pick_events)
+                    .after(EguiPostUpdateSet::EndPass),
+            )
             .register_type::<EditorCamera>()
             .register_type::<Option<Handle<Image>>>()
             .register_type::<AlphaMode>();
@@ -71,41 +80,64 @@ fn draw_mesh_intersections(pointers: Query<&PointerInteraction>, mut gizmos: Giz
     }
 }
 
+/// Selects the entity under the pointer. The gizmo owns one entity at a time, so a
+/// viewport click replaces the selection rather than extending it; the hierarchy panel
+/// is where multi-selection still lives.
 fn handle_pick_events(
     mut ui_state: ResMut<UiState>,
     mut click_events: MessageReader<PointerInput>,
     pointers: Query<&PointerInteraction>,
-    button: Res<ButtonInput<KeyCode>>,
-    gizmo_targets: Query<(Entity, &GizmoTarget)>,
-    mut commands: Commands,
+    gizmo_targets: Query<&GizmoTarget>,
 ) {
     if !ui_state.pointer_in_viewport {
         return;
     }
+
     for event in click_events.read() {
-        if let PointerAction::Press(PointerButton::Primary) = event.action {
-            if gizmo_targets.iter().any(|(_, target)| target.is_focused()) {
-                continue;
-            }
+        if !matches!(event.action, PointerAction::Press(PointerButton::Primary)) {
+            continue;
+        }
+        // A press that the gizmo is about to consume must not fall through to the mesh
+        // behind the handle.
+        if gizmo_targets.iter().any(GizmoTarget::is_focused) {
+            continue;
+        }
 
-            for interaction in pointers {
-                for (entity, _) in interaction.as_slice() {
-                    let add = button.any_pressed([KeyCode::ControlLeft, KeyCode::ShiftLeft]);
-                    ui_state.selected_entities.select_maybe_add(*entity, add);
-
-                    for (target, _) in gizmo_targets.iter() {
-                        if !ui_state.selected_entities.contains(target) {
-                            commands.entity(target).remove::<GizmoTarget>();
-                        }
-                    }
-                    for selected in ui_state.selected_entities.iter() {
-                        if !gizmo_targets.contains(selected) {
-                            commands.entity(selected).insert(GizmoTarget::default());
-                        }
-                    }
-                }
+        for interaction in &pointers {
+            if let Some((entity, _)) = interaction.get_nearest_hit() {
+                ui_state.selected_entities.select_replace(*entity);
             }
         }
+    }
+}
+
+/// Points the transform gizmo at the selection.
+///
+/// The gizmo manipulates exactly one entity, so it is focused only while the selection
+/// holds exactly one transformable entity, and cleared otherwise. Deriving focus from the
+/// selection every frame, instead of bookkeeping it wherever something selects, is what
+/// makes a hierarchy-panel click move the gizmo without a viewport click after it.
+fn sync_gizmo_focus(
+    ui_state: Res<UiState>,
+    transformable: Query<(), With<Transform>>,
+    focused: Query<Entity, With<GizmoTarget>>,
+    mut commands: Commands,
+) {
+    let target = match *ui_state.selected_entities.as_slice() {
+        [entity] if transformable.contains(entity) => Some(entity),
+        _ => None,
+    };
+
+    for entity in &focused {
+        if Some(entity) != target {
+            commands.entity(entity).remove::<GizmoTarget>();
+        }
+    }
+
+    if let Some(entity) = target
+        && !focused.contains(entity)
+    {
+        commands.entity(entity).insert(GizmoTarget::default());
     }
 }
 
