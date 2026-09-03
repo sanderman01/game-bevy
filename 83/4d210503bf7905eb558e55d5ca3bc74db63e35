@@ -1,0 +1,22 @@
+docs/bevy-best-practices.md
+  s_7825298a58799a::t_626159b7a822d8 33-35
+  s_7825298a58799a::t_21e78fd20dfe03 8,14,31
+docs/code-style.md
+  s_7825298a58799a::t_21e78fd20dfe03 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "834d210503bf7905eb558e55d5ca3bc74db63e35",
+  "prompts": {},
+  "sessions": {
+    "s_7825298a58799a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f3aa1ac9-f6a0-4b77-a495-c1756782d36b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
