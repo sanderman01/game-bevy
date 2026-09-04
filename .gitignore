@@ -4,6 +4,10 @@
 debug/
 target/
 
+# Do not track assets in this repo. I have this symlinked to another location
+assets/
+assets
+
 # Remove Cargo.lock from gitignore if creating an executable, leave it for libraries
 # More information here https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html
 # Cargo.lock
