@@ -1,0 +1,14 @@
+assets/.gitkeep
+  h_72decab43bbb75 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "3fa34936ae8894e8c8db31e4bd61dba84329c778",
+  "prompts": {},
+  "humans": {
+    "h_72decab43bbb75": {
+      "author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
