@@ -1,4 +1,8 @@
 [env]
+# Bevy resolves its asset root from BEVY_ASSET_ROOT, else CARGO_MANIFEST_DIR (set by
+# `cargo run` to the *package* dir), else the executable dir. Pin it to the workspace
+# root so every crate uses the single ./assets directory.
+BEVY_ASSET_ROOT = { value = ".", relative = true }
 WGPU_BACKEND = "vulkan"
 WGPU_ADAPTER_TYPE = "discrete"
 
