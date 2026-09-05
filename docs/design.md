@@ -77,6 +77,12 @@ yaw/boost, with no `KeyCode` in it. Whichever layer owns the bindings writes the
 editor today, a spectator mode in the game later. Two crates each half-knowing one key binding is
 what produced the W/E clash between the gizmo shortcuts and the fly camera.
 
+The editor writes `FlyCameraIntent` in `FlyCameraSystems::Intent`; the engine applies and clears
+it in `FlyCameraSystems::Apply`. With no editor linked in, nothing writes it and the fly camera
+does not move, which is correct for a shipping build. `crate::camera::fly_camera_active` in the
+editor is the one place the "the camera claims W and E while the right mouse button is held" rule
+is written down.
+
 ## Bevy dependencies
 
 Depend on `bevy` and use its re-exports (`bevy::camera`, `bevy::window`, `bevy::reflect`,
