@@ -404,7 +404,7 @@ fn select_resource(
             )
         })
         .collect();
-    resources.sort_by(|(name_a, _), (name_b, _)| name_a.cmp(name_b));
+    resources.sort_by_key(|(name_a, _)| *name_a);
 
     for (resource_name, type_id) in resources {
         let selected = match *selection {
@@ -435,7 +435,7 @@ fn select_asset(
             ))
         })
         .collect();
-    assets.sort_by(|(name_a, ..), (name_b, ..)| name_a.cmp(name_b));
+    assets.sort_by_key(|(name_a, ..)| *name_a);
 
     for (asset_name, asset_type_id, reflect_asset) in assets {
         let handles: Vec<_> = reflect_asset.ids(world).collect();

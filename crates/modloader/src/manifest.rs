@@ -30,7 +30,7 @@ pub struct Manifests {
 }
 
 /// Package section of a package [Manifest](Manifest). Contains all the information required to unique identify and load a package.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect, Asset)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, Reflect, Asset)]
 pub struct PackageInfo {
     /// Unique human readable mod package identifier. eg. 'spacewar'
     pub id: String,
@@ -55,19 +55,6 @@ pub struct PackageInfo {
     /// Load priority. Higher values = loaded later.
     /// This can be useful if one mod wants to make changes to game content specifically before or after others.
     pub load_priority: i32,
-}
-
-impl Default for PackageInfo {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            version: Version::default(),
-            authors: Vec::<String>::new(),
-            title: String::new(),
-            description: String::new(),
-            load_priority: 0,
-        }
-    }
 }
 
 /// Assets section of a package [Manifest](Manifest). Used to declare assets added or modified by this package.
@@ -117,9 +104,9 @@ pub struct Version {
 impl Version {
     pub fn new(major: u64, minor: u64, patch: u64) -> Version {
         Version {
-            major: major,
-            minor: minor,
-            patch: patch,
+            major,
+            minor,
+            patch,
         }
     }
 }
@@ -137,9 +124,9 @@ impl FromStr for Version {
         let minor = u64::from_str(sss[1]).map_err(|e| VersionError::Parse(e.to_string()))?;
         let patch = u64::from_str(sss[2]).map_err(|e| VersionError::Parse(e.to_string()))?;
         Result::Ok(Version {
-            major: major,
-            minor: minor,
-            patch: patch,
+            major,
+            minor,
+            patch,
         })
     }
 }
@@ -157,9 +144,7 @@ impl<'de> Deserialize<'de> for Version {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Version::from_str(&s)
-            .map(Self::from)
-            .map_err(|e| serde::de::Error::custom(e.to_string()))
+        Version::from_str(&s).map_err(|e| serde::de::Error::custom(e.to_string()))
     }
 }
 

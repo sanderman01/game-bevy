@@ -77,7 +77,7 @@ pub fn create_app(app: &mut bevy::app::App) {
 }
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
-enum GameState {
+pub enum GameState {
     #[default]
     Loading,
     Scene,

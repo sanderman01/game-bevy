@@ -281,7 +281,7 @@ pub fn register_package_assets(registry: &AssetRegistry, manifest: &Manifest, pk
             let alias = kvp.0;
             let path = kvp.1;
             let path = format!("{}/{}", pkg_root_path, path);
-            registry.register_asset(&alias, &path);
+            registry.register_asset(alias, &path);
             info!("  := {:20} {}", &alias, &path);
         }
     }
@@ -289,7 +289,7 @@ pub fn register_package_assets(registry: &AssetRegistry, manifest: &Manifest, pk
     if let Some(remove) = &manifest.assets.remove {
         for kvp in remove.iter() {
             let alias = kvp.0;
-            registry.unregister_asset(&alias);
+            registry.unregister_asset(alias);
             info!("  -- {:20}", &alias);
         }
     }

@@ -76,3 +76,9 @@ impl AssetRegistry {
             .map(|p| server.load::<A>(p))
     }
 }
+
+impl Default for AssetRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
