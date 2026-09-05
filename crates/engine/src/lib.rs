@@ -6,7 +6,6 @@
 
 pub mod bigspace;
 pub mod camera;
-pub mod gizmo_compat;
 pub mod input;
 pub mod physics;
 

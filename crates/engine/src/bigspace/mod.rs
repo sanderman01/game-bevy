@@ -30,12 +30,6 @@ impl Plugin for BigSpacePlugin {
             GridSystems::Recentered
                 .after(BigSpaceSystems::RecenterLargeTransforms)
                 .after(TransformSystems::Propagate),
-        )
-        // Moves to `editor` in Phase 4, once the editor can depend on the engine. It is
-        // editor-only behaviour and nothing in a shipping build needs it.
-        .add_systems(
-            PostUpdate,
-            crate::gizmo_compat::reanchor_gizmo_drag_across_cells.in_set(GridSystems::Recentered),
         );
     }
 }

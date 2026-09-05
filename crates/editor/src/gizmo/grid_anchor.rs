@@ -7,8 +7,8 @@
 //! snapshot is a whole cell stale, so the next frame places the entity a cell's width away
 //! -- which recenters it again, and it runs off across the grid a cell per frame.
 //!
-//! Same class of problem as the physics grid writeback, and the same shape of fix: read the
-//! offset big_space applied and put it through to the value that is out of date.
+//! Same class of problem as `engine`'s physics grid writeback, and the same shape of fix: read
+//! the offset big_space applied and put it through to the value that is out of date.
 //!
 //! # Ordering assumption
 //!
@@ -24,7 +24,7 @@
 //! than a runaway, and revisit this.
 
 use bevy::prelude::*;
-use big_space::prelude::*;
+use engine::bigspace::{CellCoord, Grid};
 
 /// Keeps the gizmo's drag snapshot in the cell the dragged entity is currently in.
 ///
@@ -36,7 +36,7 @@ use big_space::prelude::*;
 /// world-space and stay valid, since an entity changing cell does not move the floating
 /// origin. A drag that outlives a shift of the floating origin itself would still jump,
 /// but that needs the camera to fly while a gizmo handle is held.
-pub fn reanchor_gizmo_drag_across_cells(
+pub(crate) fn reanchor_gizmo_drag_across_cells(
     mut gizmo: ResMut<TransformGizmoState>,
     dragged: Query<(&CellCoord, &ChildOf)>,
     grids: Query<&Grid>,

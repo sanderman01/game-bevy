@@ -24,24 +24,19 @@ use bevy_inspector_egui::bevy_inspector::{
 };
 use egui::{LayerId, UiBuilder};
 use egui_dock::{DockArea, DockState, NodeIndex, Style};
+use engine::camera::MainCamera;
 use std::any::TypeId;
 
-/// Marker for the camera that renders the editor's Game View.
-///
-/// The editor needs to tell its own 3D camera apart from the egui camera and from the
-/// overlay camera the transform gizmo renderer spawns, and it cannot use
-/// `engine::camera::MainCamera` because `engine` depends on `editor` and not the other
-/// way around. Attach this to the main 3D camera when building a scene.
-#[derive(Component, Debug, Default, Reflect)]
-#[reflect(Component, Default)]
-#[require(TransformGizmoCamera)]
-pub struct EditorCamera;
+/// Everything the editor is: the dock UI and selection (`EditorPlugin`), and the transform
+/// gizmo's big_space integration (`GizmoPlugin`). A target adds this group to link the
+/// editor in.
+pub struct EditorPlugins;
 
-pub struct EditorPluginGroup;
-
-impl PluginGroup for EditorPluginGroup {
+impl PluginGroup for EditorPlugins {
     fn build(self) -> PluginGroupBuilder {
-        PluginGroupBuilder::start::<Self>().add(EditorPlugin)
+        PluginGroupBuilder::start::<Self>()
+            .add(EditorPlugin)
+            .add(crate::gizmo::GizmoPlugin)
     }
 }
 
@@ -75,6 +70,7 @@ impl Plugin for EditorPlugin {
                     draw_mesh_intersections,
                     ignore_gizmo_mesh_picking,
                     gizmo_keyboard_shortcuts,
+                    tag_main_camera_for_gizmo,
                 ),
             )
             // The guard against selecting through a handle reads state that
@@ -86,9 +82,20 @@ impl Plugin for EditorPlugin {
                     .after(handle_pick_events)
                     .after(EguiPostUpdateSet::EndPass),
             )
-            .register_type::<EditorCamera>()
             .register_type::<Option<Handle<Image>>>()
             .register_type::<AlphaMode>();
+    }
+}
+
+/// The gizmo renders through a camera tagged `TransformGizmoCamera`, and the game's main camera
+/// is the one the editor draws into. Tagging it here rather than requiring it on `MainCamera`
+/// keeps the requirement in the crate that has the gizmo: a shipping build has no gizmo at all.
+fn tag_main_camera_for_gizmo(
+    cameras: Query<Entity, (With<MainCamera>, Without<TransformGizmoCamera>)>,
+    mut commands: Commands,
+) {
+    for entity in &cameras {
+        commands.entity(entity).insert(TransformGizmoCamera);
     }
 }
 
@@ -241,7 +248,7 @@ fn show_ui_system(world: &mut World) {
 fn set_camera_viewport(
     ui_state: Res<UiState>,
     window: Single<&Window, With<PrimaryWindow>>,
-    mut cam: Single<&mut Camera, With<EditorCamera>>,
+    mut cam: Single<&mut Camera, With<MainCamera>>,
     zoom_factor: Single<&EguiZoomFactor, With<PrimaryEguiContext>>,
 ) {
     let scale_factor = window.scale_factor() * zoom_factor.zoom_factor;

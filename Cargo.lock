@@ -2780,6 +2780,7 @@ dependencies = [
  "bevy_egui",
  "egui",
  "egui_dock",
+ "engine",
 ]
 
 [[package]]

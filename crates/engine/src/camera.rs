@@ -26,6 +26,7 @@ use bevy::{
         component::Component,
         entity::Entity,
         query::With,
+        reflect::ReflectComponent,
         system::{Query, Res},
     },
     math::Quat,
@@ -53,11 +54,14 @@ impl Plugin for VirtualCameraPlugin {
     }
 }
 
-/// Marker component. Attach this tag component to indicate the main camera
-/// entity. Not used by camera systems. Can be used by other systems to query
-///  camera transform position and orientation, or to manipulate the camera for
-/// gameplay purposes.
+/// Marker component. Attach this tag component to indicate the main camera entity. Not used by
+/// camera systems. Can be used by other systems to query camera transform position and
+/// orientation, or to manipulate the camera for gameplay purposes.
+///
+/// The editor uses it to tell the game's 3D camera apart from its own egui and gizmo overlay
+/// cameras.
 #[derive(Debug, Component, Reflect)]
+#[reflect(Component)]
 pub struct MainCamera;
 
 /// Controls camera transform and camera settings, based on the current live

@@ -7,7 +7,6 @@ use avian3d::{
 };
 use bevy::{math::DVec3, prelude::*};
 use big_space::commands::*;
-use editor::editor::EditorCamera;
 use engine::{
     bigspace::grid::{GridQuery, on_grid, on_grid_looking_at},
     camera::{CameraDriver, MainCamera, VirtualCamera},
@@ -82,7 +81,6 @@ fn spawn_scene(
             Camera3d::default(),
             CameraDriver::default(),
             MainCamera,
-            EditorCamera,
             on_grid_looking_at(&grid, DVec3::ZERO, DVec3::ZERO, up),
         ));
 
