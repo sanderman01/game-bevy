@@ -11,6 +11,20 @@ repos:
         entry: cargo fmt --all -- --check --color always
         language: system
         pass_filenames: false
+      - id: cargo-sort
+        name: cargo sort
+        description: Check that Cargo.toml dependency tables are sorted
+        entry: cargo sort --check --workspace
+        language: system
+        pass_filenames: false
+        files: Cargo\.toml$
+      - id: cargo-machete
+        name: cargo machete
+        description: Check for unused dependencies
+        entry: cargo machete
+        language: system
+        pass_filenames: false
+        files: Cargo\.toml$
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.4.0
     hooks:
