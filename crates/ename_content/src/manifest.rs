@@ -195,7 +195,7 @@ impl AssetLoader for ManifestAssetLoader {
 
 /// Scan for package directories at the provided directory path.
 /// Note. Does not recurse further.
-pub fn scan_for_package_manifests(
+pub(crate) fn scan_for_package_manifests(
     path: AssetPath,
     server: AssetServer,
 ) -> BoxedFuture<'static, Vec<Handle<Manifest>>> {

@@ -25,9 +25,13 @@ use bevy::{
     tasks::{BoxedFuture, IoTaskPool, Task, futures::check_ready},
 };
 
-pub use crate::asset_registry::*;
-pub use crate::manifest::*;
-pub use crate::package::*;
+pub use crate::asset_registry::AssetRegistry;
+pub use crate::manifest::{
+    AssetsInfo, Manifest, ManifestAssetLoader, Manifests, PackageInfo, Version,
+};
+pub use crate::package::{Package, PackageState, Packages};
+
+use crate::manifest::scan_for_package_manifests;
 
 const NAMESPACE_DELIM_TOKEN: &str = "::";
 
@@ -38,6 +42,9 @@ const DEFAULT_AUTO_LOAD_PACKAGE_ASSETS: bool = true;
 const DEFAULT_PACKAGE_SEARCH_PATHS: &[&str] = &[];
 const DEFAULT_PACKAGE_STATE: PackageState = PackageState::Active;
 
+/// Registers the manifest asset and its loader, the [`AssetRegistry`], the package lists, and
+/// the [`LoaderState`] machine that scans the search paths and turns manifests into asset
+/// aliases.
 pub struct ContentPlugin {
     package_search_paths: Vec<String>,
     auto_load_package_manifests: bool,
@@ -136,14 +143,14 @@ pub enum LoaderState {
     AssetsRegistered,
 }
 
-pub fn on_init(loader: Res<PackageLoader>, mut state: ResMut<NextState<LoaderState>>) {
-    info!("Modloader Init");
+fn on_init(loader: Res<PackageLoader>, mut state: ResMut<NextState<LoaderState>>) {
+    info!("Content init");
     if loader.auto_load_package_manifests {
         state.set(LoaderState::ManifestsScanning);
     }
 }
 
-pub fn scan_package_manifests(server: ResMut<AssetServer>, mut loader: ResMut<PackageLoader>) {
+fn scan_package_manifests(server: ResMut<AssetServer>, mut loader: ResMut<PackageLoader>) {
     let paths: Vec<AssetPath> = loader
         .package_search_paths
         .iter()
@@ -209,7 +216,7 @@ fn poll_manifests_loaded(
     }
 }
 
-pub fn register_packages(
+fn register_packages(
     loader: Res<PackageLoader>,
     manifests: Res<Manifests>,
     packages: ResMut<Packages>,
@@ -243,16 +250,13 @@ pub fn register_packages(
     state.set(LoaderState::PackagesRegistered);
 }
 
-pub fn on_packages_registered(
-    loader: Res<PackageLoader>,
-    mut state: ResMut<NextState<LoaderState>>,
-) {
+fn on_packages_registered(loader: Res<PackageLoader>, mut state: ResMut<NextState<LoaderState>>) {
     if loader.auto_load_package_assets {
         state.set(LoaderState::AssetsRegistering);
     }
 }
 
-pub fn register_packages_assets(
+fn register_packages_assets(
     packages: Res<Packages>,
     manifests_assets: Res<Assets<Manifest>>,
     mut registry: ResMut<AssetRegistry>,
@@ -280,11 +284,7 @@ pub fn register_packages_assets(
     state.set(LoaderState::AssetsRegistered);
 }
 
-pub fn register_package_assets(
-    registry: &mut AssetRegistry,
-    manifest: &Manifest,
-    pkg_root_path: &str,
-) {
+fn register_package_assets(registry: &mut AssetRegistry, manifest: &Manifest, pkg_root_path: &str) {
     let pkg_id = &manifest.package.id;
 
     if let Some(add) = &manifest.assets.add {
