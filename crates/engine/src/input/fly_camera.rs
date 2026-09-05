@@ -1,65 +1,91 @@
+//! Applies [`FlyCameraIntent`] to big_space's fly camera.
+
 use bevy::prelude::*;
 use big_space::camera::{BigSpaceCameraInput, camera_controller};
 
-/// Ordering points for the fly camera.
+/// Frame-local movement intent for the fly camera, in big_space's aircraft axes.
 ///
-/// This is the only place in the workspace that names `big_space::camera::camera_controller`.
-/// Everything else orders against this set, so a big_space upgrade that renames or splits that
-/// system is a one-line fix here.
+/// The engine owns the big_space glue; whichever layer owns the bindings writes this. There is
+/// deliberately no `KeyCode` anywhere in it: the editor writes it from its viewport bindings
+/// today, and a spectator mode or a replay could write it instead without either side changing.
+///
+/// Cleared every frame after it is applied, so a writer that stops writing stops the camera.
+#[derive(Resource, Debug, Clone, Default, Reflect)]
+#[reflect(Resource, Default)]
+pub struct FlyCameraIntent {
+    /// Z-negative.
+    pub forward: f64,
+    /// Y-positive.
+    pub up: f64,
+    /// X-positive.
+    pub right: f64,
+    /// Positive = right wing down.
+    pub roll: f64,
+    /// Positive = nose up.
+    pub pitch: f64,
+    /// Positive = nose right.
+    pub yaw: f64,
+    /// Speed modifier, e.g. "sprint".
+    pub boost: bool,
+}
+
+impl FlyCameraIntent {
+    /// Resets every axis to zero.
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
+}
+
+/// Ordering points for the fly camera.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum FlyCameraSystems {
-    /// Writes `BigSpaceCameraInput` for this frame, before big_space consumes it.
+    /// Where a layer above the engine writes [`FlyCameraIntent`].
+    Intent,
+    /// Copies the intent into big_space's input resource and clears it. Runs after
+    /// [`FlyCameraSystems::Intent`] and before big_space consumes the result.
+    ///
+    /// This is the only place in the workspace that names
+    /// `big_space::camera::camera_controller`, so a big_space upgrade that renames or splits
+    /// that system is a one-line fix here.
     Apply,
 }
 
-/// Drives big_space's fly camera from keyboard and mouse.
+/// Drives big_space's fly camera from [`FlyCameraIntent`].
 pub struct FlyCameraPlugin;
 
 impl Plugin for FlyCameraPlugin {
     fn build(&self, app: &mut App) {
-        app.configure_sets(
-            PostUpdate,
-            FlyCameraSystems::Apply.before(camera_controller),
-        )
-        .add_systems(
-            PostUpdate,
-            write_big_space_camera_input.in_set(FlyCameraSystems::Apply),
-        );
+        app.init_resource::<FlyCameraIntent>()
+            .register_type::<FlyCameraIntent>()
+            .configure_sets(
+                PostUpdate,
+                (FlyCameraSystems::Intent, FlyCameraSystems::Apply)
+                    .chain()
+                    .before(camera_controller),
+            )
+            .add_systems(
+                PostUpdate,
+                apply_fly_camera_intent.in_set(FlyCameraSystems::Apply),
+            );
     }
 }
 
-/// Keyboard and mouse bindings for the fly camera. Based on
-/// `big_space::camera::default_camera_inputs`; the difference is that movement only happens
-/// while the right mouse button is held.
-fn write_big_space_camera_input(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mouse_button: Res<ButtonInput<MouseButton>>,
-    mut mouse_move: MessageReader<bevy::input::mouse::MouseMotion>,
+/// big_space's own bindings are switched off with `defaults_disabled`, so this is the only
+/// writer of `BigSpaceCameraInput`.
+fn apply_fly_camera_intent(
+    mut intent: ResMut<FlyCameraIntent>,
     mut cam: ResMut<BigSpaceCameraInput>,
 ) {
+    cam.reset();
     cam.defaults_disabled = true;
 
-    cam.reset();
+    cam.forward = intent.forward;
+    cam.up = intent.up;
+    cam.right = intent.right;
+    cam.roll = intent.roll;
+    cam.pitch = intent.pitch;
+    cam.yaw = intent.yaw;
+    cam.boost = intent.boost;
 
-    if !mouse_button.pressed(MouseButton::Right) {
-        return;
-    }
-
-    keyboard.pressed(KeyCode::KeyW).then(|| cam.forward -= 1.0);
-    keyboard.pressed(KeyCode::KeyS).then(|| cam.forward += 1.0);
-    keyboard.pressed(KeyCode::KeyA).then(|| cam.right -= 1.0);
-    keyboard.pressed(KeyCode::KeyD).then(|| cam.right += 1.0);
-    keyboard.pressed(KeyCode::Space).then(|| cam.up += 1.0);
-    keyboard
-        .pressed(KeyCode::ControlLeft)
-        .then(|| cam.up -= 1.0);
-    keyboard.pressed(KeyCode::KeyQ).then(|| cam.roll += 2.0);
-    keyboard.pressed(KeyCode::KeyE).then(|| cam.roll -= 2.0);
-    keyboard
-        .pressed(KeyCode::ShiftLeft)
-        .then(|| cam.boost = true);
-    if let Some(total_mouse_motion) = mouse_move.read().map(|e| e.delta).reduce(|sum, i| sum + i) {
-        cam.pitch += total_mouse_motion.y as f64 * -0.1;
-        cam.yaw += total_mouse_motion.x as f64 * -0.1;
-    }
+    intent.clear();
 }

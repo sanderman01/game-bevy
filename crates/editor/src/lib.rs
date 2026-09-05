@@ -6,6 +6,7 @@
 //! Based on the example at:
 //! <https://github.com/jakobhellermann/bevy-inspector-egui/blob/main/crates/bevy-inspector-egui/examples/integrations/egui_dock.rs>.
 
+mod camera;
 pub mod editor;
 mod gizmo;
 

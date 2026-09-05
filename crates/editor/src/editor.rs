@@ -36,6 +36,7 @@ impl PluginGroup for EditorPlugins {
     fn build(self) -> PluginGroupBuilder {
         PluginGroupBuilder::start::<Self>()
             .add(EditorPlugin)
+            .add(crate::camera::EditorCameraPlugin)
             .add(crate::gizmo::GizmoPlugin)
     }
 }
@@ -69,7 +70,7 @@ impl Plugin for EditorPlugin {
                 (
                     draw_mesh_intersections,
                     ignore_gizmo_mesh_picking,
-                    gizmo_keyboard_shortcuts,
+                    gizmo_keyboard_shortcuts.run_if(not(crate::camera::fly_camera_active)),
                     tag_main_camera_for_gizmo,
                 ),
             )
@@ -119,16 +120,15 @@ fn ignore_gizmo_mesh_picking(
     }
 }
 
-/// The gizmo reads no keyboard input by design, so the editor picks the bindings: W, E and
-/// R select the mode, X toggles between world and local space. The camera fly shares W and
-/// E but only while the right mouse button is held, so the shortcuts stand down for it.
+/// The gizmo reads no keyboard input by design, so the editor picks the bindings: W, E and R
+/// select the mode, X toggles between world and local space. The fly camera claims W and E while
+/// it is active, so this stands down for it -- see `crate::camera::fly_camera_active`.
 fn gizmo_keyboard_shortcuts(
     ui_state: Res<UiState>,
     keys: Res<ButtonInput<KeyCode>>,
-    mouse: Res<ButtonInput<MouseButton>>,
     mut settings: ResMut<TransformGizmoSettings>,
 ) {
-    if !ui_state.pointer_in_viewport || mouse.pressed(MouseButton::Right) {
+    if !ui_state.pointer_in_viewport {
         return;
     }
 
