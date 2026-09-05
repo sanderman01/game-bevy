@@ -1,32 +1,10 @@
-//! Components and systems for working with cameras.
-//! Offers [CameraDriver] to select and transition between multiple [VirtualCamera] positions,
-//! orientations, and other settings.
-//!
-//! To setup a camera rig:
-//!
-//! 0. Add [CameraDriver] to a chosen camera entity which has a Camera2D or
-//!    Camera3D component. This component will control this camera entity's
-//!    position and orientation, as such this entity should be free to move.
-//!
-//! 0. Add [VirtualCamera] to an empty Entity, or any entity other than an
-//!    actual camera or child thereof.
-//!
-//! 0. Set the priority on each virtual cameras, manually or at runtime through
-//!    some system. The CameraDriver will choose the VirtualCamera with the
-//!    highest priority value.
-//!    Or alternatively; set an explicit target in tracking field.
-//!
-//! 0. If you have multiple CameraDriver, then set the channel_mask on each
-//!    CameraDriver and VirtualCamera to indicate which camera drivers are affected
-//!    by which virtual cameras.
+//! The camera driver: which virtual camera is live, and how the real camera gets there.
 
 use bevy::{
-    app::{Plugin, PostUpdate},
     ecs::{
         component::Component,
         entity::Entity,
         query::With,
-        reflect::ReflectComponent,
         system::{Query, Res},
     },
     math::Quat,
@@ -35,34 +13,12 @@ use bevy::{
     transform::components::{GlobalTransform, Transform},
 };
 
+use crate::camera::virtual_camera::VirtualCamera;
+
 pub const DEFAULT_PRIORITY: u32 = 0;
 pub const DEFAULT_CHANNEL_MASK: u32 = 1;
 pub const DEFAULT_BLEND: Blend = Blend::Cut;
 pub const DEFAULT_BLEND_DAMPING: Blend = Blend::Damping(10.0, 0.2);
-
-/// Registers systems for controlling a [CameraDriver] to select, cut, and
-/// transition between multiple [VirtualCamera] positions, orientations,
-/// and other settings.
-pub struct VirtualCameraPlugin;
-
-impl Plugin for VirtualCameraPlugin {
-    fn build(&self, app: &mut bevy::app::App) {
-        app.register_type::<MainCamera>()
-            .register_type::<CameraDriver>()
-            .register_type::<VirtualCamera>()
-            .add_systems(PostUpdate, update_camera_drivers);
-    }
-}
-
-/// Marker component. Attach this tag component to indicate the main camera entity. Not used by
-/// camera systems. Can be used by other systems to query camera transform position and
-/// orientation, or to manipulate the camera for gameplay purposes.
-///
-/// The editor uses it to tell the game's 3D camera apart from its own egui and gizmo overlay
-/// cameras.
-#[derive(Debug, Component, Reflect)]
-#[reflect(Component)]
-pub struct MainCamera;
 
 /// Controls camera transform and camera settings, based on the current live
 /// VirtualCamera. Attach to an entity with Camera3d or Camera2d component.
@@ -111,29 +67,7 @@ pub enum Blend {
                        //Custom,     // TODO
 }
 
-/// Attach to any Entity with a transform. Represents a virtual camera within the game scene.
-/// The actual camera with the [CameraDriver] can assume the position and orientation of
-/// (or smoothly translate to) whichever virtual camera is currently live.
-#[derive(Debug, Component, Reflect)]
-pub struct VirtualCamera {
-    pub enabled: bool,
-    pub channel_mask: u32,
-    pub priority: u32,
-    pub blend: Option<Blend>,
-}
-
-impl Default for VirtualCamera {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            priority: DEFAULT_PRIORITY,
-            channel_mask: DEFAULT_CHANNEL_MASK,
-            blend: None,
-        }
-    }
-}
-
-pub fn update_camera_drivers(
+pub(crate) fn update_camera_drivers(
     mut driver_cams: Query<(Entity, &mut CameraDriver), With<GlobalTransform>>,
     virtual_cams: Query<(Entity, &VirtualCamera), With<GlobalTransform>>,
     mut transforms: Query<&mut Transform>,
