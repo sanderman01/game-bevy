@@ -15,7 +15,7 @@ pub(crate) fn fly_camera_active(mouse: Res<ButtonInput<MouseButton>>) -> bool {
 }
 
 /// Maps keyboard and mouse to [`FlyCameraIntent`].
-pub struct EditorCameraPlugin;
+pub(crate) struct EditorCameraPlugin;
 
 impl Plugin for EditorCameraPlugin {
     fn build(&self, app: &mut App) {
