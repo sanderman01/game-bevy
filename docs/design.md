@@ -129,3 +129,17 @@ the binary passes them in.
 - **Publishing.** `big_space` is a git dependency pinned to a rev, and crates.io rejects any crate
   with one. Versioning the engine crates therefore means git tags, not crates.io, unless big_space
   gets a release or is vendored.
+
+## Known gaps
+
+- The editor has no save path and no command layer, so every panel mutates the `World` directly.
+  Adding undo later means touching every mutation site; there are five today.
+- `ename_engine::bigspace::grid` exposes `big_space::Grid` in its signatures, so every consumer is
+  pinned to that git revision. Accepted deliberately; newtype it if the engine is ever consumed
+  outside this workspace.
+- There are no tests. The structural prerequisites now exist: the game is a library, every feature
+  is a plugin that can be added to a headless `App`, and camera input goes through an injectable
+  intent resource. A harness would need `MinimalPlugins` plus `BigSpaceDefaultPlugins`, because
+  this project disables Bevy's `TransformPlugin`.
+- `GameState::{Loading, Scene, Play}` all live in one `App` with the editor resident. The moment
+  `Play` mutates the world, entering and leaving play will destroy authored state.
