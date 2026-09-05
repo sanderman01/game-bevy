@@ -5,6 +5,14 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+default = ["dev"]
+# Development-only Bevy features. Must be off for a shipping build.
+dev = ["bevy/dynamic_linking", "bevy/dev"]
+
 [dependencies]
-engine = { path = "../engine" }
 bevy = { workspace = true }
+engine = { workspace = true }
+
+[lints]
+workspace = true

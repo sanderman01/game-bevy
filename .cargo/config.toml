@@ -2,10 +2,21 @@
 # Bevy resolves its asset root from BEVY_ASSET_ROOT, else CARGO_MANIFEST_DIR (set by
 # `cargo run` to the *package* dir), else the executable dir. Pin it to the workspace
 # root so every crate uses the single ./assets directory.
+#
+# Note: Cargo applies [env] to `cargo run` and `cargo test` only. A binary launched
+# directly from target/ falls back to the executable-directory heuristic, which is a
+# different asset root. See docs/design.md.
 BEVY_ASSET_ROOT = { value = ".", relative = true }
+# Local hardware preferences. [env] does not override a variable already set in the
+# environment, so CI and other machines can pick their own.
 WGPU_BACKEND = "vulkan"
 WGPU_ADAPTER_TYPE = "discrete"
 
-[target.x86_64-unknown-linux-gnu]
-linker = "clang"
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+# Every alias passes the same feature set, so target/ holds one copy of Bevy instead of one
+# per feature combination. Alternating a bare `cargo build` with `cargo run` rebuilds Bevy
+# from scratch each time; these do not.
+[alias]
+db = "build --workspace --features game/dev"
+dr = "run -p game --features dev"
+dc = "clippy --workspace --all-targets --features game/dev"
+dt = "test --workspace --features game/dev"

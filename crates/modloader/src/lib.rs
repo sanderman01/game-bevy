@@ -249,9 +249,8 @@ pub fn register_packages_assets(
     {
         if let Some(manifest) = manifests_assets.get(&pkg.manifest) {
             let pkg_id = manifest.package.id.clone();
-            let manifest_path = match pkg.path() {
-                Some(val) => val,
-                None => continue,
+            let Some(manifest_path) = pkg.path() else {
+                continue;
             };
 
             info!("  {:20}    {:?}", pkg_id, manifest_path);

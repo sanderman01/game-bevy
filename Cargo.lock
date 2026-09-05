@@ -2777,10 +2777,7 @@ version = "0.0.0"
 dependencies = [
  "bevy",
  "bevy-inspector-egui",
- "bevy_camera",
  "bevy_egui",
- "bevy_reflect",
- "bevy_window",
  "egui",
  "egui_dock",
 ]
@@ -4140,7 +4137,6 @@ name = "modloader"
 version = "0.0.0"
 dependencies = [
  "bevy",
- "bevy_log",
  "serde",
  "thiserror 2.0.20",
  "toml",

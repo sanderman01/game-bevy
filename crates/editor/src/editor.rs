@@ -1,3 +1,6 @@
+use bevy::camera::{Viewport, visibility::RenderLayers};
+use bevy::reflect::TypeRegistry;
+use bevy::window::{PrimaryWindow, Window};
 use bevy::{
     app::{PluginGroupBuilder, TransformGizmoRenderStep},
     asset::{ReflectAsset, UntypedAssetId},
@@ -9,7 +12,6 @@ use bevy::{
     },
     prelude::*,
 };
-use bevy_camera::{Viewport, visibility::RenderLayers};
 use bevy_egui::{
     EguiGlobalSettings, EguiPostUpdateSet, EguiPrimaryContextPass, EguiZoomFactor,
     PrimaryEguiContext,
@@ -20,8 +22,6 @@ use bevy_inspector_egui::bevy_inspector::hierarchy::{SelectedEntities, hierarchy
 use bevy_inspector_egui::bevy_inspector::{
     self, ui_for_entities_shared_components, ui_for_entity_with_children,
 };
-use bevy_reflect::TypeRegistry;
-use bevy_window::{PrimaryWindow, Window};
 use egui::{LayerId, UiBuilder};
 use egui_dock::{DockArea, DockState, NodeIndex, Style};
 use std::any::TypeId;
