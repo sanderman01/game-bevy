@@ -31,8 +31,9 @@ jobs:
       - name: Build
         run: cargo build --workspace
 
-      # Proves the dev-only Bevy features are actually gated. A shipping build must not
-      # contain bevy_dev_tools, the file watcher, or a dependency on bevy_dylib.
+      # Proves the dev-only Bevy features are actually gated, and that the editor is compiled
+      # out. A shipping build must not contain bevy_dev_tools, the file watcher, a dependency
+      # on bevy_dylib, or ename_editor and ename_game_editor.
       - name: Check without default features
         run: cargo check -p ename --no-default-features
 
