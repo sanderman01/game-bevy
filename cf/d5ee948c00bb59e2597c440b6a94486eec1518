@@ -1,0 +1,27 @@
+crates/modloader/src/assetregistry.rs
+  s_d7fe63d00fd0a5::t_73bd871c7cc64f 79-84
+crates/modloader/src/lib.rs
+  s_d7fe63d00fd0a5::t_e0b9231d05effd 284,292
+crates/editor/src/editor.rs
+  s_d7fe63d00fd0a5::t_7604e38251ecb2 407,438
+crates/modloader/src/manifest.rs
+  s_d7fe63d00fd0a5::t_915791d9f6dbd7 33,107-109,127-129,147
+crates/engine/src/app.rs
+  s_d7fe63d00fd0a5::t_c5bd5bceb943dd 80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "cfd5ee948c00bb59e2597c440b6a94486eec1518",
+  "prompts": {},
+  "sessions": {
+    "s_d7fe63d00fd0a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cde18840-9ee1-4607-bf43-1b067a15eb4e",
+        "model": "claude-opus-5"
+      },
+      "human_author": null
+    }
+  }
+}
