@@ -1,0 +1,57 @@
+crates/engine/src/physics/grid_writeback.rs
+  s_d7fe63d00fd0a5::t_d972f1e7de962e 1-5,10-21
+  s_d7fe63d00fd0a5::t_f4e63ea369b214 6-9
+crates/game/src/lib.rs
+  s_d7fe63d00fd0a5::t_bdda79f1a1f544 1-22
+crates/game/src/scene.rs
+  s_d7fe63d00fd0a5::t_bdda79f1a1f544 1-194
+crates/engine/src/input/mod.rs
+  s_d7fe63d00fd0a5::t_82744541b3ab90 1-5
+crates/engine/src/gizmo_compat.rs
+  s_d7fe63d00fd0a5::t_f4e63ea369b214 10
+crates/engine/src/input/fly_camera.rs
+  s_d7fe63d00fd0a5::t_82744541b3ab90 1-19,28-65
+  s_d7fe63d00fd0a5::t_31f4e691705038 20-27
+crates/engine/src/lib.rs
+  s_d7fe63d00fd0a5::t_570995e451eb02 23
+  s_d7fe63d00fd0a5::t_4a8cfbbd40a565 1-7,10-22,24-53
+crates/engine/src/bigspace/mod.rs
+  s_d7fe63d00fd0a5::t_979944f96f59d4 1-41
+crates/game/src/state.rs
+  s_d7fe63d00fd0a5::t_8007df2e7a09a6 1-35
+crates/game/src/main.rs
+  s_d7fe63d00fd0a5::t_bdda79f1a1f544 1-4,6-15
+crates/game/Cargo.toml
+  s_d7fe63d00fd0a5::t_91b1ebe72c1ef0 14,16-17,19
+crates/modloader/src/lib.rs
+  s_d7fe63d00fd0a5::t_e795075eabce0c 30-32,56-64
+  s_d7fe63d00fd0a5::t_e4a4d213956c45 65-67
+crates/engine/src/physics/mod.rs
+  s_d7fe63d00fd0a5::t_82744541b3ab90 1-31
+Cargo.lock
+  s_cca12500e79bdc::t_1d490aa86b4ceb 3203,3205-3206,3208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "e1cf5b030a70ab0a0b878294e525964b6d357e9b",
+  "prompts": {},
+  "sessions": {
+    "s_cca12500e79bdc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab798c33cd7d82142",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_d7fe63d00fd0a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cde18840-9ee1-4607-bf43-1b067a15eb4e",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
