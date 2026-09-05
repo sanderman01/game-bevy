@@ -12,9 +12,9 @@ BEVY_ASSET_ROOT = { value = ".", relative = true }
 WGPU_BACKEND = "vulkan"
 WGPU_ADAPTER_TYPE = "discrete"
 
-# Every alias passes the same feature set, so target/ holds one copy of Bevy instead of one
-# per feature combination. Alternating a bare `cargo build` with `cargo run` rebuilds Bevy
-# from scratch each time; these do not.
+# Every alias passes the same feature set as `ename`'s default features, so `cargo build --workspace`
+# and these resolve Bevy the same way and share one copy of it in target/. They also save typing
+# out `-p ename --features ...` for the common cases.
 [alias]
 db = "build --workspace --features ename/dev"
 dr = "run -p ename --features dev"

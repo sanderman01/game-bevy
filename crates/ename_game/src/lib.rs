@@ -11,6 +11,10 @@ pub use state::GameState;
 use bevy::{app::PluginGroupBuilder, prelude::*};
 
 /// Everything the game contributes to an `App`.
+///
+/// Requires `ename_content::ContentPlugin`: `GameState` leaves `Loading` when `LoaderState`
+/// reaches `AssetsRegistered`. `GamePlugins` does not add `ContentPlugin` itself -- the binary
+/// adds it explicitly, and adding it here too would register it twice.
 pub struct GamePlugins;
 
 impl PluginGroup for GamePlugins {

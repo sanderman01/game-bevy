@@ -1,12 +1,13 @@
 //! Helper functions for working with big_space grids.
 
 use bevy::{math::DVec3, prelude::*};
-use big_space::prelude::*;
+
+use super::{CellCoord, Grid};
 
 #[derive(bevy::ecs::query::QueryData)]
 pub struct GridQuery {
     pub entity: Entity,
-    pub grid: &'static big_space::grid::Grid,
+    pub grid: &'static Grid,
 }
 
 pub fn on_grid(grid: &Grid, translation: DVec3) -> (CellCoord, Transform) {

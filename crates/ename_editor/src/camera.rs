@@ -6,12 +6,16 @@
 use bevy::{input::mouse::MouseMotion, prelude::*};
 use ename_engine::input::{FlyCameraIntent, FlyCameraSystems};
 
+/// The button that puts the fly camera in control. The only place this binding is written down;
+/// both [`fly_camera_active`] and [`write_fly_camera_intent`] read it from here.
+const FLY_CAMERA_BUTTON: MouseButton = MouseButton::Right;
+
 /// True while the fly camera is claiming the keyboard.
 ///
-/// The camera and the gizmo shortcuts both want W and E. The camera wins while the right mouse
-/// button is held, and this is the single place that rule is written down.
+/// The camera and the gizmo shortcuts both want W and E. The camera wins while
+/// [`FLY_CAMERA_BUTTON`] is held, and this is the single place that rule is written down.
 pub(crate) fn fly_camera_active(mouse: Res<ButtonInput<MouseButton>>) -> bool {
-    mouse.pressed(MouseButton::Right)
+    mouse.pressed(FLY_CAMERA_BUTTON)
 }
 
 /// Maps keyboard and mouse to [`FlyCameraIntent`].
@@ -34,7 +38,7 @@ fn write_fly_camera_intent(
     mut mouse_move: MessageReader<MouseMotion>,
     mut intent: ResMut<FlyCameraIntent>,
 ) {
-    if !mouse_button.pressed(MouseButton::Right) {
+    if !mouse_button.pressed(FLY_CAMERA_BUTTON) {
         // Drop the motion accumulated while not flying, or the first frame of the next drag
         // gets all of it at once.
         mouse_move.clear();

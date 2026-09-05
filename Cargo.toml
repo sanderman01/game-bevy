@@ -31,7 +31,6 @@ bevy_egui = "0.40"
 big_space = { git = "https://github.com/aevyrie/big_space", rev = "5f25522", features = ["debug", "camera"] }
 egui = "0.34"
 egui_dock = "0.19"
-ename = { path = "crates/ename", version = "0.0.0" }
 ename_content = { path = "crates/ename_content", version = "0.0.0" }
 ename_editor = { path = "crates/ename_editor", version = "0.0.0" }
 ename_engine = { path = "crates/ename_engine", version = "0.0.0" }

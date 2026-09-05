@@ -27,7 +27,8 @@ use bevy::{
 
 pub use crate::asset_registry::AssetRegistry;
 pub use crate::manifest::{
-    AssetsInfo, Manifest, ManifestAssetLoader, Manifests, PackageInfo, Version,
+    AssetsInfo, Manifest, ManifestAssetLoader, ManifestAssetLoaderError, Manifests, PackageInfo,
+    Version, VersionError,
 };
 pub use crate::package::{Package, PackageState, Packages};
 
@@ -122,7 +123,7 @@ impl Plugin for ContentPlugin {
 }
 
 #[derive(Resource)]
-pub struct PackageLoader {
+pub(crate) struct PackageLoader {
     package_search_paths: Vec<String>,
     auto_load_package_manifests: bool,
     auto_load_package_assets: bool,

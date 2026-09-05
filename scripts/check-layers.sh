@@ -27,5 +27,6 @@ check ename_engine 'ename_editor|ename_content|ename_game|ename_game_editor'
 check ename_content 'ename_engine|ename_editor|ename_game|ename_game_editor'
 check ename_editor 'ename_game|ename_content|ename_game_editor'
 check ename_game 'ename_editor|ename_game_editor'
+check ename 'ename_editor|ename_game_editor'
 
 exit "$fail"

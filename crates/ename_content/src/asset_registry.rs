@@ -1,8 +1,4 @@
-use bevy::{
-    asset::{Asset, AssetServer, Handle},
-    ecs::resource::Resource,
-    platform::collections::HashMap,
-};
+use bevy::{ecs::resource::Resource, platform::collections::HashMap};
 
 /// Maps a package-namespaced asset alias such as `core::airship` to a path under the asset root.
 ///
@@ -27,18 +23,5 @@ impl AssetRegistry {
 
     pub fn get_path(&self, alias: &str) -> Option<&str> {
         self.alias_to_path.get(alias).map(String::as_str)
-    }
-
-    pub fn load<A>(&self, alias: &str, server: &AssetServer) -> Option<Handle<A>>
-    where
-        A: Asset,
-    {
-        // Deliberately not routed through `get_path`: `AssetPath` only converts from a
-        // borrowed `&String` (`From<&'a String>`), not a lifetime-generic `&str` (only
-        // `&'static str` has a `From` impl), so this looks up the owned `String` directly
-        // rather than cloning one to satisfy `AssetServer::load`.
-        self.alias_to_path
-            .get(alias)
-            .map(|path| server.load::<A>(path))
     }
 }

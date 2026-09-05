@@ -1,3 +1,5 @@
+//! [`GameState`] and the plugin that advances it out of `Loading` once content has loaded.
+
 use bevy::prelude::*;
 use ename_content::LoaderState;
 
