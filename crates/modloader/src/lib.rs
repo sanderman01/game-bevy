@@ -72,7 +72,7 @@ impl Plugin for ModLoaderPlugin {
             .register_type::<Manifests>()
             .register_asset_reflect::<Manifest>()
             .init_asset_loader::<ManifestAssetLoader>()
-            .insert_resource(AssetRegistry::new())
+            .init_resource::<AssetRegistry>()
             .insert_resource(Manifests::default())
             .insert_resource(Packages::default())
             .insert_resource(PackageLoader {
@@ -249,11 +249,9 @@ pub fn on_packages_registered(
 pub fn register_packages_assets(
     packages: Res<Packages>,
     manifests_assets: Res<Assets<Manifest>>,
-    registry: Res<AssetRegistry>,
+    mut registry: ResMut<AssetRegistry>,
     mut state: ResMut<NextState<LoaderState>>,
 ) {
-    let registry = registry.clone();
-
     let packages = &packages.items;
     info!("Register package assets:");
 
@@ -270,13 +268,17 @@ pub fn register_packages_assets(
             info!("  {:20}    {:?}", pkg_id, manifest_path);
 
             let pkg_root_path = manifest_path.path().parent().unwrap().to_string_lossy();
-            register_package_assets(&registry, manifest, &pkg_root_path);
+            register_package_assets(&mut registry, manifest, &pkg_root_path);
         }
     }
     state.set(LoaderState::AssetsRegistered);
 }
 
-pub fn register_package_assets(registry: &AssetRegistry, manifest: &Manifest, pkg_root_path: &str) {
+pub fn register_package_assets(
+    registry: &mut AssetRegistry,
+    manifest: &Manifest,
+    pkg_root_path: &str,
+) {
     let pkg_id = &manifest.package.id;
 
     if let Some(add) = &manifest.assets.add {

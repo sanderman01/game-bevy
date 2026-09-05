@@ -1,84 +1,44 @@
-use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
-
 use bevy::{
     asset::{Asset, AssetServer, Handle},
     ecs::resource::Resource,
     platform::collections::HashMap,
 };
 
-struct AssetRegistryData {
-    mappings: RwLock<Mappings>,
-}
-
-struct Mappings {
-    pub alias_to_path: HashMap<String, String>,
-}
-impl Mappings {
-    fn new() -> Self {
-        Self {
-            alias_to_path: HashMap::<String, String>::new(),
-        }
-    }
-}
-
-#[derive(Resource, Clone)]
+/// Maps a package-namespaced asset alias such as `core::airship` to a path under the asset root.
+///
+/// Plain `ResMut` on purpose: an earlier version wrapped an `RwLock` in an `Arc` and mutated
+/// through `Res`, which let the scheduler run readers alongside a writer. Bevy's borrow rules do
+/// that job correctly and visibly.
+#[derive(Resource, Debug, Default)]
 pub struct AssetRegistry {
-    data: Arc<AssetRegistryData>,
+    alias_to_path: HashMap<String, String>,
 }
 
 impl AssetRegistry {
-    pub fn new() -> Self {
-        Self {
-            data: Arc::new(AssetRegistryData {
-                mappings: RwLock::new(Mappings::new()),
-            }),
-        }
-    }
-
-    fn read_mappings(&self) -> RwLockReadGuard<'_, Mappings> {
-        self.data
-            .mappings
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-    }
-
-    fn write_mappings(&self) -> RwLockWriteGuard<'_, Mappings> {
-        self.data
-            .mappings
-            .write()
-            .unwrap_or_else(PoisonError::into_inner)
-    }
-
-    pub fn register_asset(&self, alias: &str, path: &str) {
-        self.write_mappings()
-            .alias_to_path
+    /// Registers `alias`, replacing any path already registered under it.
+    pub fn register_asset(&mut self, alias: &str, path: &str) {
+        self.alias_to_path
             .insert(alias.to_string(), path.to_string());
     }
 
-    pub fn unregister_asset(&self, alias: &str) {
-        self.write_mappings().alias_to_path.remove(alias);
+    pub fn unregister_asset(&mut self, alias: &str) {
+        self.alias_to_path.remove(alias);
     }
 
-    pub fn get_path(&self, alias: &str) -> Option<String> {
-        self.read_mappings()
-            .alias_to_path
-            .get(alias)
-            .map(|s| s.to_owned())
+    pub fn get_path(&self, alias: &str) -> Option<&str> {
+        self.alias_to_path.get(alias).map(String::as_str)
     }
 
     pub fn load<A>(&self, alias: &str, server: &AssetServer) -> Option<Handle<A>>
     where
         A: Asset,
     {
-        self.read_mappings()
-            .alias_to_path
+        // Deliberately not routed through `get_path`: `AssetPath` only converts from a
+        // borrowed `&String` (`From<&'a String>`), not a lifetime-generic `&str` (only
+        // `&'static str` has a `From` impl), so this looks up the owned `String` directly
+        // rather than cloning one to satisfy `AssetServer::load`.
+        self.alias_to_path
             .get(alias)
-            .map(|p| server.load::<A>(p))
-    }
-}
-
-impl Default for AssetRegistry {
-    fn default() -> Self {
-        Self::new()
+            .map(|path| server.load::<A>(path))
     }
 }

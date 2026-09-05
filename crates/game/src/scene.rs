@@ -147,11 +147,11 @@ fn spawn_scene(
 
 fn load_models(
     mut commands: Commands,
-    asset_server: ResMut<AssetServer>,
-    asset_registry: ResMut<AssetRegistry>,
+    asset_server: Res<AssetServer>,
+    asset_registry: Res<AssetRegistry>,
     grid_query: Query<GridQuery>,
 ) {
-    info!("{}", "Loading models");
+    info!("Loading models");
     let grid_entity = grid_query
         .single()
         .expect("Failed to spawn entity on grid. Grid not present!");
@@ -160,8 +160,8 @@ fn load_models(
     let Some(path) = asset_registry.get_path(alias) else {
         return;
     };
-    info!("{}", &path);
-    let label = GltfAssetLabel::Scene(0).from_asset(path + "#Scene0");
+    info!("{path}");
+    let label = GltfAssetLabel::Scene(0).from_asset(format!("{path}#Scene0"));
     commands.spawn((
         Name::new(alias),
         WorldAssetRoot(asset_server.load(label)),
@@ -173,8 +173,8 @@ fn load_models(
     let Some(path) = asset_registry.get_path(alias) else {
         return;
     };
-    info!("{}", &path);
-    let label = GltfAssetLabel::Scene(0).from_asset(path + "#Scene0");
+    info!("{path}");
+    let label = GltfAssetLabel::Scene(0).from_asset(format!("{path}#Scene0"));
     commands.spawn((
         Name::new(alias),
         WorldAssetRoot(asset_server.load(label)),
@@ -186,7 +186,6 @@ fn load_models(
             ),
             ..default()
         },
-        //Collider::capsule(0.5, 2.0),
         RigidBody::Dynamic,
     ));
 }
