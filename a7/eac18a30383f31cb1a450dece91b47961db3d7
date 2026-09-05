@@ -1,0 +1,30 @@
+crates/editor/src/editor.rs
+  s_d7fe63d00fd0a5::t_f12f2c11471f8d 123-125,131
+  s_d7fe63d00fd0a5::t_6737e1f1a92579 73
+  s_d7fe63d00fd0a5::t_e9a1a87c011a31 39
+crates/editor/src/camera.rs
+  s_d7fe63d00fd0a5::t_75b33118ba0aef 44-49
+  s_d7fe63d00fd0a5::t_2cf5095b7ea8b2 1-43,50-66
+crates/engine/src/input/fly_camera.rs
+  s_d7fe63d00fd0a5::t_fc1549752e7f1f 1-2,6,8-39,42-49,53,58-69,73-76,80,82-88,90
+crates/editor/src/lib.rs
+  s_d7fe63d00fd0a5::t_31f69d2dcd3c34 9
+crates/engine/src/input/mod.rs
+  s_d7fe63d00fd0a5::t_c9eb64a590315f 1-5,9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "a7eac18a30383f31cb1a450dece91b47961db3d7",
+  "prompts": {},
+  "sessions": {
+    "s_d7fe63d00fd0a5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cde18840-9ee1-4607-bf43-1b067a15eb4e",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
