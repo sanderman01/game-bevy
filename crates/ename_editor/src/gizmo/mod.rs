@@ -3,7 +3,7 @@
 mod grid_anchor;
 
 use bevy::prelude::*;
-use engine::bigspace::GridSystems;
+use ename_engine::bigspace::GridSystems;
 
 /// Keeps the transform gizmo working inside big_space grids.
 pub struct GizmoPlugin;

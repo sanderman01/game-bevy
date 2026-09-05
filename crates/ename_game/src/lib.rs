@@ -1,7 +1,7 @@
-//! `game` -- gameplay: game states and the starting scene.
+//! `ename_game` -- gameplay: game states and the starting scene.
 //!
-//! Sits above `engine` and `modloader` and below the binary. It never reaches back down into
-//! the editor. See `docs/design.md`.
+//! Sits above `ename_engine` and `ename_content` and below the binary. It never reaches back
+//! down into the editor. See `docs/design.md`.
 
 pub mod scene;
 mod state;

@@ -19,21 +19,26 @@ here no longer exists after an upgrade, fix this document in the same commit as 
 `crates/` holds layers, not features. Dependencies point one direction and there are no cycles.
 
 ```
-game     -> engine
-editor   -> engine
-modloader-> engine
+ename (bin)        -> ename_game, ename_content, ename_editor, ename_game_editor
+ename_game_editor  -> ename_editor, ename_game
+ename_game         -> ename_engine, ename_content
+ename_editor       -> ename_engine
+ename_content      -> serde, toml, thiserror, bevy      (no first-party deps)
+ename_engine       -> bevy, avian3d, big_space          (no first-party deps)
 ```
 
-`engine` never depends on `game`, `editor`, or `modloader`. If engine code needs something from
-a higher layer, the design is wrong. Move the shared type down into `engine` or invert the call
-into an event the higher layer observes.
+`ename_engine` never depends on `ename_game`, `ename_editor`, or `ename_content`.
+`ename_content` is a leaf too, not a layer above the engine. If engine code needs something
+from a higher layer, the design is wrong: move the shared type down into `ename_engine` or
+invert the call into an event the higher layer observes.
 
-Record any change to the layer graph in `docs/design.md` before making it.
+`scripts/check-layers.sh` enforces this in CI. Record any change to the layer graph in
+`docs/design.md` before making it.
 
 ## Features are modules until they earn a crate
 
 A feature starts as a module inside the layer crate that owns it. For example
-`crates/engine/src/physics/`.
+`crates/ename_engine/src/physics/`.
 
 Promote it to its own crate only when one of these is true:
 

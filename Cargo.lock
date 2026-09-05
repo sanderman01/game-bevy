@@ -2772,18 +2772,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "editor"
-version = "0.0.0"
-dependencies = [
- "bevy",
- "bevy-inspector-egui",
- "bevy_egui",
- "egui",
- "egui_dock",
- "engine",
-]
-
-[[package]]
 name = "egui"
 version = "0.34.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2838,6 +2826,67 @@ dependencies = [
 ]
 
 [[package]]
+name = "ename"
+version = "0.0.0"
+dependencies = [
+ "bevy",
+ "ename_content",
+ "ename_editor",
+ "ename_engine",
+ "ename_game",
+ "ename_game_editor",
+]
+
+[[package]]
+name = "ename_content"
+version = "0.0.0"
+dependencies = [
+ "bevy",
+ "serde",
+ "thiserror 2.0.20",
+ "toml",
+]
+
+[[package]]
+name = "ename_editor"
+version = "0.0.0"
+dependencies = [
+ "bevy",
+ "bevy-inspector-egui",
+ "bevy_egui",
+ "egui",
+ "egui_dock",
+ "ename_engine",
+]
+
+[[package]]
+name = "ename_engine"
+version = "0.0.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "big_space",
+]
+
+[[package]]
+name = "ename_game"
+version = "0.0.0"
+dependencies = [
+ "avian3d",
+ "bevy",
+ "big_space",
+ "ename_content",
+ "ename_engine",
+]
+
+[[package]]
+name = "ename_game_editor"
+version = "0.0.0"
+dependencies = [
+ "bevy",
+]
+
+[[package]]
 name = "encase"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2866,15 +2915,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "engine"
-version = "0.0.0"
-dependencies = [
- "avian3d",
- "bevy",
- "big_space",
 ]
 
 [[package]]
@@ -3195,18 +3235,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "54614a3312934d066701a80f20f15fa3b56d67ac7722b39eea5b4c9dd1d66c94"
 dependencies = [
  "thread_local",
-]
-
-[[package]]
-name = "game"
-version = "0.0.0"
-dependencies = [
- "avian3d",
- "bevy",
- "big_space",
- "editor",
- "engine",
- "modloader",
 ]
 
 [[package]]
@@ -4133,16 +4161,6 @@ dependencies = [
  "log",
  "wasi",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "modloader"
-version = "0.0.0"
-dependencies = [
- "bevy",
- "serde",
- "thiserror 2.0.20",
- "toml",
 ]
 
 [[package]]

@@ -1,10 +1,10 @@
 //! Viewport camera bindings.
 //!
 //! The editor owns which keys fly the camera; the engine owns what flying means. See
-//! `engine::input`.
+//! `ename_engine::input`.
 
 use bevy::{input::mouse::MouseMotion, prelude::*};
-use engine::input::{FlyCameraIntent, FlyCameraSystems};
+use ename_engine::input::{FlyCameraIntent, FlyCameraSystems};
 
 /// True while the fly camera is claiming the keyboard.
 ///

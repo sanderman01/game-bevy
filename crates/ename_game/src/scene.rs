@@ -7,11 +7,11 @@ use avian3d::{
 };
 use bevy::{math::DVec3, prelude::*};
 use big_space::commands::*;
-use engine::{
+use ename_content::AssetRegistry;
+use ename_engine::{
     bigspace::grid::{GridQuery, on_grid, on_grid_looking_at},
     camera::{CameraDriver, MainCamera, VirtualCamera},
 };
-use modloader::AssetRegistry;
 
 use crate::GameState;
 

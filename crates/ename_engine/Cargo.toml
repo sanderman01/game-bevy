@@ -1,0 +1,14 @@
+[package]
+name = "ename_engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+avian3d.workspace = true
+bevy.workspace = true
+big_space.workspace = true
+
+[lints]
+workspace = true

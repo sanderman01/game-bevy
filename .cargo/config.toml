@@ -16,7 +16,7 @@ WGPU_ADAPTER_TYPE = "discrete"
 # per feature combination. Alternating a bare `cargo build` with `cargo run` rebuilds Bevy
 # from scratch each time; these do not.
 [alias]
-db = "build --workspace --features game/dev"
-dr = "run -p game --features dev"
-dc = "clippy --workspace --all-targets --features game/dev"
-dt = "test --workspace --features game/dev"
+db = "build --workspace --features ename/dev"
+dr = "run -p ename --features dev"
+dc = "clippy --workspace --all-targets --features ename/dev"
+dt = "test --workspace --features ename/dev"

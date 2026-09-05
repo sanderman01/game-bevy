@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use modloader::LoaderState;
+use ename_content::LoaderState;
 
 /// Where the game is in its own lifecycle. The engine has no opinion on whether a game has a
 /// `Play` state, so this lives here.

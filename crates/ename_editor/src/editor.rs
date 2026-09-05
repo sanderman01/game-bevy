@@ -24,7 +24,7 @@ use bevy_inspector_egui::bevy_inspector::{
 };
 use egui::{LayerId, UiBuilder};
 use egui_dock::{DockArea, DockState, NodeIndex, Style};
-use engine::camera::MainCamera;
+use ename_engine::camera::MainCamera;
 use std::any::TypeId;
 
 /// Everything the editor is: the dock UI and selection (`EditorPlugin`), and the transform

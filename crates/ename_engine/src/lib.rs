@@ -1,8 +1,8 @@
-//! `engine` -- the runtime layer: camera rig, big_space integration, physics glue, input.
+//! `ename_engine` -- the runtime layer: camera rig, big_space integration, physics glue, input.
 //!
-//! Bottom of the layer graph, alongside `modloader`. It must never depend on `editor`,
-//! `modloader`, or `game`: if engine code needs something from a higher layer, move the shared
-//! type down or invert the call into an event. See `docs/design.md`.
+//! Bottom of the layer graph, alongside `ename_content`. It must never depend on `ename_editor`,
+//! `ename_content`, or `ename_game`: if engine code needs something from a higher layer, move the
+//! shared type down or invert the call into an event. See `docs/design.md`.
 
 pub mod bigspace;
 pub mod camera;

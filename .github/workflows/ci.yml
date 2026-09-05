@@ -34,7 +34,7 @@ jobs:
       # Proves the dev-only Bevy features are actually gated. A shipping build must not
       # contain bevy_dev_tools, the file watcher, or a dependency on bevy_dylib.
       - name: Check without default features
-        run: cargo check -p game --no-default-features
+        run: cargo check -p ename --no-default-features
 
       - name: Layer graph
         run: ./scripts/check-layers.sh

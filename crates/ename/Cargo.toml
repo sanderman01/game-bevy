@@ -1,0 +1,25 @@
+[package]
+name = "ename"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[features]
+default = ["dev", "editor"]
+# Development-only Bevy features. Must be off for a shipping build.
+dev = ["bevy/dynamic_linking", "bevy/dev"]
+# Links the editor into the binary. Off for a shipping build: absence of the crate is what makes
+# "does this ship?" a question the dependency graph answers.
+editor = ["dep:ename_editor", "dep:ename_game_editor"]
+
+[dependencies]
+bevy = { workspace = true }
+ename_content = { workspace = true }
+ename_editor = { workspace = true, optional = true }
+ename_engine = { workspace = true }
+ename_game = { workspace = true }
+ename_game_editor = { workspace = true, optional = true }
+
+[lints]
+workspace = true

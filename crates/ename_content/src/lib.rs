@@ -1,4 +1,10 @@
-mod assetregistry;
+//! `ename_content` -- packages, manifests, and the asset alias registry.
+//!
+//! A leaf of the layer graph, alongside `ename_engine` and independent of it: manifests,
+//! packages, an alias registry and a load state machine are asset-layer concerns with nothing
+//! engine-shaped in them. See `docs/design.md`.
+
+mod asset_registry;
 mod manifest;
 mod package;
 
@@ -19,7 +25,7 @@ use bevy::{
     tasks::{BoxedFuture, IoTaskPool, Task, futures::check_ready},
 };
 
-pub use crate::assetregistry::*;
+pub use crate::asset_registry::*;
 pub use crate::manifest::*;
 pub use crate::package::*;
 
@@ -28,18 +34,18 @@ const NAMESPACE_DELIM_TOKEN: &str = "::";
 const DEFAULT_AUTO_LOAD_PACKAGE_MANIFESTS: bool = true;
 const DEFAULT_AUTO_LOAD_PACKAGE_ASSETS: bool = true;
 /// No search paths by default. Which directories a game ships is game policy: the binary
-/// passes them in with [`ModLoaderPlugin::with_search_paths`].
+/// passes them in with [`ContentPlugin::with_search_paths`].
 const DEFAULT_PACKAGE_SEARCH_PATHS: &[&str] = &[];
 const DEFAULT_PACKAGE_STATE: PackageState = PackageState::Active;
 
-pub struct ModLoaderPlugin {
+pub struct ContentPlugin {
     package_search_paths: Vec<String>,
     auto_load_package_manifests: bool,
     auto_load_package_assets: bool,
     default_package_active_state: PackageState,
 }
 
-impl Default for ModLoaderPlugin {
+impl Default for ContentPlugin {
     fn default() -> Self {
         Self {
             auto_load_package_manifests: DEFAULT_AUTO_LOAD_PACKAGE_MANIFESTS,
@@ -53,7 +59,7 @@ impl Default for ModLoaderPlugin {
     }
 }
 
-impl ModLoaderPlugin {
+impl ContentPlugin {
     /// Sets the directories scanned for package manifests, relative to the asset root.
     pub fn with_search_paths<I, S>(mut self, paths: I) -> Self
     where
@@ -65,7 +71,7 @@ impl ModLoaderPlugin {
     }
 }
 
-impl Plugin for ModLoaderPlugin {
+impl Plugin for ContentPlugin {
     fn build(&self, app: &mut bevy::app::App) {
         app.init_asset::<Manifest>()
             .register_type::<Manifest>()

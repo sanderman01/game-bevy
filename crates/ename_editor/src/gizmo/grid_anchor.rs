@@ -7,7 +7,7 @@
 //! snapshot is a whole cell stale, so the next frame places the entity a cell's width away
 //! -- which recenters it again, and it runs off across the grid a cell per frame.
 //!
-//! Same class of problem as `engine`'s physics grid writeback, and the same shape of fix: read
+//! Same class of problem as `ename_engine`'s physics grid writeback, and the same shape of fix: read
 //! the offset big_space applied and put it through to the value that is out of date.
 //!
 //! # Ordering assumption
@@ -24,7 +24,7 @@
 //! than a runaway, and revisit this.
 
 use bevy::prelude::*;
-use engine::bigspace::{CellCoord, Grid};
+use ename_engine::bigspace::{CellCoord, Grid};
 
 /// Keeps the gizmo's drag snapshot in the cell the dragged entity is currently in.
 ///

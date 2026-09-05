@@ -9,7 +9,7 @@ fail=0
 check() {
     local crate="$1" forbidden="$2" deps found
     # `--no-default-features` so this tests the shipping graph: the editor is an optional
-    # dependency of `game` and must be absent from it with the feature off.
+    # dependency of the `ename` binary and must be absent from it with the feature off.
     # The tree is captured before the grep runs: with both in one pipeline, the `|| true`
     # for grep's legitimate no-match exit would also swallow a `cargo tree` failure.
     deps=$(cargo tree -p "$crate" -e normal --no-default-features --prefix none \
@@ -23,9 +23,9 @@ check() {
     fi
 }
 
-check engine 'editor|modloader|game'
-check modloader 'engine|editor|game'
-check editor 'game|modloader'
-check game 'editor'
+check ename_engine 'ename_editor|ename_content|ename_game|ename_game_editor'
+check ename_content 'ename_engine|ename_editor|ename_game|ename_game_editor'
+check ename_editor 'ename_game|ename_content|ename_game_editor'
+check ename_game 'ename_editor|ename_game_editor'
 
 exit "$fail"
