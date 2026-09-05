@@ -40,6 +40,11 @@ came to exist.
 
 `scripts/check-layers.sh` enforces this in CI. It is a build failure, not a habit.
 
+`EditorCamera` existed because `engine` depended on `editor` and the editor could not name
+`engine::camera::MainCamera`. It is deleted. The editor keys off `MainCamera` and attaches
+`TransformGizmoCamera` to it itself, which keeps the gizmo requirement in the crate that has the
+gizmo.
+
 ## Composition happens in the binary
 
 Each crate exports a `Plugin` or a `PluginGroup`. The binary adds them. Which modules link into a
