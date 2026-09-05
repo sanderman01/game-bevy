@@ -9,8 +9,6 @@ license.workspace = true
 avian3d.workspace = true
 bevy.workspace = true
 big_space.workspace = true
-editor.workspace = true
-modloader.workspace = true
 
 [lints]
 workspace = true

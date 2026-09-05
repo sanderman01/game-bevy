@@ -27,7 +27,9 @@ const NAMESPACE_DELIM_TOKEN: &str = "::";
 
 const DEFAULT_AUTO_LOAD_PACKAGE_MANIFESTS: bool = true;
 const DEFAULT_AUTO_LOAD_PACKAGE_ASSETS: bool = true;
-const DEFAULT_PACKAGE_SEARCH_PATHS: &[&str] = &["basegame", "mods"];
+/// No search paths by default. Which directories a game ships is game policy: the binary
+/// passes them in with [`ModLoaderPlugin::with_search_paths`].
+const DEFAULT_PACKAGE_SEARCH_PATHS: &[&str] = &[];
 const DEFAULT_PACKAGE_STATE: PackageState = PackageState::Active;
 
 pub struct ModLoaderPlugin {
@@ -48,6 +50,18 @@ impl Default for ModLoaderPlugin {
                 .map(|s| String::from(*s))
                 .collect(),
         }
+    }
+}
+
+impl ModLoaderPlugin {
+    /// Sets the directories scanned for package manifests, relative to the asset root.
+    pub fn with_search_paths<I, S>(mut self, paths: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.package_search_paths = paths.into_iter().map(Into::into).collect();
+        self
     }
 }
 

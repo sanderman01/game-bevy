@@ -1,3 +1,6 @@
+//! The starting scene. Temporary: a Rust function that spawns hardcoded entities, standing in
+//! for scene data the editor cannot yet produce. See the open question in `docs/design.md`.
+
 use avian3d::{
     collision::collider::{Collider, ColliderConstructorHierarchy},
     dynamics::rigid_body::RigidBody,
@@ -5,15 +8,44 @@ use avian3d::{
 use bevy::{math::DVec3, prelude::*};
 use big_space::commands::*;
 use editor::editor::EditorCamera;
+use engine::{
+    bigspace::grid::{GridQuery, on_grid, on_grid_looking_at},
+    camera::{CameraDriver, MainCamera, VirtualCamera},
+};
 use modloader::AssetRegistry;
 
-use crate::{
-    camera::{CameraDriver, MainCamera, VirtualCamera},
-    grid::{on_grid, on_grid_looking_at},
-};
+use crate::GameState;
+
+/// Ordering within scene setup.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+enum SceneSetup {
+    /// Spawns the big space and everything parented to it.
+    World,
+    /// Spawns package assets onto the grid the previous set created.
+    Models,
+}
+
+/// Spawns the starting scene on entry to [`GameState::Scene`].
+pub struct ScenePlugin;
+
+impl Plugin for ScenePlugin {
+    fn build(&self, app: &mut App) {
+        app.configure_sets(
+            OnEnter(GameState::Scene),
+            (SceneSetup::World, SceneSetup::Models).chain(),
+        )
+        .add_systems(
+            OnEnter(GameState::Scene),
+            (
+                spawn_scene.in_set(SceneSetup::World),
+                load_models.in_set(SceneSetup::Models),
+            ),
+        );
+    }
+}
 
 /// Sets up a basic game world with a 3D scene containing a cube, plane, and lighting
-pub fn new_simple_scene(
+fn spawn_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -115,11 +147,11 @@ pub fn new_simple_scene(
     });
 }
 
-pub fn load_model(
+fn load_models(
     mut commands: Commands,
     asset_server: ResMut<AssetServer>,
     asset_registry: ResMut<AssetRegistry>,
-    grid_query: Query<crate::grid::GridQuery>,
+    grid_query: Query<GridQuery>,
 ) {
     info!("{}", "Loading models");
     let grid_entity = grid_query

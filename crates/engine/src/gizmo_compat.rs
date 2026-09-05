@@ -7,7 +7,7 @@
 //! snapshot is a whole cell stale, so the next frame places the entity a cell's width away
 //! -- which recenters it again, and it runs off across the grid a cell per frame.
 //!
-//! Same class of problem as [`crate::physics_compat`], and the same shape of fix: read the
+//! Same class of problem as the physics grid writeback, and the same shape of fix: read the
 //! offset big_space applied and put it through to the value that is out of date.
 //!
 //! # Ordering assumption

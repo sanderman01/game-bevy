@@ -11,8 +11,12 @@ default = ["dev"]
 dev = ["bevy/dynamic_linking", "bevy/dev"]
 
 [dependencies]
+avian3d = { workspace = true }
 bevy = { workspace = true }
+big_space = { workspace = true }
+editor = { workspace = true }
 engine = { workspace = true }
+modloader = { workspace = true }
 
 [lints]
 workspace = true

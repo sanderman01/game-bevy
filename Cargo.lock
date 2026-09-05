@@ -2874,8 +2874,6 @@ dependencies = [
  "avian3d",
  "bevy",
  "big_space",
- "editor",
- "modloader",
 ]
 
 [[package]]
@@ -3202,8 +3200,12 @@ dependencies = [
 name = "game"
 version = "0.0.0"
 dependencies = [
+ "avian3d",
  "bevy",
+ "big_space",
+ "editor",
  "engine",
+ "modloader",
 ]
 
 [[package]]
