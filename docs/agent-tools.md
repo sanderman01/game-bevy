@@ -1,0 +1,98 @@
+# Driving the game from a coding agent
+
+The game can expose its running world to an MCP client. Two processes:
+
+```
+agent  --stdio MCP-->  ename_mcp  --HTTP JSON-RPC-->  game  (bevy_remote + custom methods)
+```
+
+Why the design is shaped this way is in [design.md](design.md#agent-tooling); the plan it came
+from is `scratch/mcp-server-plan.md`.
+
+## Running it
+
+Start the game with the `agent` feature. It listens on `127.0.0.1:15702`.
+
+```sh
+cargo run -p ename --features agent
+```
+
+Build the sidecar once:
+
+```sh
+cargo build -p ename_mcp
+```
+
+Register it with the client. For Claude Code, in `.mcp.json` at the repo root:
+
+```json
+{
+  "mcpServers": {
+    "game": {
+      "command": "./target/debug/ename_mcp"
+    }
+  }
+}
+```
+
+`ENAME_BRP_URL` overrides the address if the game is not on the default port.
+
+The sidecar does not need the game to be running when it starts. A call made while the game is
+down fails with a message saying so, and works again once the game is back.
+
+## Security
+
+The `agent` feature must never be on in a shipping build. BRP is unauthenticated read and write
+access to the world, and localhost is not a trust boundary. Any process running as the same user
+can connect. `scripts/check-layers.sh` fails the build if `ename_remote` appears in the binary's
+default dependency graph.
+
+## The tools
+
+| Tool | Does |
+| --- | --- |
+| `world_list_entities` | Find entities by name substring, component, or parent. The discovery tool. |
+| `world_get_entity` | Every component on one entity, with values and absolute position. |
+| `world_list_component_types` | Fully-qualified type paths matching a substring. Needed before any write. |
+| `world_spawn_entity` | Create an entity with a name, components and a position. |
+| `world_despawn_entity` | Delete an entity and its children. |
+| `world_insert_component` / `world_remove_component` | Add or drop components. |
+| `world_mutate_component` | Set one field of one component. |
+| `world_reparent_entity` | Move an entity in the hierarchy. |
+| `world_set_position` | Move an entity to an absolute world position. |
+| `run_get_state` / `run_set_state` | Read run state; pause, resume, or step N frames. |
+| `log_get_entries` | Recent tracing events, filtered by level, target and message. |
+
+Two things about them are worth knowing before reading the schemas.
+
+**Entities are addressed by `name` or by `entity`, and results carry both.** An entity id is a
+generation-and-index bit pattern that changes every run, so it cannot go into a written plan or
+be quoted to a user. Names can. But an entity need not have one, and names are not unique: the
+starting scene has three called `VirtualCamera`. An ambiguous name is an error listing the
+candidates.
+
+**Positions are absolute metres, Y up.** Under big_space a position is a grid cell plus a
+`Transform` offset from an origin that moves with the camera, so a raw `Transform.translation`
+means a different world point from one frame to the next. `world_mutate_component` refuses to
+write `Transform.translation` or `CellCoord` and points at `world_set_position` instead.
+
+## Working with a frozen world
+
+Reading a component from a world that is still advancing answers a different question from the
+one usually being asked. The loop that makes an experiment:
+
+1. `run_set_state` `pause`
+2. `world_get_entity` -- the before state
+3. `run_set_state` `step`, `frames: 30`. This returns only once the frames have run.
+4. `world_get_entity` -- the after state
+5. `run_set_state` `resume`
+
+`elapsed_seconds` is virtual time and does not advance while paused. `frame` counts real frames
+and keeps climbing, because the renderer is still drawing.
+
+## What the agent cannot see
+
+Reflection registration decides visibility, and it fails silently. Colliders are invisible,
+asset handles read as errors, and a component that is not `#[derive(Reflect)]` and registered
+does not exist as far as these tools are concerned.
+[design.md](design.md#what-the-agent-can-actually-see) has the measured list.

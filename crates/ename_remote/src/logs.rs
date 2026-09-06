@@ -213,3 +213,34 @@ fn severity_of_name(name: &str) -> Result<u8, bevy::remote::BrpError> {
         }),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{CAPACITY, LogBuffer};
+
+    #[test]
+    fn drops_the_oldest_entry_once_full() {
+        let buffer = LogBuffer::default();
+        for i in 0..CAPACITY + 10 {
+            buffer.push(i as f64, "INFO", "test".to_owned(), i.to_string());
+        }
+
+        let entries = buffer.snapshot();
+        assert_eq!(entries.len(), CAPACITY);
+        // Sequence numbers keep counting past the drop, so a caller polling with
+        // `after_sequence` is not sent backwards by the buffer wrapping.
+        assert_eq!(entries.first().unwrap().sequence, 10);
+        assert_eq!(entries.last().unwrap().sequence, (CAPACITY + 9) as u64);
+    }
+
+    #[test]
+    fn severity_ordering_is_what_min_level_filters_on() {
+        let of = |name| super::severity_of_name(name).unwrap();
+        assert!(of("TRACE") < of("DEBUG"));
+        assert!(of("DEBUG") < of("INFO"));
+        assert!(of("INFO") < of("WARN"));
+        assert!(of("WARN") < of("ERROR"));
+        assert_eq!(of("warn"), of("WARN"));
+        assert!(super::severity_of_name("LOUD").is_err());
+    }
+}
