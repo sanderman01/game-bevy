@@ -19,6 +19,7 @@
 //! | `game.position.get` / `.set` | Position is a `CellCoord` plus a `Transform`, relative to a moving origin. A bare `Transform` is wrong everywhere but one cell. |
 //! | `game.run_state.get` / `.set` | Nothing in BRP can freeze the world, and reading a world that is still advancing answers a different question. |
 //! | `game.logs.get` | Bevy's logs go to stderr, which a JSON-RPC client cannot see. |
+//! | `game.pid.get` | Nothing in BRP says which run of the process answered, so a restart between two calls is invisible. |
 //!
 //! It also replaces `world.mutate_components` with a guarded version. See [`mutate`].
 
@@ -27,6 +28,7 @@ mod logs;
 mod mutate;
 mod position;
 mod run;
+mod run_id;
 
 use bevy::{
     app::PluginGroupBuilder,
@@ -35,6 +37,18 @@ use bevy::{
 };
 
 pub use logs::capture_layer;
+
+/// Serializes a handler's response, turning a serialization failure into a BRP error.
+///
+/// Every custom method builds its response from a struct, so this is the one place that
+/// conversion happens.
+pub(crate) fn to_value<T: serde::Serialize>(value: T) -> bevy::remote::BrpResult {
+    serde_json::to_value(value).map_err(|err| bevy::remote::BrpError {
+        code: bevy::remote::error_codes::INTERNAL_ERROR,
+        message: err.to_string(),
+        data: None,
+    })
+}
 
 /// The BRP server and its custom methods, as a target adds it.
 ///
@@ -51,6 +65,7 @@ impl PluginGroup for RemotePlugins {
             .with_method_main(run::GET_METHOD, run::get)
             .with_method_main(run::SET_METHOD, run::set)
             .with_method_main(logs::GET_METHOD, logs::get)
+            .with_method_main(run_id::GET_METHOD, run_id::get)
             // Last, so it replaces the built-in of the same name.
             .with_method_main(mutate::METHOD, mutate::mutate_components);
 
@@ -58,5 +73,6 @@ impl PluginGroup for RemotePlugins {
             .add(remote)
             .add(RemoteHttpPlugin::default())
             .add(run::RunControlPlugin)
+            .add(run_id::RunIdPlugin)
     }
 }

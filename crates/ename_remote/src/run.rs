@@ -74,7 +74,7 @@ pub(crate) enum SetParams {
 }
 
 pub(crate) fn get(In(_): In<Option<Value>>, world: &mut World) -> BrpResult {
-    crate::position::to_value(read(world))
+    crate::to_value(read(world))
 }
 
 pub(crate) fn set(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
@@ -100,7 +100,7 @@ pub(crate) fn set(In(params): In<Option<Value>>, world: &mut World) -> BrpResult
             }
         }
     }
-    crate::position::to_value(read(world))
+    crate::to_value(read(world))
 }
 
 fn read(world: &World) -> RunStateResponse {

@@ -165,7 +165,7 @@ pub(crate) fn get(In(params): In<Option<Value>>, world: &mut World) -> BrpResult
     let message_needle = params.message_contains.map(|m| m.to_lowercase());
 
     let Some(buffer) = world.get_resource::<LogBuffer>() else {
-        return crate::position::to_value(GetResponse {
+        return crate::to_value(GetResponse {
             entries: Vec::new(),
             older_matches: 0,
         });
@@ -189,7 +189,7 @@ pub(crate) fn get(In(params): In<Option<Value>>, world: &mut World) -> BrpResult
         .collect();
 
     let older_matches = matches.len().saturating_sub(limit);
-    crate::position::to_value(GetResponse {
+    crate::to_value(GetResponse {
         entries: matches[older_matches..].to_vec(),
         older_matches,
     })

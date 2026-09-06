@@ -44,6 +44,26 @@ impl GameServer {
             tool_router: Self::tool_router(),
         }
     }
+
+    /// Attaches the game's run id to a finished tool result.
+    ///
+    /// Read after the work rather than before, so it names the process that actually served the
+    /// request. One extra loopback call per tool; the handler reads a single resource.
+    async fn tagged<T>(&self, result: T) -> ToolResult<T> {
+        #[derive(Deserialize)]
+        struct Pid {
+            pid: String,
+        }
+        let pid: Pid = self
+            .brp
+            .call("game.pid.get", json!({}))
+            .await
+            .map_err(fail)?;
+        Ok(Json(WithPid {
+            pid: pid.pid,
+            result,
+        }))
+    }
 }
 
 /// Tool failures reach the agent as failures, with the sentence that explains them.
@@ -51,7 +71,21 @@ fn fail(error: anyhow::Error) -> ErrorData {
     ErrorData::internal_error(format!("{error:#}"), None)
 }
 
-type ToolResult<T> = Result<Json<T>, ErrorData>;
+type ToolResult<T> = Result<Json<WithPid<T>>, ErrorData>;
+
+/// Every tool result, wrapped with the id of the game process that answered it.
+///
+/// Nothing the agent holds between calls survives a restart, entity ids least of all. Without
+/// this the agent finds out by watching a plan fail against a world it never saw. Three letters
+/// so the cost of carrying it on every response stays negligible.
+#[derive(Serialize, schemars::JsonSchema)]
+pub struct WithPid<T> {
+    /// Identifies this run of the game process. A different value from the last call means the
+    /// game restarted: re-resolve entities by name, because the ids are stale.
+    pid: String,
+    #[serde(flatten)]
+    result: T,
+}
 
 // ---------------------------------------------------------------------------------------------
 // world_list_entities
@@ -271,7 +305,7 @@ impl GameServer {
             )
             .await
             .map_err(fail)?;
-        Ok(Json(result))
+        self.tagged(result).await
     }
 
     #[tool(
@@ -318,12 +352,13 @@ impl GameServer {
             .ok()
             .map(|p| p.position);
 
-        Ok(Json(EntityDetail {
+        self.tagged(EntityDetail {
             identity,
             position,
             components: values.components,
             unreadable: values.errors,
-        }))
+        })
+        .await
     }
 
     #[tool(
@@ -362,10 +397,11 @@ impl GameServer {
 
         let truncated = matches.len().saturating_sub(limit);
         matches.truncate(limit);
-        Ok(Json(ComponentTypes {
+        self.tagged(ComponentTypes {
             types: matches,
             truncated,
-        }))
+        })
+        .await
     }
 
     #[tool(
@@ -373,12 +409,12 @@ impl GameServer {
                        the frame number, and the current game state."
     )]
     async fn run_get_state(&self) -> ToolResult<Value> {
-        Ok(Json(
-            self.brp
-                .call_raw("game.run_state.get", json!({}))
-                .await
-                .map_err(fail)?,
-        ))
+        let state = self
+            .brp
+            .call_raw("game.run_state.get", json!({}))
+            .await
+            .map_err(fail)?;
+        self.tagged(state).await
     }
 
     #[tool(
@@ -407,12 +443,13 @@ impl GameServer {
             .map_err(fail)?;
 
         if !matches!(params.action, RunAction::Step) {
-            return Ok(Json(started));
+            return self.tagged(started).await;
         }
         // A step is only useful if the caller can read the world after it, so the tool does not
         // return until the frames have run. The engine-side method cannot wait: it is itself a
         // system, running inside one of the frames being counted.
-        self.await_step_end().await.map(Json).map_err(fail)
+        let ended = self.await_step_end().await.map_err(fail)?;
+        self.tagged(ended).await
     }
 
     /// Polls until the world has repaused, or gives up after 10 seconds.
@@ -449,21 +486,21 @@ impl GameServer {
         &self,
         Parameters(params): Parameters<GetLogsParams>,
     ) -> ToolResult<Value> {
-        Ok(Json(
-            self.brp
-                .call_raw(
-                    "game.logs.get",
-                    json!({
-                        "min_level": params.min_level,
-                        "target_contains": params.target_contains,
-                        "message_contains": params.message_contains,
-                        "after_sequence": params.after_sequence,
-                        "limit": params.limit,
-                    }),
-                )
-                .await
-                .map_err(fail)?,
-        ))
+        let entries = self
+            .brp
+            .call_raw(
+                "game.logs.get",
+                json!({
+                    "min_level": params.min_level,
+                    "target_contains": params.target_contains,
+                    "message_contains": params.message_contains,
+                    "after_sequence": params.after_sequence,
+                    "limit": params.limit,
+                }),
+            )
+            .await
+            .map_err(fail)?;
+        self.tagged(entries).await
     }
 
     #[tool(
@@ -513,11 +550,12 @@ impl GameServer {
                 .map_err(fail)?;
         }
 
-        Ok(Json(json!({
+        self.tagged(json!({
             "entity": spawned.entity,
             "name": params.name,
             "position": params.position,
-        })))
+        }))
+        .await
     }
 
     #[tool(description = "Delete an entity and everything parented to it.")]
@@ -530,7 +568,7 @@ impl GameServer {
             .call_raw("world.despawn_entity", json!({ "entity": identity.entity }))
             .await
             .map_err(fail)?;
-        Ok(Json(identity))
+        self.tagged(identity).await
     }
 
     #[tool(description = "Add components to an existing entity, or replace them if present.")]
@@ -546,7 +584,7 @@ impl GameServer {
             )
             .await
             .map_err(fail)?;
-        Ok(Json(identity))
+        self.tagged(identity).await
     }
 
     #[tool(description = "Remove components from an entity by their full type paths.")]
@@ -562,7 +600,7 @@ impl GameServer {
             )
             .await
             .map_err(fail)?;
-        Ok(Json(identity))
+        self.tagged(identity).await
     }
 
     #[tool(
@@ -587,7 +625,7 @@ impl GameServer {
             )
             .await
             .map_err(fail)?;
-        Ok(Json(identity))
+        self.tagged(identity).await
     }
 
     #[tool(
@@ -610,7 +648,7 @@ impl GameServer {
             )
             .await
             .map_err(fail)?;
-        Ok(Json(identity))
+        self.tagged(identity).await
     }
 
     #[tool(
@@ -635,10 +673,11 @@ impl GameServer {
             )
             .await
             .map_err(fail)?;
-        Ok(Json(PositionResult {
+        self.tagged(PositionResult {
             identity,
             position: result.position,
-        }))
+        })
+        .await
     }
 
     /// The entity holding the world's root `Grid`, which is what a placed entity hangs under.

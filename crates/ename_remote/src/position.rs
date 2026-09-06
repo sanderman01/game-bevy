@@ -35,7 +35,7 @@ pub(crate) struct PositionResponse {
 pub(crate) fn get(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
     let GetParams { entity } = parse_some(params)?;
     let position = absolute_position(world, entity)?;
-    to_value(PositionResponse {
+    crate::to_value(PositionResponse {
         entity,
         position: position.to_array(),
     })
@@ -63,7 +63,7 @@ pub(crate) fn set(In(params): In<Option<Value>>, world: &mut World) -> BrpResult
     }
     entity_mut.insert(cell);
 
-    to_value(PositionResponse {
+    crate::to_value(PositionResponse {
         entity,
         position: position.to_array(),
     })
@@ -103,12 +103,4 @@ fn grid_of(world: &World, entity: Entity) -> Result<&Grid, BrpError> {
             }
         }
     }
-}
-
-pub(crate) fn to_value<T: Serialize>(value: T) -> BrpResult {
-    serde_json::to_value(value).map_err(|err| BrpError {
-        code: error_codes::INTERNAL_ERROR,
-        message: err.to_string(),
-        data: None,
-    })
 }

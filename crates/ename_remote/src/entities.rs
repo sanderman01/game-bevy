@@ -130,7 +130,7 @@ pub(crate) fn list(In(params): In<Option<Value>>, world: &mut World) -> BrpResul
 
     let truncated = matched.len().saturating_sub(limit);
     matched.truncate(limit);
-    crate::position::to_value(ListResponse {
+    crate::to_value(ListResponse {
         entities: matched,
         truncated,
     })

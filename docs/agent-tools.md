@@ -63,6 +63,9 @@ default dependency graph.
 | `run_get_state` / `run_set_state` | Read run state; pause, resume, or step N frames. |
 | `log_get_entries` | Recent tracing events, filtered by level, target and message. |
 
+Every result also carries `pid`, three letters naming the run of the game process that answered
+it. See "Noticing a restart".
+
 Two things about them are worth knowing before reading the schemas.
 
 **Entities are addressed by `name` or by `entity`, and results carry both.** An entity id is a
@@ -80,6 +83,30 @@ to see them.
 `Transform` offset from an origin that moves with the camera, so a raw `Transform.translation`
 means a different world point from one frame to the next. `world_mutate_component` refuses to
 write `Transform.translation` or `CellCoord` and points at `world_set_position` instead.
+
+## Noticing a restart
+
+Nothing the agent holds between calls survives the game restarting, entity ids least of all. The
+sidecar does not: it keeps no connection and no cached state, so a call after a restart just
+works, with no reattach step. That is convenient and it is the hazard. A plan built against one
+run keeps being applied to the next, and the failures read as unrelated bugs.
+
+So every tool result carries `pid`, three lowercase letters naming the run:
+
+```json
+{"pid": "uuq", "entity": 4294966691, "name": "Cube", "position": [0, 1, 0]}
+```
+
+If it differs from the previous call, the game restarted. Discard every id you were holding and
+re-resolve by name. The value comes from the process id mixed with the process start time, so
+two runs differ whatever the scheduler does with pids. It is three letters because it rides on
+every response; 17576 values means two successive runs collide about once in 17576, which costs
+a missed warning and never gives a false one.
+
+A dead game is a different signal: the call fails with "cannot reach the game's remote server".
+"Connection refused" means the process is gone. "Connection closed before message completed"
+means a handler panicked mid-request, and the game may still be running in an unknown state, so
+read `log_get_entries` before trusting it.
 
 ## Working with a frozen world
 

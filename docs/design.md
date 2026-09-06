@@ -81,6 +81,15 @@ any process running as the same user can connect. `scripts/check-layers.sh` asse
 absent from the binary's default-features-off dependency graph, which is the same mechanism that
 keeps the editor out.
 
+**Every tool result carries a three-letter run id, named `pid`.** The sidecar holds no
+connection and no cached state, so a call after the game restarts simply works. That is the
+right behaviour and it is also the trap: nothing tells the agent the world it is editing is not
+the one it planned against. Tagging every response is the cheapest place to put that signal,
+because it needs no extra call from the agent and no memory of having asked. It is deliberately
+not part of `run_get_state`: pausing and restarting are unrelated concerns, and a signal only
+visible on request is one the agent will not think to look for. Three letters keeps the cost of
+carrying it on every response near zero.
+
 **Every tool takes a name or an id, and every result carries both.** An `Entity` is a
 generation-and-index bit pattern that changes every run, so an id cannot be written into a plan
 or quoted back to the user. Names can. Neither works alone: an entity need not have a `Name`, and
