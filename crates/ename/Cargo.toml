@@ -13,6 +13,9 @@ dev = ["bevy/dynamic_linking", "bevy/dev"]
 # Links the editor into the binary. Off for a shipping build: absence of the crate is what makes
 # "does this ship?" a question the dependency graph answers.
 editor = ["dep:ename_editor", "dep:ename_game_editor"]
+# Opens a BRP server on loopback for agent tooling. Never on in a shipping build: BRP is
+# arbitrary read and write access to the world, and localhost is not a trust boundary.
+agent = ["dep:ename_remote"]
 
 [dependencies]
 bevy = { workspace = true }
@@ -21,6 +24,7 @@ ename_editor = { workspace = true, optional = true }
 ename_engine = { workspace = true }
 ename_game = { workspace = true }
 ename_game_editor = { workspace = true, optional = true }
+ename_remote = { workspace = true, optional = true }
 
 [lints]
 workspace = true

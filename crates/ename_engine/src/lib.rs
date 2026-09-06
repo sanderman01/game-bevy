@@ -9,7 +9,12 @@ pub mod camera;
 pub mod input;
 pub mod physics;
 
-use bevy::{app::PluginGroupBuilder, prelude::*, transform::TransformPlugin};
+use bevy::{
+    app::PluginGroupBuilder,
+    log::{BoxedLayer, LogPlugin},
+    prelude::*,
+    transform::TransformPlugin,
+};
 use big_space::plugin::{BigSpaceDebugPlugins, BigSpaceDefaultPlugins};
 
 /// Everything a target needs to run on this engine, `DefaultPlugins` included.
@@ -22,6 +27,7 @@ use big_space::plugin::{BigSpaceDebugPlugins, BigSpaceDefaultPlugins};
 #[derive(Default)]
 pub struct EnginePlugins {
     window: Window,
+    log_layer: Option<fn(&mut App) -> Option<BoxedLayer>>,
 }
 
 impl EnginePlugins {
@@ -31,16 +37,35 @@ impl EnginePlugins {
         self.window = window;
         self
     }
+
+    /// Adds a `tracing` layer alongside the default formatter.
+    ///
+    /// `LogPlugin` installs the global subscriber during plugin build and a subscriber cannot
+    /// gain layers afterwards, so anything that wants to see log events has to be handed in
+    /// here rather than adding itself later.
+    pub fn with_log_layer(mut self, layer: fn(&mut App) -> Option<BoxedLayer>) -> Self {
+        self.log_layer = Some(layer);
+        self
+    }
 }
 
 impl PluginGroup for EnginePlugins {
     fn build(self) -> PluginGroupBuilder {
-        DefaultPlugins
+        let mut plugins = DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(self.window),
                 ..default()
             })
-            .disable::<TransformPlugin>()
+            .disable::<TransformPlugin>();
+
+        if let Some(custom_layer) = self.log_layer {
+            plugins = plugins.set(LogPlugin {
+                custom_layer,
+                ..default()
+            });
+        }
+
+        plugins
             .add_group(BigSpaceDefaultPlugins)
             // No longer bundled with BigSpaceDefaultPlugins as of big_space 0.13.
             .add_group(BigSpaceDebugPlugins::default())

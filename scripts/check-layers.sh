@@ -27,6 +27,9 @@ check ename_engine 'ename_editor|ename_content|ename_game|ename_game_editor'
 check ename_content 'ename_engine|ename_editor|ename_game|ename_game_editor'
 check ename_editor 'ename_game|ename_content|ename_game_editor'
 check ename_game 'ename_editor|ename_game_editor'
-check ename 'ename_editor|ename_game_editor'
+check ename_remote 'ename_editor|ename_game_editor'
+# `--no-default-features` also proves the `agent` feature is off in the shipping graph, which
+# matters more than the editor: `ename_remote` is unauthenticated write access to the world.
+check ename 'ename_editor|ename_game_editor|ename_remote'
 
 exit "$fail"

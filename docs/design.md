@@ -16,13 +16,19 @@ workspace.
 ## Layer graph
 
 ```
-ename (bin)        -> ename_game, ename_content, ename_editor, ename_game_editor
+ename (bin)        -> ename_game, ename_content, ename_editor, ename_game_editor, ename_remote
 ename_game_editor  -> ename_editor, ename_game
+ename_remote       -> ename_game, ename_engine
 ename_game         -> ename_engine, ename_content
 ename_editor       -> ename_engine
 ename_content      -> serde, toml, thiserror, bevy      (no first-party deps)
 ename_engine       -> bevy, avian3d, big_space          (no first-party deps)
+
+ename_mcp (bin)    -> rmcp, reqwest, serde_json         (no first-party deps, no bevy)
 ```
+
+`ename_mcp` is not in the graph above it because it is not in the graph at all: it is a separate
+process that talks to the game over a socket. See "Agent tooling".
 
 Dependencies point down only. Nothing points sideways between `ename_content` and `ename_editor`,
 and nothing points up. There is no `core`, `common`, or `shared` crate on the release path: if a
@@ -56,6 +62,64 @@ engine must call `.disable::<TransformPlugin>()` because big_space supplies prop
 `PluginGroup` cannot disable a plugin belonging to a different group. If the binary owned
 `DefaultPlugins`, every target would have to remember that call, and forgetting it gives double
 propagation with no compile error.
+
+## Agent tooling
+
+The full plan is in `scratch/mcp-server-plan.md`. The decisions it fixes:
+
+**Two processes.** The game runs a `bevy_remote` BRP server; `ename_mcp` is a standalone binary
+speaking MCP over stdio and forwarding to BRP over HTTP. Unreal puts its MCP server inside the
+editor; this does not. The engine gains one optional dependency instead of an HTTP server, an MCP
+implementation and an async runtime. The agent's client launches the sidecar itself, so there is
+no port to allocate and no client config to regenerate. The catalogue survives a game crash, so
+the agent can still read the logs after a panic. The cost is one hop and a reserialization per
+call, which is irrelevant at this call volume.
+
+**`ename_remote` is behind a non-default `agent` feature and must never ship.** BRP is
+unauthenticated read and write access to the running world. Localhost is not a trust boundary:
+any process running as the same user can connect. `scripts/check-layers.sh` asserts the crate is
+absent from the binary's default-features-off dependency graph, which is the same mechanism that
+keeps the editor out.
+
+**Every tool takes a name or an id, and every result carries both.** An `Entity` is a
+generation-and-index bit pattern that changes every run, so an id cannot be written into a plan
+or quoted back to the user. Names can. Neither works alone: an entity need not have a `Name`, and
+names are not unique -- the starting scene has three entities named `VirtualCamera`. An ambiguous
+name is an error listing the candidates, never a silent pick of the first match.
+
+**Positions cross the boundary as absolute double-precision metres.** Under big_space a position
+is a `CellCoord` plus a `Transform` relative to a floating origin that moves with the camera. A
+bare `Transform.translation` is a number that is correct for one frame in one cell. The conversion
+happens engine-side in `game.position.get` / `.set`, not in the sidecar: the write has to set both
+halves at once, and finding the entity's grid means walking its ancestors.
+
+`ename_remote` sits above `ename_game` rather than above `ename_engine` alone, because
+`game.run_state.get` reports `GameState`, which is a gameplay concept. It adds no arrow the layer
+graph forbids.
+
+### What the agent can actually see
+
+Established against a running game on 2026-09-06, because everything in the catalogue assumes it.
+
+Registered and readable: `Transform`, `Name`, `big_space::grid::Grid`, `big_space::grid::cell::CellCoord`,
+`avian3d`'s `RigidBody`, `LinearVelocity`, `ComputedMass` and the rest of its component set, and
+this project's own reflected types (`MainCamera`, `CameraDriver`, `VirtualCamera`,
+`FlyCameraIntent`, and `ename_content`'s manifest types). `registry.schema` returns 1330 types and
+775 KB, which is why `world_list_component_types` filters and caps.
+
+Three gaps the tools have to live with:
+
+- **`avian3d::collision::collider::Collider` is not in the registry at all.** Colliders are
+  invisible to the agent. `ColliderConstructor` and `ColliderAabb` are registered, so a collider
+  can be requested and its bounds read, but the shape itself cannot be inspected or written.
+- **Asset handles are registered but not serializable.** `Mesh3d`, `MeshMaterial3d` and anything
+  else holding a `Handle` fail to read with a `ReflectSerialize` error. The agent sees that the
+  component is present, never its value. Assets are edited as files, which is the design anyway.
+- **`GameState` is not registered.** `game.run_state.get` reports it through `Debug`, not
+  reflection. Registering it would let `world.get_resources` read it directly.
+
+Registration is now load-bearing rather than a convenience for the inspector: an unregistered
+component is one the agent cannot see, and it fails silently.
 
 ## Crossing crate boundaries
 
