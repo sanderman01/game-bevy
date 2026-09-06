@@ -71,6 +71,11 @@ be quoted to a user. Names can. But an entity need not have one, and names are n
 starting scene has three called `VirtualCamera`. An ambiguous name is an error listing the
 candidates.
 
+**Discovery hides the ECS's own entities.** Bevy stores resources, observers and registered
+systems as entities, and in this project that is over 500 of them against seventeen named ones.
+`world_list_entities` filters them out and sorts named entities first. Pass `include_internal`
+to see them.
+
 **Positions are absolute metres, Y up.** Under big_space a position is a grid cell plus a
 `Transform` offset from an origin that moves with the camera, so a raw `Transform.translation`
 means a different world point from one frame to the next. `world_mutate_component` refuses to

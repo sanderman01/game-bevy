@@ -68,6 +68,10 @@ pub struct ListEntitiesParams {
     /// Restricts the result to descendants of this entity.
     #[serde(default)]
     pub parent: Option<EntitySelector>,
+    /// Include the entities Bevy uses to store resources and observers. Off by default: they
+    /// are most of the world and none of them are scene content.
+    #[serde(default)]
+    pub include_internal: bool,
     /// Defaults to 100. A loaded glTF scene is hundreds of entities.
     #[serde(default)]
     pub limit: Option<usize>,
@@ -243,7 +247,7 @@ impl GameServer {
     #[tool(
         description = "Find entities in the running game by name substring, component, or parent. \
                        Returns each entity's id, name, component type paths and absolute world \
-                       position. Start here."
+                       position, named entities first. Start here."
     )]
     async fn world_list_entities(
         &self,
@@ -261,6 +265,7 @@ impl GameServer {
                     "name_contains": params.name_contains,
                     "with_components": params.with_components,
                     "parent": parent,
+                    "include_internal": params.include_internal,
                     "limit": params.limit,
                 }),
             )

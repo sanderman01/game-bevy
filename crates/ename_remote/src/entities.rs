@@ -3,6 +3,10 @@
 //! BRP's `world.query` can do the filtering, but only against fully-qualified type paths the
 //! caller already knows, and it cannot report a position that survives the floating origin.
 //! Both are answered here in a single pass over the world.
+//!
+//! The default also hides the entities Bevy uses to store resources and observers, and sorts
+//! named entities first. Neither is cosmetic: without them the first call against this project
+//! returns 200 rows of `Messages<WindowMoved>` and not one thing in the scene.
 
 use bevy::{
     ecs::hierarchy::ChildOf,
@@ -27,8 +31,23 @@ pub(crate) struct ListParams {
     with_components: Vec<String>,
     /// Restricts the result to descendants of this entity.
     parent: Option<Entity>,
+    /// Include the entities the ECS uses for its own bookkeeping. Off by default: they are
+    /// four fifths of the world and none of them are scene content.
+    include_internal: bool,
     limit: Option<usize>,
 }
+
+/// Components that mark an entity as ECS bookkeeping rather than scene content.
+///
+/// Bevy stores resources, observers and registered systems as entities. In this project that is
+/// over 500 of them against about a dozen the agent means by "an entity", so listing them by
+/// default buries the answer and spends the whole `limit` before reaching anything named.
+const INTERNAL_MARKERS: [&str; 3] = [
+    "bevy_ecs::resource::IsResource",
+    "bevy_ecs::observer::distributed_storage::Observer",
+    // One per BRP method, so this crate is otherwise the largest single contributor.
+    "bevy_ecs::system::system_registry::SystemIdMarker",
+];
 
 #[derive(Serialize)]
 pub(crate) struct ListResponse {
@@ -57,7 +76,6 @@ pub(crate) fn list(In(params): In<Option<Value>>, world: &mut World) -> BrpResul
         .collect();
 
     let mut matched = Vec::new();
-    let mut truncated = 0usize;
 
     for entity in world.iter_entities().map(|e| e.id()).collect::<Vec<_>>() {
         let name = world.get::<Name>(entity).map(|n| n.as_str().to_owned());
@@ -75,6 +93,13 @@ pub(crate) fn list(In(params): In<Option<Value>>, world: &mut World) -> BrpResul
         }
 
         let components = component_paths(world, entity);
+        if !params.include_internal
+            && components
+                .iter()
+                .any(|path| INTERNAL_MARKERS.contains(&path.as_str()))
+        {
+            continue;
+        }
         if !component_needles.iter().all(|needle| {
             components
                 .iter()
@@ -83,10 +108,6 @@ pub(crate) fn list(In(params): In<Option<Value>>, world: &mut World) -> BrpResul
             continue;
         }
 
-        if matched.len() == limit {
-            truncated += 1;
-            continue;
-        }
         matched.push(EntitySummary {
             entity,
             name,
@@ -97,6 +118,18 @@ pub(crate) fn list(In(params): In<Option<Value>>, world: &mut World) -> BrpResul
         });
     }
 
+    // Named first, then by id. Archetype iteration order is arbitrary and changes as the world
+    // does, so without this `limit` truncates a different, mostly anonymous, set every call.
+    matched.sort_by(|a, b| {
+        a.name
+            .is_none()
+            .cmp(&b.name.is_none())
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.entity.cmp(&b.entity))
+    });
+
+    let truncated = matched.len().saturating_sub(limit);
+    matched.truncate(limit);
     crate::position::to_value(ListResponse {
         entities: matched,
         truncated,

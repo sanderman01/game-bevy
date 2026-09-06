@@ -109,9 +109,10 @@ this project's own reflected types (`MainCamera`, `CameraDriver`, `VirtualCamera
 
 Three gaps the tools have to live with:
 
-- **`avian3d::collision::collider::Collider` is not in the registry at all.** Colliders are
-  invisible to the agent. `ColliderConstructor` and `ColliderAabb` are registered, so a collider
-  can be requested and its bounds read, but the shape itself cannot be inspected or written.
+- **`avian3d::collision::collider::parry::Collider` is not in the registry at all.** Reading it
+  fails with "Unknown component type", so collider shapes are invisible to the agent.
+  `ColliderConstructor`, `ColliderAabb` and `ColliderMassProperties` are registered, so a
+  collider can be requested and its bounds and mass read. The shape itself cannot be.
 - **Asset handles are registered but not serializable.** `Mesh3d`, `MeshMaterial3d` and anything
   else holding a `Handle` fail to read with a `ReflectSerialize` error. The agent sees that the
   component is present, never its value. Assets are edited as files, which is the design anyway.
@@ -120,6 +121,12 @@ Three gaps the tools have to live with:
 
 Registration is now load-bearing rather than a convenience for the inspector: an unregistered
 component is one the agent cannot see, and it fails silently.
+
+One more thing the first real agent session showed. Bevy stores resources, observers and
+registered systems as entities, so an unfiltered listing of this world is 613 rows of which 17
+are scene content. `game.entities.list` excludes those three markers by default and sorts named
+entities first, because archetype iteration order is arbitrary and a `limit` applied to it
+truncates a different arbitrary set every call.
 
 ## Crossing crate boundaries
 
