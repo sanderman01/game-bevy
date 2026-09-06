@@ -153,7 +153,7 @@ pub struct RegistrySchemaParams {
     /// Exclude types from these crates.
     #[serde(default)]
     pub without_crates: Vec<String>,
-    /// Defaults to 10. Schemas are large; the whole registry is roughly 775 KB.
+    /// Defaults to 100. Schemas are large; the whole registry is roughly 775 KB.
     #[serde(default)]
     pub limit: Option<usize>,
 }
@@ -377,7 +377,7 @@ impl GameServer {
         &self,
         Parameters(params): Parameters<RegistrySchemaParams>,
     ) -> ToolResult<RegistrySchema> {
-        let limit = params.limit.unwrap_or(10);
+        let limit = params.limit.unwrap_or(100);
 
         // The crate filters are the only ones BRP itself understands. Paths are matched here,
         // because `registry.schema` has no notion of a type path filter.

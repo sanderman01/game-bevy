@@ -81,9 +81,10 @@ to see them.
 
 **Writing a component starts at `registry_schema`.** It takes a `contains` substring, so
 "rigidbody" finds `avian3d::dynamics::rigid_body::RigidBody`, and it returns the field names and
-shapes the value must have along with the path. Ask it for the types you actually need: it
-defaults to ten because the full registry is 1330 types and about 775 KB. A path it reports under
-`unregistered` is one nothing can read or write, which is an answer rather than a failure.
+shapes the value must have along with the path. Ask it for the types you actually need: the full
+registry is 1330 types and about 775 KB, and the default `limit` of 100 only caps how much of an
+unfiltered call comes back. A path it reports under `unregistered` is one nothing can read or
+write, which is an answer rather than a failure.
 
 **Positions are absolute metres, Y up.** Under big_space a position is a grid cell plus a
 `Transform` offset from an origin that moves with the camera, so a raw `Transform.translation`
