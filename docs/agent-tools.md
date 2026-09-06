@@ -53,8 +53,7 @@ default dependency graph.
 | --- | --- |
 | `world_list_entities` | Find entities by name substring, component, or parent. The discovery tool. |
 | `world_get_entity` | Every component on one entity, with values and absolute position. |
-| `world_list_component_types` | Fully-qualified type paths matching a substring. Needed before any write. |
-| `registry_schema` | The JSON schema of registered types: what fields a component has and their shapes. |
+| `registry_schema` | The JSON schema of registered types: the fully-qualified type paths, what fields a component has and their shapes. |
 | `world_spawn_entity` | Create an entity with a name, components and a position. |
 | `world_despawn_entity` | Delete an entity and its children. |
 | `world_insert_component` / `world_remove_component` | Add or drop components. |
@@ -80,9 +79,9 @@ systems as entities, and in this project that is over 500 of them against sevent
 `world_list_entities` filters them out and sorts named entities first. Pass `include_internal`
 to see them.
 
-**Writing a component takes two lookups.** `world_list_component_types` turns "rigidbody" into
-`avian3d::dynamics::rigid_body::RigidBody`; `registry_schema` turns that path into the field
-names and shapes the value must have. Ask `registry_schema` for the types you actually need: it
+**Writing a component starts at `registry_schema`.** It takes a `contains` substring, so
+"rigidbody" finds `avian3d::dynamics::rigid_body::RigidBody`, and it returns the field names and
+shapes the value must have along with the path. Ask it for the types you actually need: it
 defaults to ten because the full registry is 1330 types and about 775 KB. A path it reports under
 `unregistered` is one nothing can read or write, which is an answer rather than a failure.
 

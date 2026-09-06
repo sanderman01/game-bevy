@@ -114,7 +114,7 @@ Registered and readable: `Transform`, `Name`, `big_space::grid::Grid`, `big_spac
 `avian3d`'s `RigidBody`, `LinearVelocity`, `ComputedMass` and the rest of its component set, and
 this project's own reflected types (`MainCamera`, `CameraDriver`, `VirtualCamera`,
 `FlyCameraIntent`, and `ename_content`'s manifest types). `registry.schema` returns 1330 types and
-775 KB, which is why `world_list_component_types` filters and caps.
+775 KB, which is why `registry_schema` filters and caps.
 
 Three gaps the tools have to live with:
 

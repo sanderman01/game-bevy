@@ -134,31 +134,6 @@ pub struct EntityDetail {
 }
 
 // ---------------------------------------------------------------------------------------------
-// world_list_component_types
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct ListComponentTypesParams {
-    /// Case-insensitive substring of the type path, e.g. "transform" or "rigidbody".
-    pub contains: String,
-    /// Defaults to 25. The full registry is over a thousand types.
-    #[serde(default)]
-    pub limit: Option<usize>,
-}
-
-#[derive(Serialize, schemars::JsonSchema)]
-pub struct ComponentType {
-    type_path: String,
-    short_path: String,
-}
-
-#[derive(Serialize, schemars::JsonSchema)]
-pub struct ComponentTypes {
-    types: Vec<ComponentType>,
-    /// Types that matched but were cut by `limit`. Narrow `contains` if this is not zero.
-    truncated: usize,
-}
-
-// ---------------------------------------------------------------------------------------------
 // registry_schema
 
 /// Everything is optional, but a call with no filter at all returns whatever `limit` allows out
@@ -203,7 +178,7 @@ pub struct SpawnEntityParams {
     /// The new entity's `Name`. Required: an unnamed entity can only ever be addressed by an id
     /// that expires when the game restarts.
     pub name: String,
-    /// Component type path to value. Get the exact paths from world_list_component_types.
+    /// Component type path to value. Get the exact paths from registry_schema.
     #[serde(default)]
     pub components: HashMap<String, Value>,
     /// Absolute metres. Placing the entity also parents it to the world grid.
@@ -218,7 +193,7 @@ pub struct SpawnEntityParams {
 pub struct InsertComponentParams {
     #[serde(flatten)]
     pub selector: EntitySelector,
-    /// Component type path to value. Get the exact paths from world_list_component_types.
+    /// Component type path to value. Get the exact paths from registry_schema.
     pub components: HashMap<String, Value>,
 }
 
@@ -389,43 +364,6 @@ impl GameServer {
             position,
             components: values.components,
             unreadable: values.errors,
-        })
-        .await
-    }
-
-    #[tool(
-        description = "Look up the fully-qualified Rust type paths of components matching a \
-                       substring. Every write tool needs the exact path, which is longer than \
-                       anything worth guessing. Use registry_schema for the field shapes."
-    )]
-    async fn world_list_component_types(
-        &self,
-        Parameters(params): Parameters<ListComponentTypesParams>,
-    ) -> ToolResult<ComponentTypes> {
-        let limit = params.limit.unwrap_or(25);
-        let needle = params.contains.to_lowercase();
-
-        let schema: HashMap<String, Value> = self
-            .brp
-            .call("registry.schema", json!({}))
-            .await
-            .map_err(fail)?;
-
-        let mut matches: Vec<ComponentType> = schema
-            .into_iter()
-            .filter(|(path, _)| path.to_lowercase().contains(&needle))
-            .map(|(type_path, value)| ComponentType {
-                short_path: short_path_of(&value, &type_path),
-                type_path,
-            })
-            .collect();
-        matches.sort_by(|a, b| a.type_path.cmp(&b.type_path));
-
-        let truncated = matches.len().saturating_sub(limit);
-        matches.truncate(limit);
-        self.tagged(ComponentTypes {
-            types: matches,
-            truncated,
         })
         .await
     }
@@ -812,17 +750,6 @@ fn crate_matches(schema: &Value, crates: &[String]) -> bool {
         .or_else(|| schema.get("crate_name"))
         .and_then(Value::as_str)
         .is_some_and(|name| crates.iter().any(|wanted| wanted == name))
-}
-
-/// The registry reports a short path alongside the full one, under either spelling depending on
-/// how the schema was serialized. Falls back to the full path.
-fn short_path_of(schema: &Value, type_path: &str) -> String {
-    schema
-        .get("shortPath")
-        .or_else(|| schema.get("short_path"))
-        .and_then(Value::as_str)
-        .unwrap_or(type_path)
-        .to_owned()
 }
 
 /// Refuses a mutation that would write half of a position.
