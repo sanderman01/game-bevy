@@ -1,0 +1,19 @@
+.claude/settings.local.json
+  s_f815a41a8d1a76::t_847d3bb0b4868f 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "9ad73e7007300cf870fe1483c0a254acfbae53bc",
+  "prompts": {},
+  "sessions": {
+    "s_f815a41a8d1a76": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2312c9c3-e41d-49dc-8df4-327f6adbd9d1",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
