@@ -143,17 +143,12 @@ pub struct ListComponentTypesParams {
     /// Defaults to 25. The full registry is over a thousand types.
     #[serde(default)]
     pub limit: Option<usize>,
-    /// Include each type's field schema. Off by default because the schemas are large.
-    #[serde(default)]
-    pub with_schema: bool,
 }
 
 #[derive(Serialize, schemars::JsonSchema)]
 pub struct ComponentType {
     type_path: String,
     short_path: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    schema: Option<Value>,
 }
 
 #[derive(Serialize, schemars::JsonSchema)]
@@ -161,6 +156,43 @@ pub struct ComponentTypes {
     types: Vec<ComponentType>,
     /// Types that matched but were cut by `limit`. Narrow `contains` if this is not zero.
     truncated: usize,
+}
+
+// ---------------------------------------------------------------------------------------------
+// registry_schema
+
+/// Everything is optional, but a call with no filter at all returns whatever `limit` allows out
+/// of more than a thousand types. Name the types you actually need.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct RegistrySchemaParams {
+    /// Full type paths, e.g. "bevy_transform::components::transform::Transform". The precise
+    /// way to ask, and the one to prefer.
+    #[serde(default)]
+    pub types: Vec<String>,
+    /// Case-insensitive substring of the type path, for when the exact path is not known yet.
+    #[serde(default)]
+    pub contains: Option<String>,
+    /// Only types from these crates, e.g. "avian3d" or "ename_engine".
+    #[serde(default)]
+    pub with_crates: Vec<String>,
+    /// Exclude types from these crates.
+    #[serde(default)]
+    pub without_crates: Vec<String>,
+    /// Defaults to 10. Schemas are large; the whole registry is roughly 775 KB.
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+#[derive(Serialize, schemars::JsonSchema)]
+pub struct RegistrySchema {
+    /// Type path to its JSON schema, as the game's reflection registry describes it.
+    schemas: HashMap<String, Value>,
+    /// Types that matched but were cut by `limit`. Narrow the filters if this is not zero.
+    truncated: usize,
+    /// Paths in `types` that are not registered. An unregistered type is one the agent cannot
+    /// read or write at all, so this is an answer rather than an oversight.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    unregistered: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -364,7 +396,7 @@ impl GameServer {
     #[tool(
         description = "Look up the fully-qualified Rust type paths of components matching a \
                        substring. Every write tool needs the exact path, which is longer than \
-                       anything worth guessing."
+                       anything worth guessing. Use registry_schema for the field shapes."
     )]
     async fn world_list_component_types(
         &self,
@@ -383,13 +415,7 @@ impl GameServer {
             .into_iter()
             .filter(|(path, _)| path.to_lowercase().contains(&needle))
             .map(|(type_path, value)| ComponentType {
-                short_path: value
-                    .get("shortPath")
-                    .or_else(|| value.get("short_path"))
-                    .and_then(Value::as_str)
-                    .unwrap_or(&type_path)
-                    .to_owned(),
-                schema: params.with_schema.then_some(value),
+                short_path: short_path_of(&value, &type_path),
                 type_path,
             })
             .collect();
@@ -400,6 +426,64 @@ impl GameServer {
         self.tagged(ComponentTypes {
             types: matches,
             truncated,
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Get the JSON schema of registered types: the fields a component has, their \
+                       names and their shapes. Read this before writing a component value. Name \
+                       the types you want; the whole registry is over a thousand of them."
+    )]
+    async fn registry_schema(
+        &self,
+        Parameters(params): Parameters<RegistrySchemaParams>,
+    ) -> ToolResult<RegistrySchema> {
+        let limit = params.limit.unwrap_or(10);
+
+        // The crate filters are the only ones BRP itself understands. Paths are matched here,
+        // because `registry.schema` has no notion of a type path filter.
+        let registry: HashMap<String, Value> = self
+            .brp
+            .call(
+                "registry.schema",
+                json!({
+                    "with_crates": params.with_crates,
+                    "without_crates": params.without_crates,
+                }),
+            )
+            .await
+            .map_err(fail)?;
+
+        let unregistered: Vec<String> = params
+            .types
+            .iter()
+            .filter(|path| !registry.contains_key(*path))
+            .cloned()
+            .collect();
+
+        let needle = params.contains.as_ref().map(|c| c.to_lowercase());
+        let mut matched: Vec<(String, Value)> = registry
+            .into_iter()
+            .filter(|(path, _)| params.types.is_empty() || params.types.contains(path))
+            .filter(|(_, schema)| crate_matches(schema, &params.with_crates))
+            .filter(|(path, _)| {
+                needle
+                    .as_ref()
+                    .is_none_or(|n| path.to_lowercase().contains(n))
+            })
+            .collect();
+        // Sorted so a truncated result is the same one every call, rather than whichever the
+        // hash map happened to yield first.
+        matched.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let truncated = matched.len().saturating_sub(limit);
+        matched.truncate(limit);
+
+        self.tagged(RegistrySchema {
+            schemas: matched.into_iter().collect(),
+            truncated,
+            unregistered,
         })
         .await
     }
@@ -714,6 +798,33 @@ impl GameServer {
     }
 }
 
+/// Whether a schema belongs to one of `crates`, with an empty list meaning "any".
+///
+/// `registry.schema` applies its own `with_crates` only to types that have a crate name, so
+/// `&str`, `()` and tuple types come back whatever is asked for. Repeating the test here is what
+/// makes the filter mean what its name says.
+fn crate_matches(schema: &Value, crates: &[String]) -> bool {
+    if crates.is_empty() {
+        return true;
+    }
+    schema
+        .get("crateName")
+        .or_else(|| schema.get("crate_name"))
+        .and_then(Value::as_str)
+        .is_some_and(|name| crates.iter().any(|wanted| wanted == name))
+}
+
+/// The registry reports a short path alongside the full one, under either spelling depending on
+/// how the schema was serialized. Falls back to the full path.
+fn short_path_of(schema: &Value, type_path: &str) -> String {
+    schema
+        .get("shortPath")
+        .or_else(|| schema.get("short_path"))
+        .and_then(Value::as_str)
+        .unwrap_or(type_path)
+        .to_owned()
+}
+
 /// Refuses a mutation that would write half of a position.
 ///
 /// `Transform.translation` is an offset within one grid cell relative to a floating origin that
@@ -751,7 +862,9 @@ impl ServerHandler for GameServer {
 
 #[cfg(test)]
 mod tests {
-    use super::reject_position_write;
+    use serde_json::json;
+
+    use super::{crate_matches, reject_position_write};
 
     const TRANSFORM: &str = "bevy_transform::components::transform::Transform";
     const CELL: &str = "big_space::grid::cell::CellCoord";
@@ -783,5 +896,27 @@ mod tests {
     #[test]
     fn does_not_refuse_an_unrelated_component() {
         assert!(reject_position_write("some::other::Type", "translation").is_ok());
+    }
+
+    #[test]
+    fn an_empty_crate_filter_matches_everything() {
+        assert!(crate_matches(&json!({"crateName": "avian3d"}), &[]));
+        assert!(crate_matches(&json!({}), &[]));
+    }
+
+    /// The case upstream gets wrong: `&str` and `()` have no crate name and `registry.schema`
+    /// lets them through whatever `with_crates` says.
+    #[test]
+    fn a_crate_filter_rejects_types_with_no_crate() {
+        let wanted = ["ename_engine".to_owned()];
+        assert!(!crate_matches(&json!({}), &wanted));
+        assert!(!crate_matches(
+            &json!({"crateName": "bevy_transform"}),
+            &wanted
+        ));
+        assert!(crate_matches(
+            &json!({"crateName": "ename_engine"}),
+            &wanted
+        ));
     }
 }
