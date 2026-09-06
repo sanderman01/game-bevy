@@ -51,7 +51,7 @@ default dependency graph.
 
 | Tool | Does |
 | --- | --- |
-| `world_list_entities` | Find entities by name substring, component, or parent. The discovery tool. |
+| `world_query` | Find entities by name substring, component, or parent. The discovery tool. |
 | `world_get_entity` | Every component on one entity, with values and absolute position. |
 | `registry_schema` | The JSON schema of registered types: the fully-qualified type paths, what fields a component has and their shapes. |
 | `world_spawn_entity` | Create an entity with a name, components and a position. |
@@ -76,8 +76,8 @@ candidates.
 
 **Discovery hides the ECS's own entities.** Bevy stores resources, observers and registered
 systems as entities, and in this project that is over 500 of them against seventeen named ones.
-`world_list_entities` filters them out and sorts named entities first. Pass `include_internal`
-to see them.
+`world_query` filters them out and sorts named entities first. Pass `include_internal` to see
+them.
 
 **Writing a component starts at `registry_schema`.** It takes a `contains` substring, so
 "rigidbody" finds `avian3d::dynamics::rigid_body::RigidBody`, and it returns the field names and

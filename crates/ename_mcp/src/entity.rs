@@ -80,8 +80,8 @@ impl EntitySelector {
 
                 match exact.len() {
                     0 => bail!(
-                        "no entity is named `{name}`. Use world_list_entities with \
-                         name_contains to find the right one."
+                        "no entity is named `{name}`. Use world_query with name_contains \
+                         to find the right one."
                     ),
                     1 => {
                         let found = exact.remove(0);

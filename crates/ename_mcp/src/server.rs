@@ -88,10 +88,10 @@ pub struct WithPid<T> {
 }
 
 // ---------------------------------------------------------------------------------------------
-// world_list_entities
+// world_query
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
-pub struct ListEntitiesParams {
+pub struct QueryParams {
     /// Case-insensitive substring of the entity's name. Entities with no name never match.
     #[serde(default)]
     pub name_contains: Option<String>,
@@ -290,10 +290,7 @@ impl GameServer {
                        Returns each entity's id, name, component type paths and absolute world \
                        position, named entities first. Start here."
     )]
-    async fn world_list_entities(
-        &self,
-        Parameters(params): Parameters<ListEntitiesParams>,
-    ) -> ToolResult<Value> {
+    async fn world_query(&self, Parameters(params): Parameters<QueryParams>) -> ToolResult<Value> {
         let parent = match &params.parent {
             Some(selector) => Some(selector.resolve(&self.brp).await.map_err(fail)?.entity),
             None => None,
