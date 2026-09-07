@@ -1,8 +1,8 @@
 //! `ename_remote` -- the agent-facing side channel: a BRP server plus the custom methods that
 //! BRP's built-ins do not cover.
 //!
-//! Sits above `ename_engine` and `ename_game`, below the binary, and links into a target only
-//! when that target asks for it. See `docs/design/agent-tooling.md`.
+//! Sits above `ename_engine`, below the binary, and links into a target only when that target
+//! asks for it. See `docs/design/agent-tooling.md`.
 //!
 //! # This crate is not safe to ship
 //!
@@ -17,7 +17,7 @@
 //! | --- | --- |
 //! | `game.entities.list` | `world.query` filters by exact type path and cannot report a position that survives the floating origin. |
 //! | `game.position.get` / `.set` | Position is a `CellCoord` plus a `Transform`, relative to a moving origin. A bare `Transform` is wrong everywhere but one cell. |
-//! | `game.run_state.get` / `.set` | Nothing in BRP can freeze the world, and reading a world that is still advancing answers a different question. |
+//! | `game.time.get` / `.set` | Nothing in BRP can freeze the world, and reading a world that is still advancing answers a different question. |
 //! | `game.logs.get` | Bevy's logs go to stderr, which a JSON-RPC client cannot see. |
 //! | `game.pid.get` | Nothing in BRP says which run of the process answered, so a restart between two calls is invisible. |
 //!
@@ -27,8 +27,8 @@ mod entities;
 mod logs;
 mod mutate;
 mod position;
-mod run;
 mod run_id;
+mod time;
 
 use bevy::{
     app::PluginGroupBuilder,
@@ -62,8 +62,8 @@ impl PluginGroup for RemotePlugins {
             .with_method_main(entities::LIST_METHOD, entities::list)
             .with_method_main(position::GET_METHOD, position::get)
             .with_method_main(position::SET_METHOD, position::set)
-            .with_method_main(run::GET_METHOD, run::get)
-            .with_method_main(run::SET_METHOD, run::set)
+            .with_method_main(time::GET_METHOD, time::get)
+            .with_method_main(time::SET_METHOD, time::set)
             .with_method_main(logs::GET_METHOD, logs::get)
             .with_method_main(run_id::GET_METHOD, run_id::get)
             // Last, so it replaces the built-in of the same name.
@@ -72,7 +72,6 @@ impl PluginGroup for RemotePlugins {
         PluginGroupBuilder::start::<Self>()
             .add(remote)
             .add(RemoteHttpPlugin::default())
-            .add(run::RunControlPlugin)
             .add(run_id::RunIdPlugin)
     }
 }

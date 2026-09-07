@@ -67,7 +67,7 @@ both, so the feature being convenient by default cannot become the feature shipp
 | `world_mutate_component` | Set one field of one component. |
 | `world_reparent_entity` | Move an entity in the hierarchy. |
 | `world_set_position` | Move an entity to an absolute world position. |
-| `run_get_state` / `run_set_state` | Read run state; pause, resume, or step N frames. |
+| `time_get` / `time_set` | Read the virtual clock; pause, resume, or step N frames. |
 | `log_get_entries` | Recent tracing events, filtered by level, target and message. |
 
 Every result also carries `pid`, three letters naming the run of the game process that answered
@@ -137,11 +137,11 @@ read `log_get_entries` before trusting it.
 Reading a component from a world that is still advancing answers a different question from the
 one usually being asked. The loop that makes an experiment:
 
-1. `run_set_state` `pause`
+1. `time_set` `pause`
 2. `world_get_components` -- the before state
-3. `run_set_state` `step`, `frames: 30`. This returns only once the frames have run.
+3. `time_set` `step`, `frames: 30`. This returns only once the frames have run.
 4. `world_get_components` -- the after state
-5. `run_set_state` `resume`
+5. `time_set` `resume`
 
 `elapsed_seconds` is virtual time and does not advance while paused. `frame` counts real frames
 and keeps climbing, because the renderer is still drawing.

@@ -1,4 +1,5 @@
-//! `ename_engine` -- the runtime layer: camera rig, big_space integration, physics glue, input.
+//! `ename_engine` -- the runtime layer: camera rig, big_space integration, physics glue, input,
+//! time control.
 //!
 //! Bottom of the layer graph, alongside `ename_content`. It must never depend on `ename_editor`,
 //! `ename_content`, or `ename_game`: if engine code needs something from a higher layer, move the
@@ -8,6 +9,7 @@ pub mod bigspace;
 pub mod camera;
 pub mod input;
 pub mod physics;
+pub mod time;
 
 use bevy::{
     app::PluginGroupBuilder,
@@ -73,5 +75,6 @@ impl PluginGroup for EnginePlugins {
             .add(camera::VirtualCameraPlugin)
             .add(input::FlyCameraPlugin)
             .add(physics::PhysicsIntegrationPlugin)
+            .add(time::TimeControlPlugin)
     }
 }

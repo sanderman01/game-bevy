@@ -18,7 +18,7 @@ ename (bin)        -> ename_engine, ename_content, ename_game
                       + ename_editor, ename_game_editor   (feature `editor`)
                       + ename_remote                      (feature `agent`)
 ename_game_editor  -> ename_editor, ename_game          (allowed; empty today, so bevy only)
-ename_remote       -> ename_game, ename_engine
+ename_remote       -> ename_engine
 ename_game         -> ename_engine, ename_content
 ename_editor       -> ename_engine
 ename_content      -> serde, toml, thiserror, bevy      (no first-party deps)

@@ -354,13 +354,13 @@ pub struct PositionResult {
 }
 
 // ---------------------------------------------------------------------------------------------
-// run control and logs
+// time control and logs
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct SetRunStateParams {
+pub struct SetTimeParams {
     /// "pause" freezes virtual time, "resume" unfreezes it, "step" runs `frames` frames and
     /// freezes again.
-    pub action: RunAction,
+    pub action: TimeAction,
     /// Frames to run. Only read when `action` is "step".
     #[serde(default)]
     pub frames: Option<u32>,
@@ -368,7 +368,7 @@ pub struct SetRunStateParams {
 
 #[derive(Clone, Copy, Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum RunAction {
+pub enum TimeAction {
     Pause,
     Resume,
     Step,
@@ -643,31 +643,28 @@ impl GameServer {
     }
 
     #[tool(
-        description = "Whether the world is running or frozen, how much virtual time has elapsed, \
-                       the frame number, and the current game state."
+        description = "Whether virtual time is running or frozen, how much of it has elapsed, \
+                       and the frame number."
     )]
-    async fn run_get_state(&self) -> ToolResult<Value> {
+    async fn time_get(&self) -> ToolResult<Value> {
         let state = self
             .brp
-            .call_raw("game.run_state.get", json!({}))
+            .call_raw("game.time.get", json!({}))
             .await
             .map_err(fail)?;
         self.tag(state).await
     }
 
     #[tool(
-        description = "Freeze the world, resume it, or run a fixed number of frames and freeze \
-                       again. Reading a component from a frozen world is the only way to compare \
-                       two states."
+        description = "Freeze virtual time, resume it, or run a fixed number of frames and \
+                       freeze again. Reading a component from a frozen world is the only way to \
+                       compare two states."
     )]
-    async fn run_set_state(
-        &self,
-        Parameters(params): Parameters<SetRunStateParams>,
-    ) -> ToolResult<Value> {
+    async fn time_set(&self, Parameters(params): Parameters<SetTimeParams>) -> ToolResult<Value> {
         let request = match params.action {
-            RunAction::Pause => json!({ "action": "pause" }),
-            RunAction::Resume => json!({ "action": "resume" }),
-            RunAction::Step => {
+            TimeAction::Pause => json!({ "action": "pause" }),
+            TimeAction::Resume => json!({ "action": "resume" }),
+            TimeAction::Step => {
                 let frames = params
                     .frames
                     .ok_or_else(|| ErrorData::invalid_params("`step` needs `frames`", None))?;
@@ -676,11 +673,11 @@ impl GameServer {
         };
         let started = self
             .brp
-            .call_raw("game.run_state.set", request)
+            .call_raw("game.time.set", request)
             .await
             .map_err(fail)?;
 
-        if !matches!(params.action, RunAction::Step) {
+        if !matches!(params.action, TimeAction::Step) {
             return self.tag(started).await;
         }
         // A step is only useful if the caller can read the world after it, so the tool does not
@@ -701,7 +698,7 @@ impl GameServer {
         }
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         loop {
-            let state = self.brp.call_raw("game.run_state.get", json!({})).await?;
+            let state = self.brp.call_raw("game.time.get", json!({})).await?;
             let step: StepState = serde_json::from_value(state.clone())?;
             if step.steps_remaining.is_none() {
                 return Ok(state);

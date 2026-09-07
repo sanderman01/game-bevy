@@ -3018,7 +3018,6 @@ version = "0.0.0"
 dependencies = [
  "bevy",
  "ename_engine",
- "ename_game",
  "serde",
  "serde_json",
  "tracing",

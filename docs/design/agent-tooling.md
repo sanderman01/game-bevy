@@ -22,7 +22,7 @@ the crate is absent from that graph, the same mechanism that keeps the editor ou
 and no cached state, so a call after the game restarts just works. That is right, and it is also the
 trap: nothing otherwise tells the agent the world it is editing is not the one it planned against.
 Tagging every response needs no extra call and no memory of having asked. It is deliberately not
-part of `run_get_state`, because a signal only visible on request is one the agent will not think to
+part of `time_get`, because a signal only visible on request is one the agent will not think to
 look for. Three letters keeps the per-response cost near zero.
 
 **Every tool that names an entity takes a name or an id, and every result carries both.** Neither
@@ -44,9 +44,13 @@ a `CellCoord` plus a `Transform` relative to a floating origin that moves with t
 `game.position.get` / `.set`, not in the sidecar, because the write has to set both halves at once
 and finding the entity's grid means walking its ancestors.
 
-`ename_remote` sits above `ename_game` rather than above `ename_engine` alone, because
-`game.run_state.get` reports `GameState`, a gameplay concept. It adds no arrow the
-[layer graph](crate-layout.md#layer-graph) forbids.
+**Freezing the world is an engine capability, not an agent one.** `TimeControl` -- the step
+countdown that sits alongside `Time<Virtual>`'s paused flag -- lives in `ename_engine::time`, and
+`game.time.get` / `.set` is only a BRP surface over it. A pause menu wants the same thing,
+and the agent must not be the only way to reach it. The method reports the clock and nothing else:
+it used to report `GameState` too, which was the one reason `ename_remote` depended on
+`ename_game`. Dropping the field removed that arrow from the
+[layer graph](crate-layout.md#layer-graph), so the side channel now sits directly on the engine.
 
 ## What the agent can actually see
 
