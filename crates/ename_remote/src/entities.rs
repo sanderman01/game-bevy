@@ -134,20 +134,20 @@ pub(crate) fn list(In(params): In<Option<Value>>, world: &mut World) -> BrpResul
     })
 }
 
-/// Type paths of every component on the entity, sorted so two calls agree.
+/// Type paths of every component on the entity. Not part of any response: these exist only to
+/// answer the `include_internal` and `with_components` membership tests above, so their order
+/// is never observed.
 fn component_paths(world: &World, entity: Entity) -> Vec<String> {
     let Ok(entity_ref) = world.get_entity(entity) else {
         return Vec::new();
     };
-    let mut paths: Vec<String> = entity_ref
+    entity_ref
         .archetype()
         .components()
         .iter()
         .filter_map(|&id| world.components().get_info(id))
         .map(|info| info.name().to_string())
-        .collect();
-    paths.sort_unstable();
-    paths
+        .collect()
 }
 
 fn is_descendant_of(world: &World, entity: Entity, ancestor: Entity) -> bool {

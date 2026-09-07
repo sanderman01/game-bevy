@@ -5,16 +5,22 @@
 //! plan or a message to the user can refer to. Neither is sufficient alone: an entity need not
 //! have a `Name`, and names are not unique.
 
+use std::collections::HashMap;
+
 use anyhow::{Context as _, bail};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::brp::BrpClient;
+
+/// The type path of `Name`, the one component an id has to be resolved against.
+const NAME: &str = "bevy_ecs::name::Name";
 
 /// Which entity a tool should act on. Exactly one of the two fields.
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct EntitySelector {
-    /// The entity id from an earlier result. Valid only until the game restarts.
+    /// The entity id from an earlier result. Valid only until the game restarts; an id from a
+    /// previous run may silently name a different entity, so compare `pid` before reusing one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entity: Option<u64>,
     /// The exact value of the entity's `Name` component. Must match exactly one entity.
@@ -55,7 +61,17 @@ impl From<Summary> for ResolvedEntity {
     }
 }
 
-/// Every entity in the world, which is what both halves of `resolve` search.
+/// What `world.get_components` answers with when `strict` is off. `errors` is not read here: a
+/// path that lands there is a component the entity does not have, which for `Name` is an answer
+/// and not a failure. Declared locally rather than shared with the tool catalogue, because the
+/// two uses want different halves of the response.
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct ComponentValues {
+    components: HashMap<String, Value>,
+}
+
+/// Every entity in the world, which is what a name search and `world_grid` walk.
 ///
 /// The limit is high enough not to bind: a name or an id that matched something outside it would
 /// read as "no such entity", which is the one answer this must never invent.
@@ -82,16 +98,35 @@ impl EntitySelector {
     /// An ambiguous name is an error listing every candidate rather than a silent pick of the
     /// first match: picking silently would let the agent believe it edited something it did
     /// not, and the scene already contains three entities named `VirtualCamera`.
+    ///
+    /// An id is already the integer BRP wants, so resolving one is a single read of `Name`
+    /// rather than a walk of the world. That read is not redundant: `world.get_components`
+    /// looks the entity up before it looks at the component list, so a dead id fails here
+    /// instead of reaching the tool that would have edited nothing.
     pub async fn resolve(&self, brp: &BrpClient) -> anyhow::Result<ResolvedEntity> {
         match (self.entity, self.name.as_deref()) {
             (Some(_), Some(_)) => bail!("give either `entity` or `name`, not both"),
             (None, None) => bail!("give either `entity` or `name`"),
-            (Some(entity), None) => all_entities(brp, None)
-                .await?
-                .into_iter()
-                .find(|summary| summary.entity == entity)
-                .map(ResolvedEntity::from)
-                .with_context(|| format!("no entity with id {entity} exists in this run")),
+            (Some(entity), None) => {
+                let values: ComponentValues = brp
+                    .call(
+                        "world.get_components",
+                        json!({ "entity": entity, "components": [NAME], "strict": false }),
+                    )
+                    .await
+                    .with_context(|| format!("no entity with id {entity} exists in this run"))?;
+
+                // An entity without a `Name` answers with the path under `errors`, leaving
+                // `components` empty. That is a nameless entity, not a missing one.
+                Ok(ResolvedEntity {
+                    entity,
+                    name: values
+                        .components
+                        .get(NAME)
+                        .and_then(Value::as_str)
+                        .map(str::to_owned),
+                })
+            }
             (None, Some(name)) => {
                 let mut exact: Vec<Summary> = all_entities(brp, Some(name))
                     .await?

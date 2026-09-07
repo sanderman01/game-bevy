@@ -458,15 +458,7 @@ impl GameServer {
         let mut entities = Vec::with_capacity(params.entities.len());
         for selector in &params.entities {
             let identity = selector.resolve(&self.brp).await.map_err(fail)?;
-            let mut components: Vec<String> = self
-                .brp
-                .call(
-                    "world.list_components",
-                    json!({ "entity": identity.entity }),
-                )
-                .await
-                .map_err(fail)?;
-            components.sort_unstable();
+            let components = self.list_components(identity.entity).await?;
             entities.push(EntityComponentTypes {
                 identity,
                 components,
@@ -546,6 +538,20 @@ impl GameServer {
         .await
     }
 
+    /// The type paths of every component on one entity.
+    ///
+    /// BRP already sorts these, deliberately, so that no client comes to depend on archetype
+    /// order. Sorting again costs nothing and means the guarantee is held on this side too.
+    async fn list_components(&self, entity: u64) -> Result<Vec<String>, ErrorData> {
+        let mut paths: Vec<String> = self
+            .brp
+            .call("world.list_components", json!({ "entity": entity }))
+            .await
+            .map_err(fail)?;
+        paths.sort_unstable();
+        Ok(paths)
+    }
+
     /// Reads named component values, and says which of the names the entity does not have.
     ///
     /// The split is the point. `world.get_components` with `strict` off reports an absent
@@ -558,11 +564,7 @@ impl GameServer {
         entity: u64,
         paths: &[String],
     ) -> Result<(ComponentValues, Vec<String>), ErrorData> {
-        let on_entity: Vec<String> = self
-            .brp
-            .call("world.list_components", json!({ "entity": entity }))
-            .await
-            .map_err(fail)?;
+        let on_entity = self.list_components(entity).await?;
         let (present, absent): (Vec<String>, Vec<String>) = paths
             .iter()
             .cloned()

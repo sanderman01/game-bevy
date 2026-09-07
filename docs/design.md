@@ -94,7 +94,13 @@ carrying it on every response near zero.
 generation-and-index bit pattern that changes every run, so an id cannot be written into a plan
 or quoted back to the user. Names can. Neither works alone: an entity need not have a `Name`, and
 names are not unique -- the starting scene has three entities named `VirtualCamera`. An ambiguous
-name is an error listing the candidates, never a silent pick of the first match.
+name is an error listing the candidates, never a silent pick of the first match. The id crossing
+the boundary is the raw `Entity::to_bits` integer. A readable `606v0` form, index and generation
+written out, was built and then reverted: an `Entity` nested inside a component value serialises
+as a bare integer with nothing in the JSON marking it as one, so keeping the readable form honest
+would have meant a type-driven rewrite of every entity leaf inside component values, on the read
+path and the write path both, driven off the type registry. The accepted cost is that an id no
+longer matches what the editor's hierarchy panel shows beside the same entity.
 
 **Positions cross the boundary as absolute double-precision metres.** Under big_space a position
 is a `CellCoord` plus a `Transform` relative to a floating origin that moves with the camera. A
