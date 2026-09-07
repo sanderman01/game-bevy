@@ -8,11 +8,15 @@
 //! Entries are structured rather than formatted. Level, target, message and timestamp stay
 //! separate fields, so a reader filters on them instead of pattern-matching rendered text.
 //!
-//! An `EnvFilter` added to a subscriber gates every layer on it, whatever the order, so the
-//! buffer can only be more verbose than the terminal if the subscriber-wide filter is the more
-//! verbose of the two and the terminal narrows itself back down. That is what [`CAPTURE_LEVEL`]
-//! and [`terminal_layer`] are for: `EnginePlugins` gives `LogPlugin` the first as its level and
-//! the second as its `fmt_layer`.
+//! Three filters decide what lands here, because an `EnvFilter` added to a subscriber gates every
+//! layer on it whatever the order. `EnginePlugins` opens the subscriber-wide one to
+//! [`MAX_LEVEL`], then each consumer carries its own: [`terminal_layer`] pins stderr at
+//! [`DEFAULT_LEVEL`], and the buffer's is reloadable, so [`CaptureLevel`] can raise it while the
+//! game runs.
+//!
+//! Reloadable rather than fixed at trace, because a callsite no filter wants is never even
+//! formatted. Left at trace the physics solver alone allocates a few hundred strings a second and
+//! fills the ring in about fifteen seconds. Off, those callsites cost a filter check.
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -27,7 +31,12 @@ use bevy::{
             Event, Subscriber,
             field::{Field, Visit},
         },
-        tracing_subscriber::{EnvFilter, Layer, fmt, layer::Context},
+        tracing_subscriber::{
+            EnvFilter, Layer, fmt,
+            layer::Context,
+            registry::Registry,
+            reload::{self, Handle},
+        },
     },
     prelude::*,
 };
@@ -36,22 +45,16 @@ use bevy::{
 /// [`crate::EnginePlugins::with_log_capacity`].
 pub const DEFAULT_CAPACITY: usize = 3000;
 
-/// How verbose the buffer is, and so also the subscriber as a whole.
+/// The ceiling on [`CaptureLevel`], and so the level `EnginePlugins` opens the subscriber to.
 ///
-/// Trace, because the console's level filter can only hide what was already captured.
-pub const CAPTURE_LEVEL: Level = Level::TRACE;
+/// Nothing above this can ever be captured, whatever the console asks for: the subscriber-wide
+/// filter is built once and `LogPlugin` does not make it reloadable.
+pub const MAX_LEVEL: Level = Level::TRACE;
 
-/// Targets held below [`CAPTURE_LEVEL`], on top of `LogPlugin`'s own `wgpu` and `naga` defaults.
+/// What stderr prints, and where [`CaptureLevel`] starts.
 ///
-/// These trace once per frame or once per physics substep. Measured on this game, they alone
-/// fill a [`DEFAULT_CAPACITY`] buffer in about fifteen seconds, pushing out every startup message
-/// and leaving the console empty at its default levels. Add to the list when a new target drowns
-/// the console; name one in `RUST_LOG` to get its trace back.
-pub const CAPTURE_FILTER: &str = "avian3d=debug,bevy_egui::input=debug";
-
-/// How verbose stderr is. `LogPlugin::level`'s own default, kept here because the buffer took
-/// that field over.
-pub const TERMINAL_LEVEL: Level = Level::INFO;
+/// It is `LogPlugin::level`'s own default, kept here because the buffer took that field over.
+pub const DEFAULT_LEVEL: Level = Level::INFO;
 
 /// An interned emitting module path, such as `bevy_render::renderer`.
 ///
@@ -244,55 +247,97 @@ impl<'a> LogView<'a> {
     }
 }
 
-/// The layer handed to `LogPlugin::custom_layer`.
+/// The stderr layer, carrying its own [`DEFAULT_LEVEL`] filter rather than borrowing the
+/// subscriber's.
 ///
-/// It also inserts the buffer as a resource, which is why it takes the `App`: the layer and every
-/// reader have to share one buffer, and this is the only point where both are reachable.
-/// The stderr layer, filtered to [`TERMINAL_LEVEL`] on its own rather than through the
-/// subscriber.
-///
-/// `LogPlugin` builds exactly this layer when `fmt_layer` returns `None`. The only thing added is
-/// the filter, which has to be here because the subscriber-wide one now runs at
-/// [`CAPTURE_LEVEL`]; without it every trace event the buffer wants would also be printed.
+/// `LogPlugin` builds exactly this layer when `fmt_layer` returns `None`. The filter is the only
+/// addition, and it has to be here because the subscriber-wide one is open to [`MAX_LEVEL`];
+/// without it, everything the console asks the buffer for would be printed as well.
 pub fn terminal_layer(_app: &mut App) -> Option<BoxedFmtLayer> {
     Some(Box::new(
         // `fmt::Layer::default` is what reads `NO_COLOR`.
         fmt::Layer::default()
             .with_writer(std::io::stderr)
-            .with_filter(env_filter(TERMINAL_LEVEL)),
+            .with_filter(env_filter(DEFAULT_LEVEL)),
     ))
 }
 
-/// The directives `EnginePlugins` gives `LogPlugin`, which gate every layer and so decide what
-/// the buffer can hold.
-pub fn capture_filter() -> String {
-    format!("{DEFAULT_FILTER}{CAPTURE_FILTER}")
-}
-
-/// Builds a filter the way `LogPlugin` builds its own: the plugin's default directives at
-/// `level`, then `RUST_LOG` folded in on top so it can override them.
+/// How verbose the buffer is, changeable while the game runs.
 ///
-/// Repeated rather than reused because `LogPlugin::build_filter_layer` is private.
-fn env_filter(level: Level) -> EnvFilter {
-    let default = EnvFilter::builder().parse_lossy(format!("{level},{DEFAULT_FILTER}"));
-    let environment = std::env::var(EnvFilter::DEFAULT_ENV).unwrap_or_default();
-    environment
-        .split(',')
-        .filter(|directive| !directive.is_empty())
-        .try_fold(default.clone(), |filter, directive| {
-            directive.parse().map(|parsed| filter.add_directive(parsed))
-        })
-        // A malformed `RUST_LOG` is `LogPlugin`'s to complain about; it parses the same string.
-        .unwrap_or(default)
+/// The console's level checkboxes drive it, so a level nobody has asked for costs a filter check
+/// at its callsite instead of a formatted message and a push.
+#[derive(Resource, Clone)]
+pub struct CaptureLevel {
+    handle: Handle<EnvFilter, Registry>,
+    current: Arc<Mutex<Level>>,
 }
 
+impl CaptureLevel {
+    pub fn get(&self) -> Level {
+        *self.lock()
+    }
+
+    /// Raises or lowers what the buffer captures, up to [`MAX_LEVEL`].
+    ///
+    /// Cheap to call every frame with a level that has not changed, which is how the console
+    /// calls it. Changing it is not cheap: `tracing` rebuilds its callsite interest cache.
+    pub fn set(&self, level: Level) {
+        // `tracing::Level` orders by verbosity, so `min` is the less verbose of the two.
+        let level = level.min(MAX_LEVEL);
+        let mut current = self.lock();
+        if *current == level {
+            return;
+        }
+        if self.handle.reload(env_filter(level)).is_ok() {
+            *current = level;
+        }
+    }
+
+    fn lock(&self) -> MutexGuard<'_, Level> {
+        self.current
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+/// Builds a filter the way `LogPlugin` builds its own: its default directives at `level`, then
+/// `RUST_LOG` appended so that anything it names wins.
+///
+/// Strings on both ends of this are not a choice. `DEFAULT_FILTER` is a `&str` constant,
+/// `RUST_LOG` is an environment variable, and `EnvFilter` has no constructor for a directive that
+/// does not go through `FromStr`.
+fn env_filter(level: Level) -> EnvFilter {
+    // `DEFAULT_FILTER` ends in a comma, and `parse_lossy` skips the empty directive an unset
+    // `RUST_LOG` leaves behind.
+    let environment = std::env::var(EnvFilter::DEFAULT_ENV).unwrap_or_default();
+    EnvFilter::builder().parse_lossy(format!("{level},{DEFAULT_FILTER}{environment}"))
+}
+
+/// The layer handed to `LogPlugin::custom_layer`.
+///
+/// It also inserts the buffer and [`CaptureLevel`] as resources, which is why it takes the `App`:
+/// the layer and every reader have to share one buffer, and this is the only point where both are
+/// reachable.
 pub fn capture_layer(app: &mut App) -> Option<BoxedLayer> {
     let buffer = LogBuffer::default();
     app.insert_resource(buffer.clone());
-    Some(Box::new(CaptureLayer {
-        buffer,
-        start: Instant::now(),
-    }))
+
+    let (filter, handle) = reload::Layer::new(env_filter(DEFAULT_LEVEL));
+    app.insert_resource(CaptureLevel {
+        handle,
+        current: Arc::new(Mutex::new(DEFAULT_LEVEL)),
+    });
+
+    Some(Box::new(
+        CaptureLayer {
+            buffer,
+            start: Instant::now(),
+        }
+        // A per-layer filter, not a subscriber-wide one: it decides what this layer sees without
+        // touching what stderr prints, and it takes part in callsite interest, so a level it
+        // rejects is never formatted.
+        .with_filter(filter),
+    ))
 }
 
 struct CaptureLayer {
@@ -365,16 +410,46 @@ impl Plugin for LogBufferPlugin {
 
 #[cfg(test)]
 mod tests {
-    use super::{CAPTURE_LEVEL, DEFAULT_CAPACITY, LogBuffer, capture_filter};
-    use bevy::log::{Level, tracing_subscriber::EnvFilter};
+    use super::{
+        CaptureLevel, DEFAULT_CAPACITY, DEFAULT_LEVEL, LogBuffer, MAX_LEVEL, capture_layer,
+    };
+    use bevy::{
+        app::App,
+        log::{
+            Level,
+            tracing_subscriber::{layer::SubscriberExt as _, registry::Registry},
+        },
+    };
+
+    /// The whole point of the reloadable filter: a level nobody asked for is not captured, and
+    /// asking for it starts capture without rebuilding the subscriber.
+    #[test]
+    fn the_capture_level_decides_what_reaches_the_buffer() {
+        let mut app = App::new();
+        let layer = capture_layer(&mut app).expect("capture layer");
+        let buffer = app.world().resource::<LogBuffer>().clone();
+        let level = app.world().resource::<CaptureLevel>().clone();
+        let count = || buffer.read(|view| view.len());
+
+        bevy::log::tracing::subscriber::with_default(Registry::default().with(layer), || {
+            bevy::log::debug!("before");
+            assert_eq!(count(), 0, "debug below the capture level");
+
+            level.set(Level::DEBUG);
+            bevy::log::debug!("after");
+            assert_eq!(count(), 1, "debug once the console asks for it");
+
+            level.set(DEFAULT_LEVEL);
+            bevy::log::debug!("later");
+            assert_eq!(count(), 1, "debug again once it is unticked");
+        });
+    }
 
     #[test]
-    fn the_capture_filter_parses() {
-        // `LogPlugin` parses this leniently, so a typo would be dropped without a word. Strict
-        // parsing here is what turns that into a failing test.
-        EnvFilter::builder()
-            .parse(format!("{CAPTURE_LEVEL},{}", capture_filter()))
-            .expect("capture filter directives");
+    fn the_buffer_can_be_raised_but_not_past_the_subscriber() {
+        // `tracing::Level` orders by verbosity, so the ceiling is the *greatest* level.
+        assert!(DEFAULT_LEVEL < MAX_LEVEL);
+        assert_eq!(MAX_LEVEL.min(Level::TRACE), MAX_LEVEL);
     }
 
     fn fill(buffer: &LogBuffer, count: usize) {

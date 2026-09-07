@@ -7,7 +7,7 @@ use std::{borrow::Cow, collections::BTreeSet, fmt::Write as _};
 
 use bevy::{ecs::world::World, log::Level};
 use egui::{Align2, Color32, FontId, Key, Modifiers, Rect, Sense, TextStyle, Visuals, pos2, vec2};
-use ename_engine::log::{LogBuffer, LogEntryRef, LogView};
+use ename_engine::log::{CaptureLevel, DEFAULT_LEVEL, LogBuffer, LogEntryRef, LogView};
 
 /// Character columns each field starts at. Monospace, so a column is a multiple of one glyph
 /// width and the eye can scan a field straight down the page.
@@ -34,20 +34,33 @@ const LEVELS: [Level; 5] = [
 /// Which levels the list shows. One flag per level rather than a minimum severity, so a noisy
 /// level can be dropped without losing the quieter ones below it.
 ///
-/// It reaches only as far as the buffer does. `ename_engine::log::CAPTURE_LEVEL` captures at
-/// trace, so debug and trace are here to be shown, but a target pinned lower by
-/// `CAPTURE_FILTER` or by `RUST_LOG` never reached the buffer and no checkbox brings it back.
+/// It drives capture as well as display: ticking Debug or Trace raises
+/// `ename_engine::log::CaptureLevel`, because a level nobody is looking at should not be costing
+/// a formatted message per callsite. Raising it is not retroactive, so what happened before the
+/// tick is gone. A target `RUST_LOG` pins lower never arrives either.
 #[derive(Clone, Copy)]
 struct LevelFilter([bool; LEVELS.len()]);
 
 impl Default for LevelFilter {
     fn default() -> Self {
-        // Debug and trace off: they are where a busy frame's thousands of lines come from.
+        // Debug and trace off: nothing captures them until someone ticks the box.
         Self([true, true, true, false, false])
     }
 }
 
 impl LevelFilter {
+    /// The level the buffer has to capture at for every ticked box to have rows to show.
+    ///
+    /// Never below `DEFAULT_LEVEL`, so unticking Info does not throw away entries that ticking it
+    /// again would want back. `LEVELS` runs most severe first and `tracing::Level` orders by
+    /// verbosity, so the last ticked one is the most verbose and `max` keeps the floor.
+    fn capture_level(self) -> Level {
+        LEVELS
+            .into_iter()
+            .filter(|level| self.allows(*level))
+            .fold(DEFAULT_LEVEL, Level::max)
+    }
+
     fn allows(self, level: Level) -> bool {
         LEVELS
             .iter()
@@ -153,6 +166,12 @@ pub(crate) fn ui(ui: &mut egui::Ui, state: &mut ConsoleState, world: &World) {
         shortcuts(ui, state, &visible);
         rows(ui, state, &visible);
     });
+
+    // Outside `read`, which holds the buffer's lock: a level change rebuilds `tracing`'s callsite
+    // interest cache, and every thread that logs during it wants that same lock.
+    if let Some(capture) = world.get_resource::<CaptureLevel>() {
+        capture.set(state.levels.capture_level());
+    }
 
     if clear {
         buffer.clear();
@@ -540,6 +559,23 @@ mod tests {
         assert!(filter.allows(Level::INFO));
         assert!(!filter.allows(Level::DEBUG));
         assert!(!filter.allows(Level::TRACE));
+    }
+
+    #[test]
+    fn capture_follows_the_most_verbose_ticked_level() {
+        assert_eq!(LevelFilter::default().capture_level(), Level::INFO);
+
+        let mut filter = LevelFilter::default();
+        filter.0[3] = true;
+        assert_eq!(filter.capture_level(), Level::DEBUG);
+        filter.0[4] = true;
+        assert_eq!(filter.capture_level(), Level::TRACE);
+
+        // Unticking everything still captures at the floor, so the rows come back on a re-tick.
+        assert_eq!(
+            LevelFilter([false; LEVELS.len()]).capture_level(),
+            Level::INFO
+        );
     }
 
     #[test]

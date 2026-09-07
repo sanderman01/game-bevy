@@ -59,13 +59,13 @@ impl PluginGroup for EnginePlugins {
                 ..default()
             })
             .set(LogPlugin {
-                // The subscriber-wide filter gates every layer, so it has to be as verbose as
-                // the most verbose consumer, which is the buffer. `terminal_layer` narrows
-                // stderr back to `log::TERMINAL_LEVEL`.
-                level: log::CAPTURE_LEVEL,
-                filter: log::capture_filter(),
+                // The subscriber-wide filter gates every layer, so it is opened all the way and
+                // each consumer carries its own: `terminal_layer` for stderr, `log::CaptureLevel`
+                // for the buffer.
+                level: log::MAX_LEVEL,
                 custom_layer: log::capture_layer,
                 fmt_layer: log::terminal_layer,
+                ..default()
             })
             .disable::<TransformPlugin>()
             .add_group(BigSpaceDefaultPlugins)

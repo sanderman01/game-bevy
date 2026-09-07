@@ -87,7 +87,14 @@ by default. `EnginePlugins::with_log_layer` and `ename_remote::capture_layer` ar
 
 Owning the buffer means `EnginePlugins` also owns the subscriber's verbosity. An `EnvFilter` added
 to a subscriber gates every layer on it, so the buffer can only be more verbose than stderr if the
-subscriber-wide filter runs at the buffer's level and stderr carries a filter of its own. That is
-what `log::CAPTURE_LEVEL` (trace) and `log::terminal_layer` (info) do, and it is why `EnginePlugins`
-sets `LogPlugin`'s `level`, `filter` and `fmt_layer` rather than just `custom_layer`. `RUST_LOG`
-still overrides both, as it did before.
+subscriber-wide filter is the more permissive one and each consumer narrows itself back down. So
+`EnginePlugins` opens it to `log::MAX_LEVEL` (trace) and sets both `fmt_layer` and `custom_layer`:
+stderr gets a fixed `log::DEFAULT_LEVEL` (info) filter, and the buffer gets a reloadable one behind
+the `log::CaptureLevel` resource. `RUST_LOG` still overrides both, as it did before.
+
+`CaptureLevel` is what the editor's level checkboxes drive, which puts an editor concern in the
+bottom crate. The alternative is capturing at trace always, and that is worse than the coupling:
+per-layer filters take part in callsite interest, so a level nobody has ticked costs a filter check
+instead of a formatted message, a `String` and a push. Measured on this game, always-on trace was a
+few hundred allocations a second from the physics solver alone and filled the 3000-entry ring in
+about fifteen seconds. The resource is a plain level, not a UI type, so the coupling stays one way.
