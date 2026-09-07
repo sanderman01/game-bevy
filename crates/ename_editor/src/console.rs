@@ -121,7 +121,7 @@ fn detail(ui: &mut egui::Ui, state: &ConsoleState, view: &LogView<'_>) {
                     ui.add(
                         egui::Label::new(
                             egui::RichText::new(format!(
-                                "{:>9.3}  {:<5}  {}\n{}",
+                                "{:>9.3}  {:<5}  {}  {}",
                                 entry.timestamp,
                                 entry.level.as_str(),
                                 entry.target_name,
