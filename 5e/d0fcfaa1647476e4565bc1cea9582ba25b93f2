@@ -1,0 +1,19 @@
+crates/ename/src/main.rs
+  s_3f61bffa922f0e::t_322f2675582e2a 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "5ed0fcfaa1647476e4565bc1cea9582ba25b93f2",
+  "prompts": {},
+  "sessions": {
+    "s_3f61bffa922f0e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "43e52935-69e8-4994-9787-a8b2e9868b5b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
