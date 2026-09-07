@@ -32,12 +32,23 @@ pub(crate) struct PositionResponse {
     position: [f64; 3],
 }
 
+#[derive(Serialize)]
+pub(crate) struct GetResponse {
+    entity: Entity,
+    position: [f64; 3],
+    /// The entity holding the `Grid` the position is expressed in. Naming it is what lets a
+    /// caller tell which frame a `Transform` and a `CellCoord` belong to.
+    grid: Entity,
+}
+
 pub(crate) fn get(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
     let GetParams { entity } = parse_some(params)?;
-    let position = absolute_position(world, entity)?;
-    crate::to_value(PositionResponse {
+    let (grid_entity, grid) = grid_of(world, entity)?;
+    let position = position_in(grid, world, entity);
+    crate::to_value(GetResponse {
         entity,
         position: position.to_array(),
+        grid: grid_entity,
     })
 }
 
@@ -49,7 +60,7 @@ pub(crate) fn set(In(params): In<Option<Value>>, world: &mut World) -> BrpResult
     let position = DVec3::from(position);
 
     // Cloned so the immutable borrow of the world ends before the entity is written.
-    let grid = grid_of(world, entity)?.clone();
+    let grid = grid_of(world, entity)?.1.clone();
     let (cell, offset) = grid.translation_to_grid(position);
 
     let mut entity_mut = world
@@ -71,24 +82,29 @@ pub(crate) fn set(In(params): In<Option<Value>>, world: &mut World) -> BrpResult
 
 /// The entity's position in metres, absolute, in the frame of the grid it belongs to.
 pub(crate) fn absolute_position(world: &World, entity: Entity) -> Result<DVec3, BrpError> {
-    let grid = grid_of(world, entity)?;
-    let cell = world.get::<CellCoord>(entity).copied().unwrap_or_default();
-    let transform = world.get::<Transform>(entity).copied().unwrap_or_default();
-    Ok(grid.grid_position_double(&cell, &transform))
+    let (_, grid) = grid_of(world, entity)?;
+    Ok(position_in(grid, world, entity))
 }
 
-/// The nearest `Grid` at or above `entity`.
+/// The entity's position in metres within `grid`'s frame.
+fn position_in(grid: &Grid, world: &World, entity: Entity) -> DVec3 {
+    let cell = world.get::<CellCoord>(entity).copied().unwrap_or_default();
+    let transform = world.get::<Transform>(entity).copied().unwrap_or_default();
+    grid.grid_position_double(&cell, &transform)
+}
+
+/// The nearest `Grid` at or above `entity`, with the entity holding it.
 ///
 /// Nested grids compose their frames; this walks to the first one and stops, which is correct
 /// while the scene has a single root grid. Revisit when one is nested inside another.
-fn grid_of(world: &World, entity: Entity) -> Result<&Grid, BrpError> {
+fn grid_of(world: &World, entity: Entity) -> Result<(Entity, &Grid), BrpError> {
     if world.get_entity(entity).is_err() {
         return Err(BrpError::entity_not_found(entity));
     }
     let mut current = entity;
     loop {
         if let Some(grid) = world.get::<Grid>(current) {
-            return Ok(grid);
+            return Ok((current, grid));
         }
         match world.get::<ChildOf>(current) {
             Some(parent) => current = parent.parent(),
