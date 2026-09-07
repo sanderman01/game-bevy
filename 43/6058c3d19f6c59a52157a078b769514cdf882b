@@ -1,0 +1,37 @@
+crates/ename_remote/src/position.rs
+  s_a340916b9e008a::t_7c4e8f9fdc2a57 31,37,41,49,51,78
+crates/ename_remote/src/entities.rs
+  s_a340916b9e008a::t_6f49006d7cc643 61,111,126
+crates/ename_mcp/src/entity.rs
+  s_a340916b9e008a::t_f43261028b555c 109
+  s_a340916b9e008a::t_72c45afeb147ed 3-4,17,19,29,36,52,86,89-94,111
+crates/ename_mcp/src/server.rs
+  s_a340916b9e008a::t_f43261028b555c 463-466
+  s_a340916b9e008a::t_533c9ce728de62 135
+  s_a340916b9e008a::t_bdc244784ea2ee 410,492,522,533,766,807,822,838,859,880,886,911,934,939
+  s_a340916b9e008a::t_5ee366b10774ed 527
+  s_a340916b9e008a::t_d22e6835b928d1 432
+  s_a340916b9e008a::t_66e4f4b669b27e 789-792
+  s_a340916b9e008a::t_7860cfba34c09e 222
+  s_a340916b9e008a::t_68f2367f742aa0 540
+  s_a340916b9e008a::t_4bdabd7a51ae61 131-132
+  s_a340916b9e008a::t_2cf83eff731627 30
+docs/agent-tools.md
+  s_a340916b9e008a::t_6959f9ffaadd20 77-81,120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "436058c3d19f6c59a52157a078b769514cdf882b",
+  "prompts": {},
+  "sessions": {
+    "s_a340916b9e008a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d36799ac-d64b-4087-afe3-34b61f15bf0a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
