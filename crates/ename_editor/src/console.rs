@@ -102,7 +102,8 @@ fn detail(ui: &mut egui::Ui, state: &ConsoleState, view: &LogView<'_>) {
     let line = ui.text_style_height(&TextStyle::Monospace);
     egui::Panel::bottom(ui.id().with("detail"))
         .resizable(true)
-        .default_size(line * 3.5)
+        // Two lines of text, plus the frame's own 2 point margin top and bottom.
+        .default_size(line * 2. + 4.)
         .min_size(line)
         .show_inside(ui, |ui| {
             // egui stores the height the contents used and reuses it as the panel's height next
