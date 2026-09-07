@@ -1,0 +1,19 @@
+crates/ename_editor/src/console.rs
+  s_841ea3db1433ee::t_351994d5814540 124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "02b9056c80435dae6fb61bebd9448b6e4c66530c",
+  "prompts": {},
+  "sessions": {
+    "s_841ea3db1433ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4132d0e4-63bd-4d99-a741-c9acef4e7dae",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
