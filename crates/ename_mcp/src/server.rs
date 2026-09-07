@@ -27,7 +27,7 @@ use serde_json::{Value, json};
 
 use crate::{
     brp::BrpClient,
-    entity::{self, EntityId, EntitySelector, ResolvedEntity},
+    entity::{self, EntitySelector, ResolvedEntity},
     staleness,
 };
 
@@ -128,11 +128,11 @@ pub struct QueryParams {
 
 /// One entity as world_query reports it.
 ///
-/// Typed rather than passed straight through, because the game reports an entity in both forms
-/// and only the readable one belongs in an answer.
+/// Typed rather than passed straight through, so the response has a fixed shape independent of
+/// whatever `game.entities.list` happens to return.
 #[derive(Serialize, schemars::JsonSchema)]
 pub struct QueriedEntity {
-    entity: EntityId,
+    entity: u64,
     name: Option<String>,
     /// Absolute metres. Absent when the entity is not under a grid.
     position: Option<[f64; 3]>,
@@ -219,7 +219,7 @@ pub struct EntityPosition {
     /// point. Absent when the entity is under no grid and so has no world position.
     position: Option<[f64; 3]>,
     /// The entity holding the grid `position` is expressed in.
-    grid: Option<EntityId>,
+    grid: Option<u64>,
     /// `CellCoord`: which grid cell the entity sits in. Absent when it has none, which counts
     /// as the grid's origin cell.
     cell: Option<Value>,
@@ -407,7 +407,7 @@ impl GameServer {
         Parameters(params): Parameters<QueryParams>,
     ) -> ToolResult<QueryResult> {
         let parent = match &params.parent {
-            Some(selector) => Some(selector.resolve(&self.brp).await.map_err(fail)?.bits),
+            Some(selector) => Some(selector.resolve(&self.brp).await.map_err(fail)?.entity),
             None => None,
         };
         let result: entity::ListResponse = self
@@ -429,7 +429,7 @@ impl GameServer {
                 .entities
                 .into_iter()
                 .map(|summary| QueriedEntity {
-                    entity: summary.entity.id,
+                    entity: summary.entity,
                     name: summary.name,
                     position: summary.position,
                 })
@@ -460,7 +460,10 @@ impl GameServer {
             let identity = selector.resolve(&self.brp).await.map_err(fail)?;
             let mut components: Vec<String> = self
                 .brp
-                .call("world.list_components", json!({ "entity": identity.bits }))
+                .call(
+                    "world.list_components",
+                    json!({ "entity": identity.entity }),
+                )
                 .await
                 .map_err(fail)?;
             components.sort_unstable();
@@ -486,7 +489,7 @@ impl GameServer {
         }
         let identity = params.selector.resolve(&self.brp).await.map_err(fail)?;
         let (values, absent) = self
-            .read_components(identity.bits, &params.components)
+            .read_components(identity.entity, &params.components)
             .await?;
 
         self.tag(EntityComponents {
@@ -516,25 +519,25 @@ impl GameServer {
         ];
         // The absent ones need no report of their own here: a component the entity does not
         // have is exactly the one whose field below is null.
-        let (mut values, _absent) = self.read_components(identity.bits, &paths).await?;
+        let (mut values, _absent) = self.read_components(identity.entity, &paths).await?;
 
         #[derive(Deserialize)]
         struct Position {
             position: [f64; 3],
-            grid: entity::WireEntity,
+            grid: u64,
         }
         // An entity under no grid has no world position, which is an answer and not a failure:
         // its Transform still exists and is still what the caller came to see.
         let placed = self
             .brp
-            .call::<Position>("game.position.get", json!({ "entity": identity.bits }))
+            .call::<Position>("game.position.get", json!({ "entity": identity.entity }))
             .await
             .ok();
 
         self.tag(EntityPosition {
             identity,
             position: placed.as_ref().map(|p| p.position),
-            grid: placed.map(|p| p.grid.id),
+            grid: placed.map(|p| p.grid),
             cell: values.components.remove(CELL_COORD),
             transform: values.components.remove(TRANSFORM),
             global_transform: values.components.remove(GLOBAL_TRANSFORM),
@@ -760,7 +763,7 @@ impl GameServer {
         // Placement is two steps because an entity's position is only meaningful relative to the
         // grid it hangs under, and `world.spawn_entity` cannot set a parent.
         let parent = match (&params.parent, params.position) {
-            (Some(selector), _) => Some(selector.resolve(&self.brp).await.map_err(fail)?.bits),
+            (Some(selector), _) => Some(selector.resolve(&self.brp).await.map_err(fail)?.entity),
             (None, Some(_)) => Some(self.world_grid().await.map_err(fail)?),
             (None, None) => None,
         };
@@ -783,11 +786,10 @@ impl GameServer {
                 .map_err(fail)?;
         }
 
-        // `world.spawn_entity` answers with the packed form, which is the one thing that must
-        // not reach the agent, so the new entity is looked up the way any other one is.
-        let identity = entity::describe(&self.brp, spawned.entity)
-            .await
-            .map_err(fail)?;
+        let identity = ResolvedEntity {
+            entity: spawned.entity,
+            name: Some(params.name),
+        };
         self.tag(PositionResult {
             identity,
             position: params.position,
@@ -802,7 +804,7 @@ impl GameServer {
     ) -> ToolResult<ResolvedEntity> {
         let identity = params.selector.resolve(&self.brp).await.map_err(fail)?;
         self.brp
-            .call_raw("world.despawn_entity", json!({ "entity": identity.bits }))
+            .call_raw("world.despawn_entity", json!({ "entity": identity.entity }))
             .await
             .map_err(fail)?;
         self.tag(identity).await
@@ -817,7 +819,7 @@ impl GameServer {
         self.brp
             .call_raw(
                 "world.insert_components",
-                json!({ "entity": identity.bits, "components": params.components }),
+                json!({ "entity": identity.entity, "components": params.components }),
             )
             .await
             .map_err(fail)?;
@@ -833,7 +835,7 @@ impl GameServer {
         self.brp
             .call_raw(
                 "world.remove_components",
-                json!({ "entity": identity.bits, "components": params.components }),
+                json!({ "entity": identity.entity, "components": params.components }),
             )
             .await
             .map_err(fail)?;
@@ -854,7 +856,7 @@ impl GameServer {
             .call_raw(
                 "world.mutate_components",
                 json!({
-                    "entity": identity.bits,
+                    "entity": identity.entity,
                     "component": params.component,
                     "path": params.path,
                     "value": params.value,
@@ -875,13 +877,13 @@ impl GameServer {
     ) -> ToolResult<ResolvedEntity> {
         let identity = params.selector.resolve(&self.brp).await.map_err(fail)?;
         let parent = match &params.parent {
-            Some(selector) => Some(selector.resolve(&self.brp).await.map_err(fail)?.bits),
+            Some(selector) => Some(selector.resolve(&self.brp).await.map_err(fail)?.entity),
             None => None,
         };
         self.brp
             .call_raw(
                 "world.reparent_entities",
-                json!({ "entities": [identity.bits], "parent": parent }),
+                json!({ "entities": [identity.entity], "parent": parent }),
             )
             .await
             .map_err(fail)?;
@@ -906,7 +908,7 @@ impl GameServer {
             .brp
             .call(
                 "game.position.set",
-                json!({ "entity": identity.bits, "position": params.position }),
+                json!({ "entity": identity.entity, "position": params.position }),
             )
             .await
             .map_err(fail)?;
@@ -929,12 +931,12 @@ impl GameServer {
 
         match response.entities.as_slice() {
             [] => anyhow::bail!("the game has no big_space grid, so nothing can be placed in it"),
-            [only] => Ok(only.entity.bits),
+            [only] => Ok(only.entity),
             many => anyhow::bail!(
                 "the game has {} grids ({}). Pass `parent` to say which one.",
                 many.len(),
                 many.iter()
-                    .map(|g| format!("{} `{}`", g.entity.id, g.name.as_deref().unwrap_or("")))
+                    .map(|g| format!("{} `{}`", g.entity, g.name.as_deref().unwrap_or("")))
                     .collect::<Vec<_>>()
                     .join(", ")
             ),

@@ -24,7 +24,6 @@
 //! It also replaces `world.mutate_components` with a guarded version. See [`mutate`].
 
 mod entities;
-mod entity_id;
 mod logs;
 mod mutate;
 mod position;

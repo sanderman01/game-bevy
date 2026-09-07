@@ -16,8 +16,6 @@ use bevy::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::entity_id::EntityId;
-
 pub const LIST_METHOD: &str = "game.entities.list";
 
 /// How many entities one call returns before it starts truncating. A loaded glTF scene is
@@ -60,7 +58,7 @@ pub(crate) struct ListResponse {
 
 #[derive(Serialize)]
 pub(crate) struct EntitySummary {
-    entity: EntityId,
+    entity: Entity,
     name: Option<String>,
     /// Metres, absolute. Absent when the entity is not under a grid, which is most of them.
     position: Option<[f64; 3]>,
@@ -110,7 +108,7 @@ pub(crate) fn list(In(params): In<Option<Value>>, world: &mut World) -> BrpResul
         }
 
         matched.push(EntitySummary {
-            entity: entity.into(),
+            entity,
             name,
             position: crate::position::absolute_position(world, entity)
                 .ok()
@@ -125,7 +123,7 @@ pub(crate) fn list(In(params): In<Option<Value>>, world: &mut World) -> BrpResul
             .is_none()
             .cmp(&b.name.is_none())
             .then_with(|| a.name.cmp(&b.name))
-            .then_with(|| a.entity.bits().cmp(&b.entity.bits()))
+            .then_with(|| a.entity.cmp(&b.entity))
     });
 
     let truncated = matched.len().saturating_sub(limit);
