@@ -7,11 +7,11 @@
 
 use std::collections::HashMap;
 
-use anyhow::{Context as _, bail};
+use anyhow::{anyhow, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::brp::BrpClient;
+use crate::brp::{BrpClient, BrpError, ENTITY_NOT_FOUND};
 
 /// The type path of `Name`, the one component an id has to be resolved against.
 const NAME: &str = "bevy_ecs::name::Name";
@@ -114,7 +114,13 @@ impl EntitySelector {
                         json!({ "entity": entity, "components": [NAME], "strict": false }),
                     )
                     .await
-                    .with_context(|| format!("no entity with id {entity} exists in this run"))?;
+                    .map_err(|err| match err.downcast_ref::<BrpError>() {
+                        Some(error) if error.code == ENTITY_NOT_FOUND => anyhow!(
+                            "no entity with id {entity} exists in this run. Ids change every \
+                             time the game restarts; use world_query to find it again."
+                        ),
+                        _ => err.context(format!("cannot look up entity {entity}")),
+                    })?;
 
                 // An entity without a `Name` answers with the path under `errors`, leaving
                 // `components` empty. That is a nameless entity, not a missing one.

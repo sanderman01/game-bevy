@@ -74,9 +74,12 @@ impl BrpClient {
             return Ok(result.clone());
         }
         match body.get("error").cloned().map(serde_json::from_value) {
-            Some(Ok(ResponseError { code, message })) => {
-                bail!("BRP `{method}` failed ({code}): {message}")
+            Some(Ok(ResponseError { code, message })) => Err(BrpError {
+                method: method.to_owned(),
+                code,
+                message,
             }
+            .into()),
             _ => bail!("BRP `{method}` returned neither a result nor an error"),
         }
     }
@@ -87,3 +90,29 @@ struct ResponseError {
     code: i32,
     message: String,
 }
+
+/// BRP's code for an id that names no entity in the world.
+pub const ENTITY_NOT_FOUND: i32 = -23401;
+
+/// An error the game's remote server returned, kept typed rather than flattened to a string so
+/// that a caller can match on `code`: an id that names nothing is a different answer from a
+/// call that went wrong, and the two deserve different wording.
+#[derive(Debug)]
+pub struct BrpError {
+    pub method: String,
+    pub code: i32,
+    pub message: String,
+}
+
+impl std::fmt::Display for BrpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            method,
+            code,
+            message,
+        } = self;
+        write!(f, "BRP `{method}` failed ({code}): {message}")
+    }
+}
+
+impl std::error::Error for BrpError {}
