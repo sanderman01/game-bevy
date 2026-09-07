@@ -22,6 +22,39 @@ const MESSAGE_START: f32 = 42.;
 /// backtrace still pastes with its line breaks.
 const NEWLINE_GLYPH: char = '⏎';
 
+/// Every level, most severe first, which is the order the menu lists them in.
+const LEVELS: [Level; 5] = [
+    Level::ERROR,
+    Level::WARN,
+    Level::INFO,
+    Level::DEBUG,
+    Level::TRACE,
+];
+
+/// Which levels the list shows. One flag per level rather than a minimum severity, so a noisy
+/// level can be dropped without losing the quieter ones below it.
+///
+/// This can only hide rows, never reveal any: `LogPlugin` installs the capture layer above the
+/// subscriber-wide `EnvFilter`, so anything the terminal filtered out never reached the buffer.
+#[derive(Clone, Copy)]
+struct LevelFilter([bool; LEVELS.len()]);
+
+impl Default for LevelFilter {
+    fn default() -> Self {
+        // Debug and trace off: they are where a busy frame's thousands of lines come from.
+        Self([true, true, true, false, false])
+    }
+}
+
+impl LevelFilter {
+    fn allows(self, level: Level) -> bool {
+        LEVELS
+            .iter()
+            .position(|candidate| *candidate == level)
+            .is_none_or(|index| self.0[index])
+    }
+}
+
 pub(crate) struct ConsoleState {
     /// Selected rows by sequence number, not by index: the ring drops from the front, so an index
     /// would slide onto a different row as the buffer wraps. Ordered, so a copy comes out
@@ -32,6 +65,8 @@ pub(crate) struct ConsoleState {
     /// The row the detail pane shows: the last one clicked, whatever the modifiers did to the
     /// selection around it.
     detail: Option<u64>,
+    /// Which levels the list shows.
+    levels: LevelFilter,
     /// Stick to the newest entry until the user scrolls away.
     follow_tail: bool,
     /// Whether the keyboard shortcuts are this panel's. Tracked here rather than through egui's
@@ -46,6 +81,7 @@ impl Default for ConsoleState {
             selected: BTreeSet::new(),
             anchor: None,
             detail: None,
+            levels: LevelFilter::default(),
             follow_tail: true,
             focused: false,
         }
@@ -63,11 +99,42 @@ pub(crate) fn ui(ui: &mut egui::Ui, state: &mut ConsoleState, world: &World) {
     let mut clear = false;
 
     buffer.read(|view| {
+        // One pass over the ring per frame. A filter toggled below lands on the next frame, which
+        // keeps this list and the selection cleaned against it describing the same thing.
+        let levels = state.levels;
+        let visible: Vec<LogEntryRef<'_>> = view
+            .iter()
+            .filter(|entry| levels.allows(entry.level))
+            .collect();
+
+        // A row the filter hides cannot be seen, so it must not sit in a selection Ctrl+C would
+        // copy. This drops sequences that have aged out of the ring too.
+        state.selected.retain(|sequence| {
+            view.by_sequence(*sequence)
+                .is_some_and(|entry| levels.allows(entry.level))
+        });
+        if let Some(sequence) = state.detail
+            && !view
+                .by_sequence(sequence)
+                .is_some_and(|entry| levels.allows(entry.level))
+        {
+            state.detail = None;
+        }
+
         ui.horizontal(|ui| {
-            ui.label(format!("{} entries", view.len()));
+            if visible.len() == view.len() {
+                ui.label(format!("{} entries", view.len()));
+            } else {
+                ui.label(format!("{} of {} entries", visible.len(), view.len()));
+            }
             if !state.selected.is_empty() {
                 ui.label(format!("{} selected", state.selected.len()));
             }
+            ui.menu_button("Levels ⏷", |ui| {
+                for (flag, level) in state.levels.0.iter_mut().zip(LEVELS) {
+                    ui.checkbox(flag, level.as_str());
+                }
+            });
             ui.checkbox(&mut state.follow_tail, "Follow");
             clear = ui.button("Clear").clicked();
         });
@@ -82,8 +149,8 @@ pub(crate) fn ui(ui: &mut egui::Ui, state: &mut ConsoleState, world: &World) {
         if ui.input(|i| i.pointer.any_pressed()) {
             state.focused = ui.rect_contains_pointer(list);
         }
-        shortcuts(ui, state, &view);
-        rows(ui, state, &view);
+        shortcuts(ui, state, &visible);
+        rows(ui, state, &visible);
     });
 
     if clear {
@@ -137,7 +204,7 @@ fn detail(ui: &mut egui::Ui, state: &ConsoleState, view: &LogView<'_>) {
         });
 }
 
-fn shortcuts(ui: &egui::Ui, state: &mut ConsoleState, view: &LogView<'_>) {
+fn shortcuts(ui: &egui::Ui, state: &mut ConsoleState, visible: &[LogEntryRef<'_>]) {
     if !state.focused {
         return;
     }
@@ -148,12 +215,12 @@ fn shortcuts(ui: &egui::Ui, state: &mut ConsoleState, view: &LogView<'_>) {
         )
     });
 
-    if select_all && let Some((oldest, newest)) = view.sequence_range() {
-        state.selected = (oldest..=newest).collect();
-        state.anchor = Some(oldest);
+    if select_all {
+        state.selected = visible.iter().map(|entry| entry.sequence).collect();
+        state.anchor = visible.first().map(|entry| entry.sequence);
     }
     if copy {
-        let text = clipboard_text(state, view);
+        let text = clipboard_text(state, visible);
         if !text.is_empty() {
             ui.ctx().copy_text(text);
         }
@@ -163,14 +230,14 @@ fn shortcuts(ui: &egui::Ui, state: &mut ConsoleState, view: &LogView<'_>) {
 /// Builds the clipboard out of the buffer rather than out of what was drawn.
 ///
 /// egui's own cross-label selection accumulates the clipboard while it draws, which would drop
-/// every selected row that is scrolled out of view. Reading by sequence is right at any scroll
-/// position. A sequence that has aged out of the buffer is skipped.
-fn clipboard_text(state: &ConsoleState, view: &LogView<'_>) -> String {
+/// every selected row that is scrolled out of view. Walking the filtered entries is right at any
+/// scroll position, and comes out chronological.
+fn clipboard_text(state: &ConsoleState, visible: &[LogEntryRef<'_>]) -> String {
     let mut text = String::new();
-    for sequence in &state.selected {
-        let Some(entry) = view.by_sequence(*sequence) else {
-            continue;
-        };
+    for entry in visible
+        .iter()
+        .filter(|entry| state.selected.contains(&entry.sequence))
+    {
         let _ = writeln!(
             text,
             "{:>9.3}  {:<5}  {}  {}",
@@ -190,7 +257,7 @@ struct Columns {
     row_height: f32,
 }
 
-fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, view: &LogView<'_>) {
+fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, visible: &[LogEntryRef<'_>]) {
     let font = TextStyle::Monospace.resolve(ui.style());
     let char_width = ui.ctx().fonts_mut(|fonts| fonts.glyph_width(&font, ' '));
     let row_height = ui.text_style_height(&TextStyle::Monospace);
@@ -225,12 +292,12 @@ fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, view: &LogView<'_>) {
         // detail pane and clipped away.
         .min_scrolled_height(0.)
         .stick_to_bottom(state.follow_tail)
-        .show_rows(ui, row_height, view.len(), |ui, visible| {
-            for index in visible {
-                let Some(entry) = view.get(index) else {
+        .show_rows(ui, row_height, visible.len(), |ui, drawn| {
+            for index in drawn {
+                let Some(entry) = visible.get(index) else {
                     continue;
                 };
-                row(ui, state, entry, &columns);
+                row(ui, state, *entry, &columns);
             }
         });
 
@@ -253,13 +320,13 @@ fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, view: &LogView<'_>) {
     let clicked = ui.interact(output.inner_rect, ui.id().with("rows"), Sense::click());
     if clicked.clicked()
         && let Some(pointer) = clicked.interact_pointer_pos()
-        && let Some((oldest, newest)) = view.sequence_range()
     {
         let y = pointer.y - output.inner_rect.top() + output.state.offset.y;
         let index = (y / row_height) as usize;
-        if let Some(entry) = view.get(index) {
+        if let Some(entry) = visible.get(index) {
             let modifiers = ui.input(|i| i.modifiers);
-            click(state, entry.sequence, modifiers, oldest, newest);
+            let sequences: Vec<u64> = visible.iter().map(|entry| entry.sequence).collect();
+            click(state, entry.sequence, modifiers, &sequences);
         }
     }
 }
@@ -346,9 +413,10 @@ fn flatten(message: &str) -> Cow<'_, str> {
     }
 }
 
-/// Applies one click to the selection. Separate from drawing so it can be tested without a
-/// buffer or an egui context.
-fn click(state: &mut ConsoleState, sequence: u64, modifiers: Modifiers, oldest: u64, newest: u64) {
+/// Applies one click to the selection. `visible` is the sequence number of every row the list
+/// currently shows, ascending. Separate from drawing so it can be tested without a buffer or an
+/// egui context.
+fn click(state: &mut ConsoleState, sequence: u64, modifiers: Modifiers, visible: &[u64]) {
     state.detail = Some(sequence);
     if modifiers.command {
         if !state.selected.remove(&sequence) {
@@ -358,14 +426,24 @@ fn click(state: &mut ConsoleState, sequence: u64, modifiers: Modifiers, oldest: 
     }
     if modifiers.shift
         && let Some(anchor) = state.anchor
+        && !visible.is_empty()
     {
-        let (from, to) = if anchor <= sequence {
-            (anchor, sequence)
+        // A range of rows, not of sequence numbers, so it covers what is between the two clicks
+        // on screen and nothing the filter hides between them. `partition_point` also absorbs an
+        // anchor that has since aged out or been filtered away, by taking the nearest row left.
+        let last = visible.len() - 1;
+        let anchor_row = visible
+            .partition_point(|candidate| *candidate < anchor)
+            .min(last);
+        let clicked_row = visible
+            .partition_point(|candidate| *candidate < sequence)
+            .min(last);
+        let (from, to) = if anchor_row <= clicked_row {
+            (anchor_row, clicked_row)
         } else {
-            (sequence, anchor)
+            (clicked_row, anchor_row)
         };
-        // Clamped, because the anchor can have aged out of the buffer since it was set.
-        state.selected = (from.max(oldest)..=to.min(newest)).collect();
+        state.selected = visible[from..=to].iter().copied().collect();
         return;
     }
     state.selected.clear();
@@ -375,14 +453,20 @@ fn click(state: &mut ConsoleState, sequence: u64, modifiers: Modifiers, oldest: 
 
 #[cfg(test)]
 mod tests {
-    use super::{ConsoleState, click, flatten, truncate_left};
+    use super::{ConsoleState, LEVELS, LevelFilter, click, flatten, truncate_left};
+    use bevy::log::Level;
     use egui::Modifiers;
+
+    /// Every row in a buffer holding 0..=10, unfiltered.
+    fn all() -> Vec<u64> {
+        (0..=10).collect()
+    }
 
     #[test]
     fn a_plain_click_replaces_the_selection_and_moves_the_anchor() {
         let mut state = ConsoleState::default();
-        click(&mut state, 5, Modifiers::NONE, 0, 10);
-        click(&mut state, 7, Modifiers::NONE, 0, 10);
+        click(&mut state, 5, Modifiers::NONE, &all());
+        click(&mut state, 7, Modifiers::NONE, &all());
 
         assert_eq!(state.selected.iter().copied().collect::<Vec<_>>(), [7]);
         assert_eq!(state.anchor, Some(7));
@@ -392,9 +476,14 @@ mod tests {
     #[test]
     fn a_shift_click_range_is_clamped_to_what_the_buffer_still_holds() {
         let mut state = ConsoleState::default();
-        click(&mut state, 2, Modifiers::NONE, 0, 10);
+        click(&mut state, 2, Modifiers::NONE, &all());
         // Entries 0..=3 have since aged out.
-        click(&mut state, 6, Modifiers::SHIFT, 4, 10);
+        click(
+            &mut state,
+            6,
+            Modifiers::SHIFT,
+            &(4..=10).collect::<Vec<_>>(),
+        );
 
         assert_eq!(
             state.selected.iter().copied().collect::<Vec<_>>(),
@@ -403,10 +492,23 @@ mod tests {
     }
 
     #[test]
+    fn a_shift_click_selects_only_the_rows_the_filter_shows() {
+        let mut state = ConsoleState::default();
+        let visible = [1, 4, 5, 9];
+        click(&mut state, 1, Modifiers::NONE, &visible);
+        click(&mut state, 5, Modifiers::SHIFT, &visible);
+
+        assert_eq!(
+            state.selected.iter().copied().collect::<Vec<_>>(),
+            [1, 4, 5]
+        );
+    }
+
+    #[test]
     fn a_shift_click_backwards_selects_the_same_range() {
         let mut state = ConsoleState::default();
-        click(&mut state, 8, Modifiers::NONE, 0, 10);
-        click(&mut state, 6, Modifiers::SHIFT, 0, 10);
+        click(&mut state, 8, Modifiers::NONE, &all());
+        click(&mut state, 6, Modifiers::SHIFT, &all());
 
         assert_eq!(
             state.selected.iter().copied().collect::<Vec<_>>(),
@@ -417,16 +519,39 @@ mod tests {
     #[test]
     fn a_ctrl_click_toggles_one_row_and_leaves_the_anchor_alone() {
         let mut state = ConsoleState::default();
-        click(&mut state, 3, Modifiers::NONE, 0, 10);
-        click(&mut state, 9, Modifiers::COMMAND, 0, 10);
+        click(&mut state, 3, Modifiers::NONE, &all());
+        click(&mut state, 9, Modifiers::COMMAND, &all());
         assert_eq!(state.selected.iter().copied().collect::<Vec<_>>(), [3, 9]);
         assert_eq!(state.anchor, Some(3));
 
-        click(&mut state, 9, Modifiers::COMMAND, 0, 10);
+        click(&mut state, 9, Modifiers::COMMAND, &all());
         assert_eq!(state.selected.iter().copied().collect::<Vec<_>>(), [3]);
         assert_eq!(state.anchor, Some(3));
         // The detail pane follows the click, not the anchor.
         assert_eq!(state.detail, Some(9));
+    }
+
+    #[test]
+    fn the_default_filter_hides_debug_and_trace_only() {
+        let filter = LevelFilter::default();
+        assert!(filter.allows(Level::ERROR));
+        assert!(filter.allows(Level::WARN));
+        assert!(filter.allows(Level::INFO));
+        assert!(!filter.allows(Level::DEBUG));
+        assert!(!filter.allows(Level::TRACE));
+    }
+
+    #[test]
+    fn a_flag_belongs_to_the_level_at_its_own_position() {
+        for (index, level) in LEVELS.into_iter().enumerate() {
+            let mut filter = LevelFilter([false; LEVELS.len()]);
+            filter.0[index] = true;
+            assert!(filter.allows(level));
+            assert_eq!(
+                LEVELS.iter().filter(|other| filter.allows(**other)).count(),
+                1
+            );
+        }
     }
 
     #[test]
