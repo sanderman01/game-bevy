@@ -29,6 +29,9 @@ pub(crate) struct ConsoleState {
     selected: BTreeSet<u64>,
     /// Where a shift-click measures its range from.
     anchor: Option<u64>,
+    /// The row the detail pane shows: the last one clicked, whatever the modifiers did to the
+    /// selection around it.
+    detail: Option<u64>,
     /// Stick to the newest entry until the user scrolls away.
     follow_tail: bool,
     /// Whether the keyboard shortcuts are this panel's. Tracked here rather than through egui's
@@ -42,6 +45,7 @@ impl Default for ConsoleState {
         Self {
             selected: BTreeSet::new(),
             anchor: None,
+            detail: None,
             follow_tail: true,
             focused: false,
         }
@@ -57,7 +61,6 @@ pub(crate) fn ui(ui: &mut egui::Ui, state: &mut ConsoleState, world: &World) {
     // `LogBuffer::read` holds the lock for the whole closure, so `Clear` runs after it rather
     // than deadlocking against it.
     let mut clear = false;
-    let panel = ui.max_rect();
 
     buffer.read(|view| {
         ui.horizontal(|ui| {
@@ -70,8 +73,14 @@ pub(crate) fn ui(ui: &mut egui::Ui, state: &mut ConsoleState, world: &World) {
         });
         ui.separator();
 
+        // Added before the list, so what it takes is gone from the list's available space.
+        detail(ui, state, &view);
+
+        // Focus is the list's, not the whole tab's. A press in the detail pane hands Ctrl+C to
+        // the text there, which does its own selection.
+        let list = ui.available_rect_before_wrap();
         if ui.input(|i| i.pointer.any_pressed()) {
-            state.focused = ui.rect_contains_pointer(panel);
+            state.focused = ui.rect_contains_pointer(list);
         }
         shortcuts(ui, state, &view);
         rows(ui, state, &view);
@@ -81,7 +90,44 @@ pub(crate) fn ui(ui: &mut egui::Ui, state: &mut ConsoleState, world: &World) {
         buffer.clear();
         state.selected.clear();
         state.anchor = None;
+        state.detail = None;
     }
+}
+
+/// The full text of one entry, wrapped and selectable, under a resizable splitter.
+///
+/// The list flattens a message onto one row and clips it at the panel edge, so this is the only
+/// place a long message or a backtrace can be read whole.
+fn detail(ui: &mut egui::Ui, state: &ConsoleState, view: &LogView<'_>) {
+    let line = ui.text_style_height(&TextStyle::Monospace);
+    egui::Panel::bottom(ui.id().with("detail"))
+        .resizable(true)
+        .default_size(line * 3.5)
+        .min_size(line)
+        .show_inside(ui, |ui| {
+            let Some(entry) = state.detail.and_then(|sequence| view.by_sequence(sequence)) else {
+                ui.label("Select an entry.");
+                return;
+            };
+            egui::ScrollArea::vertical()
+                .auto_shrink([false; 2])
+                .show(ui, |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(format!(
+                                "{:>9.3}  {:<5}  {}\n{}",
+                                entry.timestamp,
+                                entry.level.as_str(),
+                                entry.target_name,
+                                entry.message
+                            ))
+                            .monospace(),
+                        )
+                        .wrap()
+                        .selectable(true),
+                    );
+                });
+        });
 }
 
 fn shortcuts(ui: &egui::Ui, state: &mut ConsoleState, view: &LogView<'_>) {
@@ -135,29 +181,23 @@ struct Columns {
     font: FontId,
     char_width: f32,
     row_height: f32,
-    content_width: f32,
 }
 
 fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, view: &LogView<'_>) {
     let font = TextStyle::Monospace.resolve(ui.style());
     let char_width = ui.ctx().fonts_mut(|fonts| fonts.glyph_width(&font, ' '));
     let row_height = ui.text_style_height(&TextStyle::Monospace);
-    // Byte length, not character count: it is O(1) per entry and only ever overestimates, which
-    // costs a slightly wide horizontal scroll range and never a clipped message.
-    let widest = view
-        .iter()
-        .map(|entry| entry.message.len())
-        .max()
-        .unwrap_or(0);
     let columns = Columns {
         font,
         char_width,
         row_height,
-        content_width: (MESSAGE_START + widest as f32) * char_width,
     };
 
     ui.spacing_mut().item_spacing.y = 0.;
-    let output = egui::ScrollArea::both()
+    // Vertical only. A row is exactly as wide as the panel and the painter clips what runs past
+    // the right edge, so a long message costs no horizontal scrollbar. The detail pane below is
+    // where such a message is read in full.
+    let output = egui::ScrollArea::vertical()
         .auto_shrink([false; 2])
         .stick_to_bottom(state.follow_tail)
         .show_rows(ui, row_height, view.len(), |ui, visible| {
@@ -189,8 +229,7 @@ fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, view: &LogView<'_>) {
 }
 
 fn row(ui: &mut egui::Ui, state: &ConsoleState, entry: LogEntryRef<'_>, columns: &Columns) {
-    let width = columns.content_width.max(ui.available_width());
-    let (_, rect) = ui.allocate_space(vec2(width, columns.row_height));
+    let (_, rect) = ui.allocate_space(vec2(ui.available_width(), columns.row_height));
     if !ui.is_rect_visible(rect) {
         return;
     }
@@ -274,6 +313,7 @@ fn flatten(message: &str) -> Cow<'_, str> {
 /// Applies one click to the selection. Separate from drawing so it can be tested without a
 /// buffer or an egui context.
 fn click(state: &mut ConsoleState, sequence: u64, modifiers: Modifiers, oldest: u64, newest: u64) {
+    state.detail = Some(sequence);
     if modifiers.command {
         if !state.selected.remove(&sequence) {
             state.selected.insert(sequence);
@@ -310,6 +350,7 @@ mod tests {
 
         assert_eq!(state.selected.iter().copied().collect::<Vec<_>>(), [7]);
         assert_eq!(state.anchor, Some(7));
+        assert_eq!(state.detail, Some(7));
     }
 
     #[test]
@@ -348,6 +389,8 @@ mod tests {
         click(&mut state, 9, Modifiers::COMMAND, 0, 10);
         assert_eq!(state.selected.iter().copied().collect::<Vec<_>>(), [3]);
         assert_eq!(state.anchor, Some(3));
+        // The detail pane follows the click, not the anchor.
+        assert_eq!(state.detail, Some(9));
     }
 
     #[test]
