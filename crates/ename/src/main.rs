@@ -10,7 +10,7 @@ fn main() {
 
     let engine = ename_engine::EnginePlugins::default().with_window(Window {
         title: "My Bevy Game".into(),
-        resolution: WindowResolution::new(1280, 720),
+        resolution: WindowResolution::new(1360, 710),
         ..default()
     });
 
