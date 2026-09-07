@@ -56,6 +56,7 @@ both, so the feature being convenient by default cannot become the feature shipp
 | Tool | Does |
 | --- | --- |
 | `world_query` | Find entities by name substring, component, or parent. The discovery tool. |
+| `world_list_components` | The component type paths on one or more entities, without their values. |
 | `world_get_components` | The values of named components on one entity. |
 | `world_get_position` | Where an entity is: absolute metres, its grid, and the `CellCoord`, `Transform` and `GlobalTransform` behind them. |
 | `registry_schema` | The JSON schema of registered types: the fully-qualified type paths, what fields a component has and their shapes. |
@@ -101,10 +102,10 @@ write, which is an answer rather than a failure.
 
 **Reading a component means naming it.** `world_get_components` takes full type paths and
 nothing else, because the alternative -- an entity dumped whole -- costs more context than it
-usually pays back. `world_query` already lists the paths an entity has, and `registry_schema`
-turns a partial name into a full one. A requested path the entity does not have comes back under
-`absent`, apart from the ones whose value would not serialize, which come back under
-`unreadable`.
+usually pays back. `world_list_components` lists the paths one or more entities have, and
+`registry_schema` turns a partial name into a full one. A requested path the entity does not
+have comes back under `absent`, apart from the ones whose value would not serialize, which come
+back under `unreadable`.
 
 **Positions are absolute metres, Y up.** Under big_space a position is a grid cell plus a
 `Transform` offset from an origin that moves with the camera, so a raw `Transform.translation`

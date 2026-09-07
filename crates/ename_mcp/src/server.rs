@@ -147,6 +147,30 @@ pub struct QueryResult {
 }
 
 // ---------------------------------------------------------------------------------------------
+// world_list_components
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ListComponentsParams {
+    /// The entities to list. Each is addressed by `name` or by `entity`, and several may be
+    /// given in one call.
+    pub entities: Vec<EntitySelector>,
+}
+
+/// One entity's component type paths.
+#[derive(Serialize, schemars::JsonSchema)]
+pub struct EntityComponentTypes {
+    #[serde(flatten)]
+    identity: ResolvedEntity,
+    /// Full type paths, sorted. Pass the ones you want to world_get_components.
+    components: Vec<String>,
+}
+
+#[derive(Serialize, schemars::JsonSchema)]
+pub struct ComponentTypes {
+    entities: Vec<EntityComponentTypes>,
+}
+
+// ---------------------------------------------------------------------------------------------
 // world_get_components and world_get_position
 
 /// Which entity, and nothing else. For the tools whose whole input is the selector.
@@ -161,8 +185,8 @@ pub struct GetComponentsParams {
     #[serde(flatten)]
     pub selector: EntitySelector,
     /// Full component type paths, e.g. "bevy_transform::components::transform::Transform".
-    /// world_query lists the paths an entity has; registry_schema turns a partial name into a
-    /// full one.
+    /// world_list_components lists the paths an entity has; registry_schema turns a partial
+    /// name into a full one.
     pub components: Vec<String>,
 }
 
@@ -417,6 +441,39 @@ impl GameServer {
         .await
     }
 
+    #[tool(
+        description = "List the component type paths on one or more entities. The step between \
+                       world_query and world_get_components: it says what an entity has, without \
+                       the cost of reading any values."
+    )]
+    async fn world_list_components(
+        &self,
+        Parameters(params): Parameters<ListComponentsParams>,
+    ) -> ToolResult<ComponentTypes> {
+        if params.entities.is_empty() {
+            return Err(ErrorData::invalid_params(
+                "name at least one entity, by `name` or by `entity`.",
+                None,
+            ));
+        }
+
+        let mut entities = Vec::with_capacity(params.entities.len());
+        for selector in &params.entities {
+            let identity = selector.resolve(&self.brp).await.map_err(fail)?;
+            let mut components: Vec<String> = self
+                .brp
+                .call("world.list_components", json!({ "entity": identity.bits }))
+                .await
+                .map_err(fail)?;
+            components.sort_unstable();
+            entities.push(EntityComponentTypes {
+                identity,
+                components,
+            });
+        }
+        self.tag(ComponentTypes { entities }).await
+    }
+
     #[tool(description = "Get specific components from an entity by ID or name.")]
     async fn world_get_components(
         &self,
@@ -424,8 +481,8 @@ impl GameServer {
     ) -> ToolResult<EntityComponents> {
         if params.components.is_empty() {
             return Err(ErrorData::invalid_params(
-                "name the component type paths to read. world_query lists the paths an entity \
-                 has, and registry_schema turns a partial name into a full one.",
+                "name the component type paths to read. world_list_components lists the paths an \
+                 entity has, and registry_schema turns a partial name into a full one.",
                 None,
             ));
         }
