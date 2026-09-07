@@ -52,7 +52,8 @@ default dependency graph.
 | Tool | Does |
 | --- | --- |
 | `world_query` | Find entities by name substring, component, or parent. The discovery tool. |
-| `world_get_entity` | Every component on one entity, with values and absolute position. |
+| `world_get_components` | The values of named components on one entity. |
+| `world_get_position` | Where an entity is: absolute metres, its grid, and the `CellCoord`, `Transform` and `GlobalTransform` behind them. |
 | `registry_schema` | The JSON schema of registered types: the fully-qualified type paths, what fields a component has and their shapes. |
 | `world_spawn_entity` | Create an entity with a name, components and a position. |
 | `world_despawn_entity` | Delete an entity and its children. |
@@ -66,7 +67,7 @@ default dependency graph.
 Every result also carries `pid`, three letters naming the run of the game process that answered
 it. See "Noticing a restart".
 
-Two things about them are worth knowing before reading the schemas.
+A few things about them are worth knowing before reading the schemas.
 
 **Entities are addressed by `name` or by `entity`, and results carry both.** An entity id is a
 generation-and-index bit pattern that changes every run, so it cannot go into a written plan or
@@ -86,10 +87,20 @@ registry is 1330 types and about 775 KB, and the default `limit` of 100 only cap
 unfiltered call comes back. A path it reports under `unregistered` is one nothing can read or
 write, which is an answer rather than a failure.
 
+**Reading a component means naming it.** `world_get_components` takes full type paths and
+nothing else, because the alternative -- an entity dumped whole -- costs more context than it
+usually pays back. `world_query` already lists the paths an entity has, and `registry_schema`
+turns a partial name into a full one. A requested path the entity does not have comes back under
+`absent`, apart from the ones whose value would not serialize, which come back under
+`unreadable`.
+
 **Positions are absolute metres, Y up.** Under big_space a position is a grid cell plus a
 `Transform` offset from an origin that moves with the camera, so a raw `Transform.translation`
 means a different world point from one frame to the next. `world_mutate_component` refuses to
 write `Transform.translation` or `CellCoord` and points at `world_set_position` instead.
+`world_get_position` is the read side: it returns the absolute metres, the grid entity that frame
+belongs to, and the three components underneath, so a `Transform` that looks wrong can be checked
+against the position it actually produces.
 
 ## Noticing a restart
 
@@ -121,9 +132,9 @@ Reading a component from a world that is still advancing answers a different que
 one usually being asked. The loop that makes an experiment:
 
 1. `run_set_state` `pause`
-2. `world_get_entity` -- the before state
+2. `world_get_components` -- the before state
 3. `run_set_state` `step`, `frames: 30`. This returns only once the frames have run.
-4. `world_get_entity` -- the after state
+4. `world_get_components` -- the after state
 5. `run_set_state` `resume`
 
 `elapsed_seconds` is virtual time and does not advance while paused. `frame` counts real frames

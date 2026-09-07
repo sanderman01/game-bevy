@@ -112,25 +112,78 @@ pub struct QueryParams {
 }
 
 // ---------------------------------------------------------------------------------------------
-// world_get_entity
+// world_get_components and world_get_position
 
+/// Which entity, and nothing else. For the tools whose whole input is the selector.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct GetEntityParams {
+pub struct EntityParams {
     #[serde(flatten)]
     pub selector: EntitySelector,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetComponentsParams {
+    #[serde(flatten)]
+    pub selector: EntitySelector,
+    /// Full component type paths, e.g. "bevy_transform::components::transform::Transform".
+    /// world_query lists the paths an entity has; registry_schema turns a partial name into a
+    /// full one.
+    pub components: Vec<String>,
+}
+
 #[derive(Serialize, schemars::JsonSchema)]
-pub struct EntityDetail {
+pub struct EntityComponents {
     #[serde(flatten)]
     identity: ResolvedEntity,
-    /// Absolute metres. Absent when the entity is not placed in the world.
-    position: Option<[f64; 3]>,
     /// Component type path to value.
     components: HashMap<String, Value>,
-    /// Components present on the entity whose value could not be read, with the reason.
+    /// Requested components the entity has but whose value could not be read, with the reason.
     /// Usually an asset handle, which reflection cannot serialize.
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
     unreadable: HashMap<String, Value>,
+    /// Requested paths the entity does not have. A misspelt path and a genuinely absent
+    /// component look the same here; registry_schema says which it was.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    absent: Vec<String>,
+}
+
+/// The three components a position is made of. Hard-coded because the sidecar does not link
+/// Bevy, and they are the same three `game.position.get` computes from.
+const CELL_COORD: &str = "big_space::grid::cell::CellCoord";
+const TRANSFORM: &str = "bevy_transform::components::transform::Transform";
+const GLOBAL_TRANSFORM: &str = "bevy_transform::components::global_transform::GlobalTransform";
+
+#[derive(Serialize, schemars::JsonSchema)]
+pub struct EntityPosition {
+    #[serde(flatten)]
+    identity: ResolvedEntity,
+    /// Absolute metres, x/y/z, Y up. The only one of these fields that names a fixed world
+    /// point. Absent when the entity is under no grid and so has no world position.
+    position: Option<[f64; 3]>,
+    /// The entity holding the grid `position` is expressed in.
+    grid: Option<u64>,
+    /// `CellCoord`: which grid cell the entity sits in. Absent when it has none, which counts
+    /// as the grid's origin cell.
+    cell: Option<Value>,
+    /// `Transform`: the offset within the cell, from an origin that moves with the camera. On
+    /// its own it names a different world point from one frame to the next.
+    transform: Option<Value>,
+    /// `GlobalTransform`: the same offset composed down the hierarchy. Still relative to the
+    /// moving origin, so still not a world position.
+    global_transform: Option<Value>,
+    /// Any of the three the entity has but whose value would not serialize, with the reason. A
+    /// component listed here is null above because reflection could not show it, not because it
+    /// is missing.
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    unreadable: HashMap<String, Value>,
+}
+
+/// What `world.get_components` answers with when `strict` is off.
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct ComponentValues {
+    components: HashMap<String, Value>,
+    errors: HashMap<String, Value>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -312,57 +365,111 @@ impl GameServer {
         self.tagged(result).await
     }
 
-    #[tool(
-        description = "Read every component on one entity, with its value and its absolute world \
-                       position. Address the entity by name or by id."
-    )]
-    async fn world_get_entity(
+    #[tool(description = "Get specific components from an entity by ID or name.")]
+    async fn world_get_components(
         &self,
-        Parameters(params): Parameters<GetEntityParams>,
-    ) -> ToolResult<EntityDetail> {
+        Parameters(params): Parameters<GetComponentsParams>,
+    ) -> ToolResult<EntityComponents> {
+        if params.components.is_empty() {
+            return Err(ErrorData::invalid_params(
+                "name the component type paths to read. world_query lists the paths an entity \
+                 has, and registry_schema turns a partial name into a full one.",
+                None,
+            ));
+        }
+        let identity = params.selector.resolve(&self.brp).await.map_err(fail)?;
+        let (values, absent) = self
+            .read_components(identity.entity, &params.components)
+            .await?;
+
+        self.tagged(EntityComponents {
+            identity,
+            components: values.components,
+            unreadable: values.errors,
+            absent,
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Where an entity is: its absolute world position in metres, the grid that \
+                       position is measured in, and the CellCoord, Transform and GlobalTransform \
+                       it is computed from."
+    )]
+    async fn world_get_position(
+        &self,
+        Parameters(params): Parameters<EntityParams>,
+    ) -> ToolResult<EntityPosition> {
         let identity = params.selector.resolve(&self.brp).await.map_err(fail)?;
 
-        let types: Vec<String> = self
-            .brp
-            .call(
-                "world.list_components",
-                json!({ "entity": identity.entity }),
-            )
-            .await
-            .map_err(fail)?;
-
-        #[derive(Deserialize)]
-        struct Components {
-            components: HashMap<String, Value>,
-            errors: HashMap<String, Value>,
-        }
-        let values: Components = self
-            .brp
-            .call(
-                "world.get_components",
-                json!({ "entity": identity.entity, "components": types, "strict": false }),
-            )
-            .await
-            .map_err(fail)?;
+        let paths = [
+            CELL_COORD.to_owned(),
+            TRANSFORM.to_owned(),
+            GLOBAL_TRANSFORM.to_owned(),
+        ];
+        // The absent ones need no report of their own here: a component the entity does not
+        // have is exactly the one whose field below is null.
+        let (mut values, _absent) = self.read_components(identity.entity, &paths).await?;
 
         #[derive(Deserialize)]
         struct Position {
             position: [f64; 3],
+            grid: u64,
         }
-        let position = self
+        // An entity under no grid has no world position, which is an answer and not a failure:
+        // its Transform still exists and is still what the caller came to see.
+        let placed = self
             .brp
             .call::<Position>("game.position.get", json!({ "entity": identity.entity }))
             .await
-            .ok()
-            .map(|p| p.position);
+            .ok();
 
-        self.tagged(EntityDetail {
+        self.tagged(EntityPosition {
             identity,
-            position,
-            components: values.components,
+            position: placed.as_ref().map(|p| p.position),
+            grid: placed.map(|p| p.grid),
+            cell: values.components.remove(CELL_COORD),
+            transform: values.components.remove(TRANSFORM),
+            global_transform: values.components.remove(GLOBAL_TRANSFORM),
             unreadable: values.errors,
         })
         .await
+    }
+
+    /// Reads named component values, and says which of the names the entity does not have.
+    ///
+    /// The split is the point. `world.get_components` with `strict` off reports an absent
+    /// component and one whose value will not serialize as the same kind of error, and those are
+    /// different answers: the first says the entity is not what the caller thought, the second
+    /// says reflection cannot show it. So membership is settled against `world.list_components`
+    /// first, and only what the entity actually has is read.
+    async fn read_components(
+        &self,
+        entity: u64,
+        paths: &[String],
+    ) -> Result<(ComponentValues, Vec<String>), ErrorData> {
+        let on_entity: Vec<String> = self
+            .brp
+            .call("world.list_components", json!({ "entity": entity }))
+            .await
+            .map_err(fail)?;
+        let (present, absent): (Vec<String>, Vec<String>) = paths
+            .iter()
+            .cloned()
+            .partition(|path| on_entity.contains(path));
+
+        if present.is_empty() {
+            return Ok((ComponentValues::default(), absent));
+        }
+        let values = self
+            .brp
+            .call(
+                "world.get_components",
+                json!({ "entity": entity, "components": present, "strict": false }),
+            )
+            .await
+            .map_err(fail)?;
+        Ok((values, absent))
     }
 
     #[tool(
@@ -580,7 +687,7 @@ impl GameServer {
     #[tool(description = "Delete an entity and everything parented to it.")]
     async fn world_despawn_entity(
         &self,
-        Parameters(params): Parameters<GetEntityParams>,
+        Parameters(params): Parameters<EntityParams>,
     ) -> ToolResult<ResolvedEntity> {
         let identity = params.selector.resolve(&self.brp).await.map_err(fail)?;
         self.brp
@@ -788,10 +895,7 @@ impl ServerHandler for GameServer {
 mod tests {
     use serde_json::json;
 
-    use super::{crate_matches, reject_position_write};
-
-    const TRANSFORM: &str = "bevy_transform::components::transform::Transform";
-    const CELL: &str = "big_space::grid::cell::CellCoord";
+    use super::{CELL_COORD as CELL, TRANSFORM, crate_matches, reject_position_write};
 
     #[test]
     fn refuses_writes_that_would_move_half_a_position() {
