@@ -1,5 +1,6 @@
-//! The dock and its panels: hierarchy, inspector, resource and asset pickers.
+//! The dock and its panels: hierarchy, inspector, console, resource and asset pickers.
 
+use crate::console::ConsoleState;
 use bevy::{
     asset::{ReflectAsset, UntypedAssetId},
     camera::visibility::RenderLayers,
@@ -46,6 +47,7 @@ pub(crate) struct UiState {
     pub(crate) selected_entities: SelectedEntities,
     selection: InspectorSelection,
     pub(crate) pointer_in_viewport: bool,
+    console: ConsoleState,
 }
 
 impl UiState {
@@ -55,8 +57,16 @@ impl UiState {
         let [game, _inspector] =
             tree.split_right(NodeIndex::root(), 0.75, vec![EguiWindow::Inspector]);
         let [game, _hierarchy] = tree.split_left(game, 0.2, vec![EguiWindow::Hierarchy]);
-        let [_game, _bottom] =
-            tree.split_below(game, 0.8, vec![EguiWindow::Resources, EguiWindow::Assets]);
+        // Console first, because `egui_dock`'s `Leaf::new` makes tab zero the active one.
+        let [_game, _bottom] = tree.split_below(
+            game,
+            0.8,
+            vec![
+                EguiWindow::Console,
+                EguiWindow::Resources,
+                EguiWindow::Assets,
+            ],
+        );
 
         Self {
             state,
@@ -64,6 +74,7 @@ impl UiState {
             selection: InspectorSelection::Entities,
             viewport_rect: egui::Rect::NOTHING,
             pointer_in_viewport: false,
+            console: ConsoleState::default(),
         }
     }
 
@@ -74,6 +85,7 @@ impl UiState {
             selected_entities: &mut self.selected_entities,
             selection: &mut self.selection,
             pointer_in_viewport: &mut self.pointer_in_viewport,
+            console: &mut self.console,
         };
         DockArea::new(&mut self.state)
             .style(Style::from_egui(ui.style().as_ref()))
@@ -84,6 +96,7 @@ impl UiState {
 #[derive(Debug)]
 enum EguiWindow {
     GameView,
+    Console,
     Hierarchy,
     Resources,
     Assets,
@@ -96,6 +109,7 @@ struct TabViewer<'a> {
     selection: &'a mut InspectorSelection,
     viewport_rect: &'a mut egui::Rect,
     pointer_in_viewport: &'a mut bool,
+    console: &'a mut ConsoleState,
 }
 
 impl egui_dock::TabViewer for TabViewer<'_> {
@@ -113,6 +127,7 @@ impl egui_dock::TabViewer for TabViewer<'_> {
                     *self.selection = InspectorSelection::Entities;
                 }
             }
+            EguiWindow::Console => crate::console::ui(ui, self.console, self.world),
             EguiWindow::Resources => select_resource(ui, &type_registry, self.selection),
             EguiWindow::Assets => select_asset(ui, &type_registry, self.world, self.selection),
             EguiWindow::Inspector => match *self.selection {

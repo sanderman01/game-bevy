@@ -1,4 +1,5 @@
-//! `ename_editor` -- the egui editor: dock layout, selection, viewport, gizmo integration.
+//! `ename_editor` -- the egui editor: dock layout, selection, viewport, console, gizmo
+//! integration.
 //!
 //! Sits above `ename_engine` and links into a target only when that target asks for it. A
 //! shipping build does not contain this crate, and it must never depend on `ename_game`: game
@@ -8,6 +9,7 @@
 //! <https://github.com/jakobhellermann/bevy-inspector-egui/blob/main/crates/bevy-inspector-egui/examples/integrations/egui_dock.rs>.
 
 mod camera;
+mod console;
 mod gizmo;
 mod panels;
 mod selection;
