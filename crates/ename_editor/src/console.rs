@@ -204,7 +204,16 @@ fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, view: &LogView<'_>) {
     // that to the parent's clip rect, which here is the whole tab. So a partly scrolled row bled
     // three points past the splitter and painted over the detail pane's first line. Clamping the
     // parent's clip rect to what is left of the tab is what stops it.
+    // Give the list a whole number of rows and put the remainder above it. A viewport that is a
+    // whole multiple of the row height keeps the top row whole whenever the bottom one is, which
+    // is every position `stick_to_bottom` and a snapped offset can reach.
+    let remainder = ui.available_height() % row_height;
+    ui.advance_cursor_after_rect(Rect::from_min_size(
+        ui.available_rect_before_wrap().min,
+        vec2(0., remainder),
+    ));
     ui.shrink_clip_rect(ui.available_rect_before_wrap());
+
     // Vertical only. A row is exactly as wide as the panel and the painter clips what runs past
     // the right edge, so a long message costs no horizontal scrollbar. The detail pane below is
     // where such a message is read in full.
@@ -223,6 +232,17 @@ fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, view: &LogView<'_>) {
                 row(ui, state, entry, &columns);
             }
         });
+
+    // Snap a hand-scrolled offset onto a row boundary, but only once the scrolling has settled.
+    // Rounding mid-flick would fight the wheel's own smoothing and read as stutter.
+    let settled = ui.input(|i| i.smooth_scroll_delta == egui::Vec2::ZERO && !i.pointer.any_down());
+    let snapped = (output.state.offset.y / row_height).round() * row_height;
+    if settled && (snapped - output.state.offset.y).abs() > 0.5 {
+        let mut scroll = output.state;
+        scroll.offset.y = snapped;
+        scroll.store(ui.ctx(), output.id);
+        ui.ctx().request_repaint();
+    }
 
     // One click target for the whole list, not one per row. egui lays a frame out twice when a
     // size changes, the two passes scroll to different places, and a row's rect then belongs to
