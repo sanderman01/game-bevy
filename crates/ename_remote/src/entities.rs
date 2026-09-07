@@ -62,7 +62,6 @@ pub(crate) struct ListResponse {
 pub(crate) struct EntitySummary {
     entity: EntityId,
     name: Option<String>,
-    components: Vec<String>,
     /// Metres, absolute. Absent when the entity is not under a grid, which is most of them.
     position: Option<[f64; 3]>,
 }
@@ -116,7 +115,6 @@ pub(crate) fn list(In(params): In<Option<Value>>, world: &mut World) -> BrpResul
             position: crate::position::absolute_position(world, entity)
                 .ok()
                 .map(|p| p.to_array()),
-            components,
         });
     }
 

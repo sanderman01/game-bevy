@@ -134,7 +134,6 @@ pub struct QueryParams {
 pub struct QueriedEntity {
     entity: EntityId,
     name: Option<String>,
-    components: Vec<String>,
     /// Absolute metres. Absent when the entity is not under a grid.
     position: Option<[f64; 3]>,
 }
@@ -400,8 +399,8 @@ pub struct GetLogsParams {
 impl GameServer {
     #[tool(
         description = "Find entities in the running game by name substring, component, or parent. \
-                       Returns each entity's id, name, component type paths and absolute world \
-                       position, named entities first. Start here."
+                       Returns each entity's id, name and absolute world position, named entities \
+                       first. Start here, then world_list_components for what they carry."
     )]
     async fn world_query(
         &self,
@@ -432,7 +431,6 @@ impl GameServer {
                 .map(|summary| QueriedEntity {
                     entity: summary.entity.id,
                     name: summary.name,
-                    components: summary.components,
                     position: summary.position,
                 })
                 .collect(),

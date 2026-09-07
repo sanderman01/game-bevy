@@ -92,8 +92,6 @@ pub struct Summary {
     pub entity: WireEntity,
     pub name: Option<String>,
     #[serde(default)]
-    pub components: Vec<String>,
-    #[serde(default)]
     pub position: Option<[f64; 3]>,
 }
 
