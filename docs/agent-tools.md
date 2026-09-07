@@ -73,11 +73,19 @@ it. See "Noticing a restart".
 
 A few things about them are worth knowing before reading the schemas.
 
-**Entities are addressed by `name` or by `entity`, and results carry both.** An entity id is a
-generation-and-index bit pattern that changes every run, so it cannot go into a written plan or
-be quoted to a user. Names can. But an entity need not have one, and names are not unique: the
-starting scene has three called `VirtualCamera`. An ambiguous name is an error listing the
-candidates.
+**Entities are addressed by `name` or by `entity`, and results carry both.** An entity id is an
+index and a generation, written `606v0`, exactly as the editor's hierarchy panel shows it. The
+pair is reissued every run, so an id cannot go into a written plan or be quoted to a user. Names
+can. But an entity need not have one, and names are not unique: the starting scene has three
+called `VirtualCamera`. An ambiguous name is an error listing the candidates.
+
+The packed integer `Entity::to_bits` returns never appears in a tool's input or output. Bevy
+documents those bits as opaque and they are -- the index half is stored complemented, so
+`4294966729` is `566v0` -- which means nothing outside Bevy can convert between the two. So the
+game reports both forms, the sidecar keeps the packed one for the BRP calls that require it, and
+only the readable one crosses into a tool result. Passing a bare number as `entity` is refused
+rather than resolved: `563` is a *valid* packed id naming a different entity, so guessing would
+answer confidently about the wrong one.
 
 **Discovery hides the ECS's own entities.** Bevy stores resources, observers and registered
 systems as entities, and in this project that is over 500 of them against seventeen named ones.
@@ -116,7 +124,7 @@ run keeps being applied to the next, and the failures read as unrelated bugs.
 So every tool result carries `pid`, three lowercase letters naming the run:
 
 ```json
-{"pid": "uuq", "entity": 4294966691, "name": "Cube", "position": [0, 1, 0]}
+{"pid": "uuq", "entity": "606v0", "name": "Cube", "position": [0, 1, 0]}
 ```
 
 If it differs from the previous call, the game restarted. Discard every id you were holding and

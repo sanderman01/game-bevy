@@ -7,6 +7,8 @@ use bevy::{
     remote::{BrpError, BrpResult, builtin_methods::parse_some, error_codes},
 };
 use ename_engine::bigspace::{CellCoord, Grid};
+
+use crate::entity_id::EntityId;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -28,17 +30,17 @@ pub(crate) struct SetParams {
 
 #[derive(Serialize)]
 pub(crate) struct PositionResponse {
-    entity: Entity,
+    entity: EntityId,
     position: [f64; 3],
 }
 
 #[derive(Serialize)]
 pub(crate) struct GetResponse {
-    entity: Entity,
+    entity: EntityId,
     position: [f64; 3],
     /// The entity holding the `Grid` the position is expressed in. Naming it is what lets a
     /// caller tell which frame a `Transform` and a `CellCoord` belong to.
-    grid: Entity,
+    grid: EntityId,
 }
 
 pub(crate) fn get(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
@@ -46,9 +48,9 @@ pub(crate) fn get(In(params): In<Option<Value>>, world: &mut World) -> BrpResult
     let (grid_entity, grid) = grid_of(world, entity)?;
     let position = position_in(grid, world, entity);
     crate::to_value(GetResponse {
-        entity,
+        entity: entity.into(),
         position: position.to_array(),
-        grid: grid_entity,
+        grid: grid_entity.into(),
     })
 }
 
@@ -75,7 +77,7 @@ pub(crate) fn set(In(params): In<Option<Value>>, world: &mut World) -> BrpResult
     entity_mut.insert(cell);
 
     crate::to_value(PositionResponse {
-        entity,
+        entity: entity.into(),
         position: position.to_array(),
     })
 }
