@@ -1,0 +1,23 @@
+docs/agent-tools.md
+  s_9a2805967f4066::t_61744a625da869 14,17,47-52
+crates/ename/Cargo.toml
+  s_9a2805967f4066::t_7f498d4624f9cb 10,16-19
+crates/ename_mcp/src/brp.rs
+  s_9a2805967f4066::t_303cca3b54cae6 59-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "3db299abf1d74a5d7ecd02b582ce14d8dde04d08",
+  "prompts": {},
+  "sessions": {
+    "s_9a2805967f4066": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ed2333d2-af37-4e9d-b94f-7112ee8ef2c1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
