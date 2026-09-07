@@ -8,8 +8,11 @@
 //! Entries are structured rather than formatted. Level, target, message and timestamp stay
 //! separate fields, so a reader filters on them instead of pattern-matching rendered text.
 //!
-//! The layer sits below `LogPlugin`'s `EnvFilter`, so this buffer never holds anything the
-//! terminal did not also print.
+//! An `EnvFilter` added to a subscriber gates every layer on it, whatever the order, so the
+//! buffer can only be more verbose than the terminal if the subscriber-wide filter is the more
+//! verbose of the two and the terminal narrows itself back down. That is what [`CAPTURE_LEVEL`]
+//! and [`terminal_layer`] are for: `EnginePlugins` gives `LogPlugin` the first as its level and
+//! the second as its `fmt_layer`.
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -19,12 +22,12 @@ use std::{
 
 use bevy::{
     log::{
-        BoxedLayer, Level,
+        BoxedFmtLayer, BoxedLayer, DEFAULT_FILTER, Level,
         tracing::{
             Event, Subscriber,
             field::{Field, Visit},
         },
-        tracing_subscriber::{Layer, layer::Context},
+        tracing_subscriber::{EnvFilter, Layer, fmt, layer::Context},
     },
     prelude::*,
 };
@@ -32,6 +35,23 @@ use bevy::{
 /// Entries kept before the oldest is dropped, unless a target overrides it with
 /// [`crate::EnginePlugins::with_log_capacity`].
 pub const DEFAULT_CAPACITY: usize = 3000;
+
+/// How verbose the buffer is, and so also the subscriber as a whole.
+///
+/// Trace, because the console's level filter can only hide what was already captured.
+pub const CAPTURE_LEVEL: Level = Level::TRACE;
+
+/// Targets held below [`CAPTURE_LEVEL`], on top of `LogPlugin`'s own `wgpu` and `naga` defaults.
+///
+/// These trace once per frame or once per physics substep. Measured on this game, they alone
+/// fill a [`DEFAULT_CAPACITY`] buffer in about fifteen seconds, pushing out every startup message
+/// and leaving the console empty at its default levels. Add to the list when a new target drowns
+/// the console; name one in `RUST_LOG` to get its trace back.
+pub const CAPTURE_FILTER: &str = "avian3d=debug,bevy_egui::input=debug";
+
+/// How verbose stderr is. `LogPlugin::level`'s own default, kept here because the buffer took
+/// that field over.
+pub const TERMINAL_LEVEL: Level = Level::INFO;
 
 /// An interned emitting module path, such as `bevy_render::renderer`.
 ///
@@ -228,6 +248,44 @@ impl<'a> LogView<'a> {
 ///
 /// It also inserts the buffer as a resource, which is why it takes the `App`: the layer and every
 /// reader have to share one buffer, and this is the only point where both are reachable.
+/// The stderr layer, filtered to [`TERMINAL_LEVEL`] on its own rather than through the
+/// subscriber.
+///
+/// `LogPlugin` builds exactly this layer when `fmt_layer` returns `None`. The only thing added is
+/// the filter, which has to be here because the subscriber-wide one now runs at
+/// [`CAPTURE_LEVEL`]; without it every trace event the buffer wants would also be printed.
+pub fn terminal_layer(_app: &mut App) -> Option<BoxedFmtLayer> {
+    Some(Box::new(
+        // `fmt::Layer::default` is what reads `NO_COLOR`.
+        fmt::Layer::default()
+            .with_writer(std::io::stderr)
+            .with_filter(env_filter(TERMINAL_LEVEL)),
+    ))
+}
+
+/// The directives `EnginePlugins` gives `LogPlugin`, which gate every layer and so decide what
+/// the buffer can hold.
+pub fn capture_filter() -> String {
+    format!("{DEFAULT_FILTER}{CAPTURE_FILTER}")
+}
+
+/// Builds a filter the way `LogPlugin` builds its own: the plugin's default directives at
+/// `level`, then `RUST_LOG` folded in on top so it can override them.
+///
+/// Repeated rather than reused because `LogPlugin::build_filter_layer` is private.
+fn env_filter(level: Level) -> EnvFilter {
+    let default = EnvFilter::builder().parse_lossy(format!("{level},{DEFAULT_FILTER}"));
+    let environment = std::env::var(EnvFilter::DEFAULT_ENV).unwrap_or_default();
+    environment
+        .split(',')
+        .filter(|directive| !directive.is_empty())
+        .try_fold(default.clone(), |filter, directive| {
+            directive.parse().map(|parsed| filter.add_directive(parsed))
+        })
+        // A malformed `RUST_LOG` is `LogPlugin`'s to complain about; it parses the same string.
+        .unwrap_or(default)
+}
+
 pub fn capture_layer(app: &mut App) -> Option<BoxedLayer> {
     let buffer = LogBuffer::default();
     app.insert_resource(buffer.clone());
@@ -244,30 +302,46 @@ struct CaptureLayer {
 
 impl<S: Subscriber> Layer<S> for CaptureLayer {
     fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-        let mut message = MessageVisitor(String::new());
-        event.record(&mut message);
+        let mut fields = EventFields::default();
+        event.record(&mut fields);
+        let target = fields
+            .target
+            .as_deref()
+            .unwrap_or_else(|| event.metadata().target());
         self.buffer.push(
             self.start.elapsed().as_secs_f64(),
             *event.metadata().level(),
-            event.metadata().target(),
-            message.0,
+            target,
+            fields.message,
         );
     }
 }
 
-/// Pulls the `message` field out of an event, ignoring the structured fields around it.
-struct MessageVisitor(String);
+/// Pulls the two fields the buffer keeps out of an event, ignoring the structured fields around
+/// them.
+///
+/// `log.target` is how `tracing-log` carries the real target of a record that came through the
+/// `log` crate, which `bevy_app` and the other `no_std`-friendly crates use: the event's own
+/// metadata says only `log`. The terminal formatter makes the same swap, so both readers name the
+/// same module.
+#[derive(Default)]
+struct EventFields {
+    message: String,
+    target: Option<String>,
+}
 
-impl Visit for MessageVisitor {
+impl Visit for EventFields {
     fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
         if field.name() == "message" {
-            self.0 = format!("{value:?}");
+            self.message = format!("{value:?}");
         }
     }
 
     fn record_str(&mut self, field: &Field, value: &str) {
-        if field.name() == "message" {
-            self.0 = value.to_owned();
+        match field.name() {
+            "message" => self.message = value.to_owned(),
+            "log.target" => self.target = Some(value.to_owned()),
+            _ => {}
         }
     }
 }
@@ -291,8 +365,17 @@ impl Plugin for LogBufferPlugin {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEFAULT_CAPACITY, LogBuffer};
-    use bevy::log::Level;
+    use super::{CAPTURE_LEVEL, DEFAULT_CAPACITY, LogBuffer, capture_filter};
+    use bevy::log::{Level, tracing_subscriber::EnvFilter};
+
+    #[test]
+    fn the_capture_filter_parses() {
+        // `LogPlugin` parses this leniently, so a typo would be dropped without a word. Strict
+        // parsing here is what turns that into a failing test.
+        EnvFilter::builder()
+            .parse(format!("{CAPTURE_LEVEL},{}", capture_filter()))
+            .expect("capture filter directives");
+    }
 
     fn fill(buffer: &LogBuffer, count: usize) {
         for i in 0..count {

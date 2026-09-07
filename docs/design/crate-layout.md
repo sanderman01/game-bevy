@@ -84,3 +84,10 @@ the other, because `ename_editor -> ename_remote` is a sideways edge the layer c
 `LogPlugin::custom_layer` is a single `fn` slot that two readers cannot each claim. So capture is
 always on, shipping build included, sized by `EnginePlugins::with_log_capacity` and 3000 entries
 by default. `EnginePlugins::with_log_layer` and `ename_remote::capture_layer` are gone.
+
+Owning the buffer means `EnginePlugins` also owns the subscriber's verbosity. An `EnvFilter` added
+to a subscriber gates every layer on it, so the buffer can only be more verbose than stderr if the
+subscriber-wide filter runs at the buffer's level and stderr carries a filter of its own. That is
+what `log::CAPTURE_LEVEL` (trace) and `log::terminal_layer` (info) do, and it is why `EnginePlugins`
+sets `LogPlugin`'s `level`, `filter` and `fmt_layer` rather than just `custom_layer`. `RUST_LOG`
+still overrides both, as it did before.

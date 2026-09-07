@@ -34,8 +34,9 @@ const LEVELS: [Level; 5] = [
 /// Which levels the list shows. One flag per level rather than a minimum severity, so a noisy
 /// level can be dropped without losing the quieter ones below it.
 ///
-/// This can only hide rows, never reveal any: `LogPlugin` installs the capture layer above the
-/// subscriber-wide `EnvFilter`, so anything the terminal filtered out never reached the buffer.
+/// It reaches only as far as the buffer does. `ename_engine::log::CAPTURE_LEVEL` captures at
+/// trace, so debug and trace are here to be shown, but a target pinned lower by
+/// `CAPTURE_FILTER` or by `RUST_LOG` never reached the buffer and no checkbox brings it back.
 #[derive(Clone, Copy)]
 struct LevelFilter([bool; LEVELS.len()]);
 
