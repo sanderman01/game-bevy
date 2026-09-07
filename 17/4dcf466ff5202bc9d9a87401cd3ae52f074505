@@ -1,0 +1,39 @@
+crates/ename_engine/src/lib.rs
+  s_841ea3db1433ee::t_baec7d44c2e6ed 62-65,68
+crates/ename_editor/src/console.rs
+  s_841ea3db1433ee::t_2a48ebbb2b60b6 565-580
+  s_841ea3db1433ee::t_bab32cdcf6f8b6 46
+  s_841ea3db1433ee::t_309f356b97c1f9 10
+  s_841ea3db1433ee::t_ccced4b9453320 52-63
+  s_841ea3db1433ee::t_6c735db0cfcec9 170-175
+  s_841ea3db1433ee::t_3c7672c7aec4cc 37-40
+  s_841ea3db1433ee::t_e81bf61437688a 564
+crates/ename_engine/src/log.rs
+  s_841ea3db1433ee::t_cca4746608b094 11-19
+  s_841ea3db1433ee::t_9fcf41734c5248 416-422
+  s_841ea3db1433ee::t_27c474345ee2af 424-446
+  s_841ea3db1433ee::t_93c60a9f4dab98 449-452
+  s_841ea3db1433ee::t_bab32cdcf6f8b6 413-415
+  s_841ea3db1433ee::t_17ae62289fa46f 48,50-52,54,56-57
+  s_841ea3db1433ee::t_d04026689cffc0 34-39
+  s_841ea3db1433ee::t_69cf2b82b84cbc 250-251,253-255,261,265-300,303-304,306-308,310-311,313,316-320,324-340
+  s_841ea3db1433ee::t_c9b3862a760fa5 423
+docs/design/crate-layout.md
+  s_841ea3db1433ee::t_3cbe5644aedfc0 90-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "174dcf466ff5202bc9d9a87401cd3ae52f074505",
+  "prompts": {},
+  "sessions": {
+    "s_841ea3db1433ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4132d0e4-63bd-4d99-a741-c9acef4e7dae",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
