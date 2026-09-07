@@ -1,0 +1,35 @@
+crates/ename_engine/src/log.rs
+  s_841ea3db1433ee::t_1ae2c669e19b94 220
+  s_841ea3db1433ee::t_d58a595504525b 23-26
+  s_841ea3db1433ee::t_55fac511b84eb0 142-150,157-159,171-176,178-188
+  s_841ea3db1433ee::t_f98bb6adae2b8d 454-467
+  s_841ea3db1433ee::t_4ff66151a4612e 124-131
+crates/ename_editor/src/console.rs
+  s_841ea3db1433ee::t_1eea7c773e392d 359,361-384,389
+  s_841ea3db1433ee::t_f154c60dd6a21f 288
+  s_841ea3db1433ee::t_7b4ac91793dd82 114-117,119,122,125,128-138,140-145,147-156,159-162,164-165,167-174,176-177
+  s_841ea3db1433ee::t_82a395656f8b51 194-198
+  s_841ea3db1433ee::t_5044680878c9c2 118,124,126
+  s_841ea3db1433ee::t_8338f291f64f6a 401
+  s_841ea3db1433ee::t_a9e3f9ec9eef68 228,240-241,244,254-278
+  s_841ea3db1433ee::t_bf18cdf2d51c8a 10,20-22,424,431
+  s_841ea3db1433ee::t_b60f85974657db 212,220-222
+  s_841ea3db1433ee::t_db9bc59a52e7e7 324-333
+  s_841ea3db1433ee::t_fedb144cab8b04 127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "e75dfdbe22c4ba621b143c1d7fec9af6d51055d7",
+  "prompts": {},
+  "sessions": {
+    "s_841ea3db1433ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4132d0e4-63bd-4d99-a741-c9acef4e7dae",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
