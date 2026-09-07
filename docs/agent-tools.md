@@ -6,8 +6,9 @@ The game can expose its running world to an MCP client. Two processes:
 agent  --stdio MCP-->  ename_mcp  --HTTP JSON-RPC-->  game  (bevy_remote + custom methods)
 ```
 
-Why the design is shaped this way is in [design.md](design.md#agent-tooling); the plan it came
-from is `scratch/mcp-server-plan.md`.
+Why the design is shaped this way is in
+[design/agent-tooling.md](design/agent-tooling.md); the plan it came from is
+`scratch/mcp-server-plan.md`.
 
 ## Running it
 
@@ -150,4 +151,5 @@ and keeps climbing, because the renderer is still drawing.
 Reflection registration decides visibility, and it fails silently. Colliders are invisible,
 asset handles read as errors, and a component that is not `#[derive(Reflect)]` and registered
 does not exist as far as these tools are concerned.
-[design.md](design.md#what-the-agent-can-actually-see) has the measured list.
+[design/agent-tooling.md](design/agent-tooling.md#what-the-agent-can-actually-see) has the
+measured list.

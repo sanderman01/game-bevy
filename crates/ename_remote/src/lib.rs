@@ -2,7 +2,7 @@
 //! BRP's built-ins do not cover.
 //!
 //! Sits above `ename_engine` and `ename_game`, below the binary, and links into a target only
-//! when that target asks for it. See `docs/design.md`.
+//! when that target asks for it. See `docs/design/agent-tooling.md`.
 //!
 //! # This crate is not safe to ship
 //!

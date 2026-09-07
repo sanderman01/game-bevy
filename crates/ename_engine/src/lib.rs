@@ -2,7 +2,7 @@
 //!
 //! Bottom of the layer graph, alongside `ename_content`. It must never depend on `ename_editor`,
 //! `ename_content`, or `ename_game`: if engine code needs something from a higher layer, move the
-//! shared type down or invert the call into an event. See `docs/design.md`.
+//! shared type down or invert the call into an event. See `docs/design/crate-layout.md`.
 
 pub mod bigspace;
 pub mod camera;

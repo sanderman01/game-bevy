@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fails the build when a crate depends on a layer above it.
-# The graph this enforces is in docs/design.md.
+# The graph this enforces is in docs/design/crate-layout.md.
 set -euo pipefail
 
 fail=0

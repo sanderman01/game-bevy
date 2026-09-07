@@ -10,8 +10,9 @@ Where the two overlap, this file wins.
 | Document | Covers |
 | --- | --- |
 | [README.md](README.md) | Overview: what this project is. |
-| [docs/design.md](docs/design.md) | Design record: every decision, its reasoning, and which questions are still open. Read it before doing design work. |
+| [docs/design.md](docs/design.md) | Design record: every decision, its reasoning, and which questions are still open. Indexes the per-topic files in `docs/design/`. Read it before doing design work. |
 | [docs/conventions.md](docs/conventions.md) | Things like coordinate system axes handedness, units, socket names, exact import/export settings. |
+| [docs/agent-tools.md](docs/agent-tools.md) | How to drive the running game from a coding agent: the MCP tools, what they can see, and how to run them. |
 | [docs/code-style.md](docs/code-style.md) | How the Rust code is written: modern Rust, lifetime rules, crates, dependencies, and API hygiene. Read it before writing or reviewing code. |
 
 ## What this project is

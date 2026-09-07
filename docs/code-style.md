@@ -18,14 +18,8 @@ here no longer exists after an upgrade, fix this document in the same commit as 
 
 `crates/` holds layers, not features. Dependencies point one direction and there are no cycles.
 
-```
-ename (bin)        -> ename_game, ename_content, ename_editor, ename_game_editor
-ename_game_editor  -> ename_editor, ename_game
-ename_game         -> ename_engine, ename_content
-ename_editor       -> ename_engine
-ename_content      -> serde, toml, thiserror, bevy      (no first-party deps)
-ename_engine       -> bevy, avian3d, big_space          (no first-party deps)
-```
+The graph itself is in [design/crate-layout.md](design/crate-layout.md#layer-graph). Keep one copy;
+this file only states the rules that follow from it.
 
 `ename_engine` never depends on `ename_game`, `ename_editor`, or `ename_content`.
 `ename_content` is a leaf too, not a layer above the engine. If engine code needs something
@@ -33,7 +27,7 @@ from a higher layer, the design is wrong: move the shared type down into `ename_
 invert the call into an event the higher layer observes.
 
 `scripts/check-layers.sh` enforces this in CI. Record any change to the layer graph in
-`docs/design.md` before making it.
+`docs/design/crate-layout.md` before making it.
 
 ## Features are modules until they earn a crate
 

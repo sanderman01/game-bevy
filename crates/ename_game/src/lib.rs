@@ -1,7 +1,7 @@
 //! `ename_game` -- gameplay: game states and the starting scene.
 //!
 //! Sits above `ename_engine` and `ename_content` and below the binary. It never reaches back
-//! down into the editor. See `docs/design.md`.
+//! down into the editor. See `docs/design/crate-layout.md`.
 
 pub mod scene;
 mod state;

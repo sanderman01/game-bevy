@@ -2,7 +2,7 @@
 //!
 //! A leaf of the layer graph, alongside `ename_engine` and independent of it: manifests,
 //! packages, an alias registry and a load state machine are asset-layer concerns with nothing
-//! engine-shaped in them. See `docs/design.md`.
+//! engine-shaped in them. See `docs/design/crate-layout.md`.
 
 mod asset_registry;
 mod manifest;

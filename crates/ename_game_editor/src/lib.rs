@@ -3,7 +3,7 @@
 //! Deliberately empty. It exists so that game-specific tooling has somewhere to go that is not
 //! `ename_editor`, which must stay game-agnostic, and not `ename_game`, which must not link the
 //! editor. Every engine that ships an editor grows this arrow eventually; `EditorCamera` existed
-//! because this project had no slot for it. See `docs/design.md`.
+//! because this project had no slot for it. See `docs/design/crate-layout.md`.
 
 use bevy::{app::PluginGroupBuilder, prelude::*};
 
