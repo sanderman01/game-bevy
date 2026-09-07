@@ -56,8 +56,9 @@ impl BrpClient {
             .await
             .with_context(|| {
                 format!(
-                    "cannot reach the game's remote server at {}. Is the game running, and was \
-                     it built with `--features agent`?",
+                    "cannot reach the game's remote server at {}. Is the game running? The \
+                     `agent` feature is on by default, so a build with `--no-default-features` \
+                     is the other way to have no server.",
                     self.url
                 )
             })?;

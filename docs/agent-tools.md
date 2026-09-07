@@ -11,10 +11,10 @@ from is `scratch/mcp-server-plan.md`.
 
 ## Running it
 
-Start the game with the `agent` feature. It listens on `127.0.0.1:15702`.
+The `agent` feature is on by default, so a plain run listens on `127.0.0.1:15702`.
 
 ```sh
-cargo run -p ename --features agent
+cargo run -p ename
 ```
 
 Build the sidecar once:
@@ -44,8 +44,12 @@ down fails with a message saying so, and works again once the game is back.
 
 The `agent` feature must never be on in a shipping build. BRP is unauthenticated read and write
 access to the world, and localhost is not a trust boundary. Any process running as the same user
-can connect. `scripts/check-layers.sh` fails the build if `ename_remote` appears in the binary's
-default dependency graph.
+can connect.
+
+It is in `default` because every build made here is a development build, alongside `dev` and
+`editor` which carry the same warning. A shipping build is `--no-default-features`, and
+`scripts/check-layers.sh` fails if `ename_remote` reaches the binary through that graph. CI runs
+both, so the feature being convenient by default cannot become the feature shipping by accident.
 
 ## The tools
 
