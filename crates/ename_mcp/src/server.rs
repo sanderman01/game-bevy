@@ -28,6 +28,7 @@ use serde_json::{Value, json};
 use crate::{
     brp::BrpClient,
     entity::{self, EntityId, EntitySelector, ResolvedEntity},
+    staleness,
 };
 
 /// The MCP server. One instance per client connection, one BRP client behind it.
@@ -45,11 +46,12 @@ impl GameServer {
         }
     }
 
-    /// Attaches the game's run id to a finished tool result.
+    /// Attaches what the agent needs to know about this call to a finished tool result.
     ///
-    /// Read after the work rather than before, so it names the process that actually served the
-    /// request. One extra loopback call per tool; the handler reads a single resource.
-    async fn tagged<T>(&self, result: T) -> ToolResult<T> {
+    /// The run id is read after the work rather than before, so it names the process that
+    /// actually served the request. One extra loopback call per tool; the handler reads a
+    /// single resource.
+    async fn tag<T>(&self, result: T) -> ToolResult<T> {
         #[derive(Deserialize)]
         struct Pid {
             pid: String,
@@ -59,30 +61,43 @@ impl GameServer {
             .call("game.pid.get", json!({}))
             .await
             .map_err(fail)?;
-        Ok(Json(WithPid {
+        Ok(Json(Tagged {
             pid: pid.pid,
+            warning: staleness::warning(),
             result,
         }))
     }
 }
 
 /// Tool failures reach the agent as failures, with the sentence that explains them.
+///
+/// A stale build is appended here as well as carried on success, because that is the path it
+/// actually shows up on: an old image talking to a newer game fails to parse the answer long
+/// before it returns one.
 fn fail(error: anyhow::Error) -> ErrorData {
-    ErrorData::internal_error(format!("{error:#}"), None)
+    let message = match staleness::warning() {
+        Some(warning) => format!("{error:#}\n\n{warning}"),
+        None => format!("{error:#}"),
+    };
+    ErrorData::internal_error(message, None)
 }
 
-type ToolResult<T> = Result<Json<WithPid<T>>, ErrorData>;
+type ToolResult<T> = Result<Json<Tagged<T>>, ErrorData>;
 
-/// Every tool result, wrapped with the id of the game process that answered it.
+/// Every tool result, wrapped with what the agent should know about the answer rather than from
+/// it. A future fact about the call belongs here rather than in each tool's own result type.
 ///
-/// Nothing the agent holds between calls survives a restart, entity ids least of all. Without
-/// this the agent finds out by watching a plan fail against a world it never saw. Three letters
-/// so the cost of carrying it on every response stays negligible.
+/// Names are kept short and fields absent when they have nothing to say, because this rides on
+/// every response.
 #[derive(Serialize, schemars::JsonSchema)]
-pub struct WithPid<T> {
+pub struct Tagged<T> {
     /// Identifies this run of the game process. A different value from the last call means the
     /// game restarted: re-resolve entities by name, because the ids are stale.
     pid: String,
+    /// Something about this server, not about the result, that needs acting on. Absent in the
+    /// ordinary case, which is all of them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    warning: Option<String>,
     #[serde(flatten)]
     result: T,
 }
@@ -386,7 +401,7 @@ impl GameServer {
             )
             .await
             .map_err(fail)?;
-        self.tagged(QueryResult {
+        self.tag(QueryResult {
             entities: result
                 .entities
                 .into_iter()
@@ -419,7 +434,7 @@ impl GameServer {
             .read_components(identity.bits, &params.components)
             .await?;
 
-        self.tagged(EntityComponents {
+        self.tag(EntityComponents {
             identity,
             components: values.components,
             unreadable: values.errors,
@@ -461,7 +476,7 @@ impl GameServer {
             .await
             .ok();
 
-        self.tagged(EntityPosition {
+        self.tag(EntityPosition {
             identity,
             position: placed.as_ref().map(|p| p.position),
             grid: placed.map(|p| p.grid.id),
@@ -559,7 +574,7 @@ impl GameServer {
         let truncated = matched.len().saturating_sub(limit);
         matched.truncate(limit);
 
-        self.tagged(RegistrySchema {
+        self.tag(RegistrySchema {
             schemas: matched.into_iter().collect(),
             truncated,
             unregistered,
@@ -577,7 +592,7 @@ impl GameServer {
             .call_raw("game.run_state.get", json!({}))
             .await
             .map_err(fail)?;
-        self.tagged(state).await
+        self.tag(state).await
     }
 
     #[tool(
@@ -606,13 +621,13 @@ impl GameServer {
             .map_err(fail)?;
 
         if !matches!(params.action, RunAction::Step) {
-            return self.tagged(started).await;
+            return self.tag(started).await;
         }
         // A step is only useful if the caller can read the world after it, so the tool does not
         // return until the frames have run. The engine-side method cannot wait: it is itself a
         // system, running inside one of the frames being counted.
         let ended = self.await_step_end().await.map_err(fail)?;
-        self.tagged(ended).await
+        self.tag(ended).await
     }
 
     /// Polls until the world has repaused, or gives up after 10 seconds.
@@ -663,7 +678,7 @@ impl GameServer {
             )
             .await
             .map_err(fail)?;
-        self.tagged(entries).await
+        self.tag(entries).await
     }
 
     #[tool(
@@ -718,7 +733,7 @@ impl GameServer {
         let identity = entity::describe(&self.brp, spawned.entity)
             .await
             .map_err(fail)?;
-        self.tagged(PositionResult {
+        self.tag(PositionResult {
             identity,
             position: params.position,
         })
@@ -735,7 +750,7 @@ impl GameServer {
             .call_raw("world.despawn_entity", json!({ "entity": identity.bits }))
             .await
             .map_err(fail)?;
-        self.tagged(identity).await
+        self.tag(identity).await
     }
 
     #[tool(description = "Add components to an existing entity, or replace them if present.")]
@@ -751,7 +766,7 @@ impl GameServer {
             )
             .await
             .map_err(fail)?;
-        self.tagged(identity).await
+        self.tag(identity).await
     }
 
     #[tool(description = "Remove components from an entity by their full type paths.")]
@@ -767,7 +782,7 @@ impl GameServer {
             )
             .await
             .map_err(fail)?;
-        self.tagged(identity).await
+        self.tag(identity).await
     }
 
     #[tool(
@@ -792,7 +807,7 @@ impl GameServer {
             )
             .await
             .map_err(fail)?;
-        self.tagged(identity).await
+        self.tag(identity).await
     }
 
     #[tool(
@@ -815,7 +830,7 @@ impl GameServer {
             )
             .await
             .map_err(fail)?;
-        self.tagged(identity).await
+        self.tag(identity).await
     }
 
     #[tool(
@@ -840,7 +855,7 @@ impl GameServer {
             )
             .await
             .map_err(fail)?;
-        self.tagged(PositionResult {
+        self.tag(PositionResult {
             identity,
             position: Some(result.position),
         })

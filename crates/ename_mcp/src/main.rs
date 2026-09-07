@@ -9,6 +9,7 @@
 mod brp;
 mod entity;
 mod server;
+mod staleness;
 
 use anyhow::Context as _;
 use rmcp::{ServiceExt as _, transport::stdio};
@@ -27,6 +28,9 @@ async fn main() -> anyhow::Result<()> {
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .init();
+
+    // Before serving, so the recorded build is the one this process actually started from.
+    staleness::record();
 
     let url = std::env::var(URL_VAR).unwrap_or_else(|_| brp::DEFAULT_URL.to_owned());
     tracing::info!(%url, "forwarding to the game's remote server");
