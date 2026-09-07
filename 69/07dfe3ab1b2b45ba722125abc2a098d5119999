@@ -1,0 +1,23 @@
+crates/ename_mcp/src/entity.rs
+  s_a340916b9e008a::t_627d0feef408f1 14
+  s_a340916b9e008a::t_6101a61f5d6eb5 10
+  s_a340916b9e008a::t_2edabe7eba8142 117-125
+crates/ename_mcp/src/brp.rs
+  s_a340916b9e008a::t_b112356c21da91 77-80,82,93-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "6907dfe3ab1b2b45ba722125abc2a098d5119999",
+  "prompts": {},
+  "sessions": {
+    "s_a340916b9e008a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d36799ac-d64b-4087-afe3-34b61f15bf0a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
