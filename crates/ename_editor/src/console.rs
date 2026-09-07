@@ -200,11 +200,20 @@ fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, view: &LogView<'_>) {
     };
 
     ui.spacing_mut().item_spacing.y = 0.;
+    // A `ScrollArea` clips its contents to its own rect grown by `clip_rect_margin`, then clamps
+    // that to the parent's clip rect, which here is the whole tab. So a partly scrolled row bled
+    // three points past the splitter and painted over the detail pane's first line. Clamping the
+    // parent's clip rect to what is left of the tab is what stops it.
+    ui.shrink_clip_rect(ui.available_rect_before_wrap());
     // Vertical only. A row is exactly as wide as the panel and the painter clips what runs past
     // the right edge, so a long message costs no horizontal scrollbar. The detail pane below is
     // where such a message is read in full.
     let output = egui::ScrollArea::vertical()
         .auto_shrink([false; 2])
+        // The default floor is 64 points. A pane shorter than that made the scroll area overflow
+        // its slot, so the newest row, the one `stick_to_bottom` scrolls to, was drawn under the
+        // detail pane and clipped away.
+        .min_scrolled_height(0.)
         .stick_to_bottom(state.follow_tail)
         .show_rows(ui, row_height, view.len(), |ui, visible| {
             for index in visible {
