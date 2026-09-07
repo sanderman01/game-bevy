@@ -1,5 +1,5 @@
 //! `ename_engine` -- the runtime layer: camera rig, big_space integration, physics glue, input,
-//! time control.
+//! time control, log capture.
 //!
 //! Bottom of the layer graph, alongside `ename_content`. It must never depend on `ename_editor`,
 //! `ename_content`, or `ename_game`: if engine code needs something from a higher layer, move the
@@ -8,15 +8,11 @@
 pub mod bigspace;
 pub mod camera;
 pub mod input;
+pub mod log;
 pub mod physics;
 pub mod time;
 
-use bevy::{
-    app::PluginGroupBuilder,
-    log::{BoxedLayer, LogPlugin},
-    prelude::*,
-    transform::TransformPlugin,
-};
+use bevy::{app::PluginGroupBuilder, log::LogPlugin, prelude::*, transform::TransformPlugin};
 use big_space::plugin::{BigSpaceDebugPlugins, BigSpaceDefaultPlugins};
 
 /// Everything a target needs to run on this engine, `DefaultPlugins` included.
@@ -26,10 +22,18 @@ use big_space::plugin::{BigSpaceDebugPlugins, BigSpaceDefaultPlugins};
 /// belonging to a different group. If a binary assembled `DefaultPlugins` itself, every target
 /// would have to remember that call, and forgetting it gives double propagation with no
 /// compile error.
-#[derive(Default)]
 pub struct EnginePlugins {
     window: Window,
-    log_layer: Option<fn(&mut App) -> Option<BoxedLayer>>,
+    log_capacity: usize,
+}
+
+impl Default for EnginePlugins {
+    fn default() -> Self {
+        Self {
+            window: Window::default(),
+            log_capacity: log::DEFAULT_CAPACITY,
+        }
+    }
 }
 
 impl EnginePlugins {
@@ -40,34 +44,25 @@ impl EnginePlugins {
         self
     }
 
-    /// Adds a `tracing` layer alongside the default formatter.
-    ///
-    /// `LogPlugin` installs the global subscriber during plugin build and a subscriber cannot
-    /// gain layers afterwards, so anything that wants to see log events has to be handed in
-    /// here rather than adding itself later.
-    pub fn with_log_layer(mut self, layer: fn(&mut App) -> Option<BoxedLayer>) -> Self {
-        self.log_layer = Some(layer);
+    /// Sets how many events [`log::LogBuffer`] keeps before it drops the oldest.
+    pub fn with_log_capacity(mut self, capacity: usize) -> Self {
+        self.log_capacity = capacity;
         self
     }
 }
 
 impl PluginGroup for EnginePlugins {
     fn build(self) -> PluginGroupBuilder {
-        let mut plugins = DefaultPlugins
+        DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(self.window),
                 ..default()
             })
-            .disable::<TransformPlugin>();
-
-        if let Some(custom_layer) = self.log_layer {
-            plugins = plugins.set(LogPlugin {
-                custom_layer,
+            .set(LogPlugin {
+                custom_layer: log::capture_layer,
                 ..default()
-            });
-        }
-
-        plugins
+            })
+            .disable::<TransformPlugin>()
             .add_group(BigSpaceDefaultPlugins)
             // No longer bundled with BigSpaceDefaultPlugins as of big_space 0.13.
             .add_group(BigSpaceDebugPlugins::default())
@@ -76,5 +71,9 @@ impl PluginGroup for EnginePlugins {
             .add(input::FlyCameraPlugin)
             .add(physics::PhysicsIntegrationPlugin)
             .add(time::TimeControlPlugin)
+            // After `DefaultPlugins`, because it resizes the buffer `LogPlugin` just built.
+            .add(log::LogBufferPlugin {
+                capacity: self.log_capacity,
+            })
     }
 }

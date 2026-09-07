@@ -36,8 +36,6 @@ use bevy::{
     remote::{RemotePlugin, http::RemoteHttpPlugin},
 };
 
-pub use logs::capture_layer;
-
 /// Serializes a handler's response, turning a serialization failure into a BRP error.
 ///
 /// Every custom method builds its response from a struct, so this is the one place that
@@ -52,8 +50,8 @@ pub(crate) fn to_value<T: serde::Serialize>(value: T) -> bevy::remote::BrpResult
 
 /// The BRP server and its custom methods, as a target adds it.
 ///
-/// Pair it with [`capture_layer`] on the target's `LogPlugin`, or `game.logs.get` returns
-/// nothing: the layer has to be installed before the `App` exists.
+/// `game.logs.get` reads `ename_engine::log::LogBuffer`, which `EnginePlugins` always installs,
+/// so this group needs nothing from the target beyond being added.
 pub struct RemotePlugins;
 
 impl PluginGroup for RemotePlugins {

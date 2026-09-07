@@ -8,18 +8,11 @@ use bevy::{prelude::*, window::WindowResolution};
 fn main() {
     let mut app = App::new();
 
-    #[allow(unused_mut)]
-    let mut engine = ename_engine::EnginePlugins::default().with_window(Window {
+    let engine = ename_engine::EnginePlugins::default().with_window(Window {
         title: "My Bevy Game".into(),
         resolution: WindowResolution::new(1280, 720),
         ..default()
     });
-    // The log layer has to reach `LogPlugin` before it builds, which is why this is here and
-    // not inside `RemotePlugins`.
-    #[cfg(feature = "agent")]
-    {
-        engine = engine.with_log_layer(ename_remote::capture_layer);
-    }
 
     app.add_plugins(engine)
         .add_plugins(

@@ -76,3 +76,11 @@ A third-party type that crosses a boundary is re-exported by the crate that owns
 `big_space` directly, for `spawn_big_space` and the floating-origin components. The cost this does
 not avoid is that `bigspace::grid` exposes `big_space::Grid` in its signatures, so every consumer
 of `ename_engine` is pinned to that git revision. That is accepted deliberately for now.
+
+The captured log is a shared type that moved down. `ename_engine::log` owns the ring buffer and
+the `tracing` layer that fills it, and `EnginePlugins` installs both. Two crates above it read
+that buffer: the editor's Console panel and `ename_remote`'s `game.logs.get`. Neither can reach
+the other, because `ename_editor -> ename_remote` is a sideways edge the layer check rejects, and
+`LogPlugin::custom_layer` is a single `fn` slot that two readers cannot each claim. So capture is
+always on, shipping build included, sized by `EnginePlugins::with_log_capacity` and 3000 entries
+by default. `EnginePlugins::with_log_layer` and `ename_remote::capture_layer` are gone.
