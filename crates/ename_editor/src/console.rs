@@ -105,6 +105,12 @@ fn detail(ui: &mut egui::Ui, state: &ConsoleState, view: &LogView<'_>) {
         .default_size(line * 3.5)
         .min_size(line)
         .show_inside(ui, |ui| {
+            // egui stores the height the contents used and reuses it as the panel's height next
+            // frame, with `min_size` as the only floor. Without this the pane would be one line
+            // tall while nothing is selected and jump to the message's height once something is,
+            // instead of staying where `default_size` or the user's drag put it.
+            ui.set_min_height(ui.available_height());
+
             let Some(entry) = state.detail.and_then(|sequence| view.by_sequence(sequence)) else {
                 ui.label("Select an entry.");
                 return;
