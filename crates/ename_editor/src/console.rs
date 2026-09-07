@@ -3,19 +3,23 @@
 //! The buffer is `ename_engine::log::LogBuffer`, which the engine fills whether or not the
 //! editor is linked in. This module only draws it.
 
-use std::{borrow::Cow, collections::BTreeSet, fmt::Write as _};
+use std::{
+    borrow::Cow,
+    collections::BTreeSet,
+    fmt::Write as _,
+    time::{Duration, SystemTime},
+};
 
 use bevy::{ecs::world::World, log::Level};
 use egui::{Align2, Color32, FontId, Key, Modifiers, Rect, Sense, TextStyle, Visuals, pos2, vec2};
 use ename_engine::log::{CaptureLevel, DEFAULT_LEVEL, LogBuffer, LogEntryRef};
 
-/// Character columns each field starts at. Monospace, so a column is a multiple of one glyph
-/// width and the eye can scan a field straight down the page.
-const TIMESTAMP_END: f32 = 9.;
-const LEVEL_START: f32 = 11.;
-const TARGET_START: f32 = 17.;
+/// Character columns each field takes. Monospace, so a column is a multiple of one glyph width
+/// and the eye can scan a field straight down the page. The timestamp is as wide as [`Clock`]
+/// makes it and everything after it shifts.
+const LEVEL_WIDTH: f32 = 6.;
 const TARGET_WIDTH: usize = 24;
-const MESSAGE_START: f32 = 42.;
+const GAP: f32 = 2.;
 
 /// Characters of a message copied out for a row. Well past what fits on a line at any panel width.
 const MESSAGE_LIMIT: usize = 512;
@@ -24,6 +28,65 @@ const MESSAGE_LIMIT: usize = 512;
 /// uniform row height `ScrollArea::show_rows` needs. The buffer keeps the true text, so a copied
 /// backtrace still pastes with its line breaks.
 const NEWLINE_GLYPH: char = '⏎';
+
+/// How wide a field the timestamp gets, and so how much of it is shown.
+///
+/// UTC, because `std` has no notion of a local offset and reading one is unsound in a process
+/// with threads. It matches what `LogPlugin` prints to stderr, which is also UTC.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum Clock {
+    None,
+    HoursMinutes,
+    #[default]
+    Seconds,
+    Millis,
+}
+
+impl Clock {
+    /// Every variant, in the order the menu lists them.
+    const ALL: [Self; 4] = [Self::None, Self::HoursMinutes, Self::Seconds, Self::Millis];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::HoursMinutes => "[hh:mm]",
+            Self::Seconds => "[hh:mm:ss]",
+            Self::Millis => "[hh:mm:ss:mmm]",
+        }
+    }
+
+    /// Characters the field occupies, which is its label's own width.
+    fn width(self) -> f32 {
+        match self {
+            Self::None => 0.,
+            _ => self.label().len() as f32,
+        }
+    }
+
+    /// Renders one entry's time of day. Empty for [`Clock::None`], so a caller can write it
+    /// unconditionally and get no column.
+    fn format(self, started: SystemTime, elapsed: f64) -> String {
+        if self == Self::None {
+            return String::new();
+        }
+        let Ok(since_epoch) = (started + Duration::from_secs_f64(elapsed.max(0.)))
+            .duration_since(SystemTime::UNIX_EPOCH)
+        else {
+            return String::new();
+        };
+        let day = since_epoch.as_secs() % 86_400;
+        let (hours, minutes, seconds) = (day / 3600, (day % 3600) / 60, day % 60);
+        match self {
+            Self::None => String::new(),
+            Self::HoursMinutes => format!("[{hours:02}:{minutes:02}]"),
+            Self::Seconds => format!("[{hours:02}:{minutes:02}:{seconds:02}]"),
+            Self::Millis => format!(
+                "[{hours:02}:{minutes:02}:{seconds:02}:{:03}]",
+                since_epoch.subsec_millis()
+            ),
+        }
+    }
+}
 
 /// Every level, most severe first, which is the order the menu lists them in.
 const LEVELS: [Level; 5] = [
@@ -84,6 +147,8 @@ pub(crate) struct ConsoleState {
     detail: Option<u64>,
     /// Which levels the list shows.
     levels: LevelFilter,
+    /// How much of the timestamp each row carries.
+    clock: Clock,
     /// Stick to the newest entry until the user scrolls away.
     follow_tail: bool,
     /// Whether the keyboard shortcuts are this panel's. Tracked here rather than through egui's
@@ -99,6 +164,7 @@ impl Default for ConsoleState {
             anchor: None,
             detail: None,
             levels: LevelFilter::default(),
+            clock: Clock::default(),
             follow_tail: true,
             focused: false,
         }
@@ -156,6 +222,13 @@ pub(crate) fn ui(ui: &mut egui::Ui, state: &mut ConsoleState, world: &World) {
                 ui.checkbox(flag, level.as_str());
             }
         });
+        ui.menu_button("Time ⏷", |ui| {
+            for clock in Clock::ALL {
+                ui.radio_value(&mut state.clock, clock, clock.label());
+            }
+        })
+        .response
+        .on_hover_text("UTC, like the terminal's own timestamps.");
         ui.checkbox(&mut state.follow_tail, "Follow");
         clear = ui.button("Clear").clicked();
     });
@@ -193,9 +266,13 @@ pub(crate) fn ui(ui: &mut egui::Ui, state: &mut ConsoleState, world: &World) {
 /// place a long message or a backtrace can be read whole.
 fn detail(ui: &mut egui::Ui, state: &ConsoleState, buffer: &LogBuffer) {
     // Copied before the panel is built, so the buffer is not locked while egui lays it out.
-    let entry = state
-        .detail
-        .and_then(|sequence| buffer.read(|view| view.by_sequence(sequence).map(text_of)));
+    let started = buffer.started();
+    let entry = state.detail.and_then(|sequence| {
+        buffer.read(|view| {
+            view.by_sequence(sequence)
+                .map(|entry| text_of(entry, started, state.clock))
+        })
+    });
     let line = ui.text_style_height(&TextStyle::Monospace);
     egui::Panel::bottom(ui.id().with("detail"))
         .resizable(true)
@@ -254,6 +331,7 @@ fn shortcuts(ui: &egui::Ui, state: &mut ConsoleState, buffer: &LogBuffer, visibl
 /// every selected row that is scrolled out of view. Reading by sequence is right at any scroll
 /// position, and the selection is ordered, so the copy comes out chronological.
 fn clipboard_text(state: &ConsoleState, buffer: &LogBuffer) -> String {
+    let started = buffer.started();
     buffer.read(|view| {
         let mut text = String::new();
         for entry in state
@@ -261,17 +339,20 @@ fn clipboard_text(state: &ConsoleState, buffer: &LogBuffer) -> String {
             .iter()
             .filter_map(|sequence| view.by_sequence(*sequence))
         {
-            let _ = writeln!(text, "{}", text_of(entry));
+            let _ = writeln!(text, "{}", text_of(entry, started, state.clock));
         }
         text
     })
 }
 
 /// One entry as a line of text: the detail pane's whole content, and one line of a copy.
-fn text_of(entry: LogEntryRef<'_>) -> String {
+///
+/// It carries the same timestamp the rows do, so what you copy is what you were looking at.
+fn text_of(entry: LogEntryRef<'_>, started: SystemTime, clock: Clock) -> String {
+    let time = clock.format(started, entry.timestamp);
+    let separator = if time.is_empty() { "" } else { "  " };
     format!(
-        "{:>9.3}  {:<5}  {}  {}",
-        entry.timestamp,
+        "{time}{separator}{:<5}  {}  {}",
         entry.level.as_str(),
         entry.target_name,
         entry.message
@@ -283,6 +364,28 @@ struct Columns {
     font: FontId,
     char_width: f32,
     row_height: f32,
+    clock: Clock,
+}
+
+impl Columns {
+    /// Where each field starts, in characters from the left edge. The timestamp is first and its
+    /// width decides the rest, so turning it off slides every column left rather than leaving a
+    /// gap.
+    fn level(&self) -> f32 {
+        if self.clock == Clock::None {
+            0.
+        } else {
+            self.clock.width() + GAP
+        }
+    }
+
+    fn target(&self) -> f32 {
+        self.level() + LEVEL_WIDTH
+    }
+
+    fn message(&self) -> f32 {
+        self.target() + TARGET_WIDTH as f32 + 1.
+    }
 }
 
 fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, buffer: &LogBuffer, visible: &[u64]) {
@@ -293,6 +396,7 @@ fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, buffer: &LogBuffer, visible
         font,
         char_width,
         row_height,
+        clock: state.clock,
     };
 
     ui.spacing_mut().item_spacing.y = 0.;
@@ -322,11 +426,12 @@ fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, buffer: &LogBuffer, visible
         .stick_to_bottom(state.follow_tail)
         .show_rows(ui, row_height, visible.len(), |ui, drawn| {
             // One lock for the fifty-odd rows on screen, released before any of them is painted.
+            let started = buffer.started();
             let drawn: Vec<Row> = buffer.read(|view| {
                 visible[drawn.start.min(visible.len())..drawn.end.min(visible.len())]
                     .iter()
                     .filter_map(|sequence| view.by_sequence(*sequence))
-                    .map(Row::of)
+                    .map(|entry| Row::of(entry, started, state.clock))
                     .collect()
             });
             for entry in &drawn {
@@ -366,17 +471,17 @@ fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, buffer: &LogBuffer, visible
 /// One row as it is drawn, copied out of the buffer so the lock is not held while egui paints.
 struct Row {
     sequence: u64,
-    timestamp: f64,
+    time: String,
     level: Level,
     target: String,
     message: String,
 }
 
 impl Row {
-    fn of(entry: LogEntryRef<'_>) -> Self {
+    fn of(entry: LogEntryRef<'_>, started: SystemTime, clock: Clock) -> Self {
         Self {
             sequence: entry.sequence,
-            timestamp: entry.timestamp,
+            time: clock.format(started, entry.timestamp),
             level: entry.level,
             target: truncate_left(entry.target_name, TARGET_WIDTH).into_owned(),
             // Clipped at the panel edge long before this, so the tail of a backtrace is not worth
@@ -405,28 +510,28 @@ fn paint(ui: &egui::Ui, rect: Rect, entry: &Row, columns: &Columns) {
     let at = |column: f32| pos2(rect.left() + column * columns.char_width, rect.center().y);
 
     painter.text(
-        at(TIMESTAMP_END),
-        Align2::RIGHT_CENTER,
-        format!("{:.3}", entry.timestamp),
+        at(0.),
+        Align2::LEFT_CENTER,
+        &entry.time,
         columns.font.clone(),
         visuals.weak_text_color(),
     );
     painter.text(
-        at(LEVEL_START),
+        at(columns.level()),
         Align2::LEFT_CENTER,
         entry.level.as_str(),
         columns.font.clone(),
         colour,
     );
     painter.text(
-        at(TARGET_START),
+        at(columns.target()),
         Align2::LEFT_CENTER,
         &entry.target,
         columns.font.clone(),
         visuals.weak_text_color(),
     );
     painter.text(
-        at(MESSAGE_START),
+        at(columns.message()),
         Align2::LEFT_CENTER,
         &entry.message,
         columns.font.clone(),
@@ -508,9 +613,10 @@ fn click(state: &mut ConsoleState, sequence: u64, modifiers: Modifiers, visible:
 
 #[cfg(test)]
 mod tests {
-    use super::{ConsoleState, LEVELS, LevelFilter, click, flatten, truncate_left};
+    use super::{Clock, Columns, ConsoleState, LEVELS, LevelFilter, click, flatten, truncate_left};
     use bevy::log::Level;
     use egui::Modifiers;
+    use std::time::{Duration, SystemTime};
 
     /// Every row in a buffer holding 0..=10, unfiltered.
     fn all() -> Vec<u64> {
@@ -594,6 +700,36 @@ mod tests {
         assert!(filter.allows(Level::INFO));
         assert!(!filter.allows(Level::DEBUG));
         assert!(!filter.allows(Level::TRACE));
+    }
+
+    #[test]
+    fn a_timestamp_is_the_wall_clock_the_entry_landed_on() {
+        // 13:45:56.700 UTC, reached as an anchor 89 seconds before it plus those 89 seconds.
+        let started = SystemTime::UNIX_EPOCH + Duration::from_millis(49_467_700);
+        let elapsed = 89.;
+
+        assert_eq!(Clock::None.format(started, elapsed), "");
+        assert_eq!(Clock::HoursMinutes.format(started, elapsed), "[13:45]");
+        assert_eq!(Clock::Seconds.format(started, elapsed), "[13:45:56]");
+        assert_eq!(Clock::Millis.format(started, elapsed), "[13:45:56:700]");
+
+        // Every label is as wide as the field it names, so the columns after it line up.
+        for clock in Clock::ALL {
+            assert_eq!(clock.format(started, elapsed).len() as f32, clock.width());
+        }
+    }
+
+    #[test]
+    fn turning_the_timestamp_off_slides_the_columns_left() {
+        let columns = |clock| Columns {
+            font: egui::FontId::monospace(12.),
+            char_width: 1.,
+            row_height: 1.,
+            clock,
+        };
+        assert_eq!(columns(Clock::None).level(), 0.);
+        assert_eq!(columns(Clock::Seconds).level(), 12.);
+        assert!(columns(Clock::Millis).message() > columns(Clock::None).message());
     }
 
     #[test]

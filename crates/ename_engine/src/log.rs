@@ -24,7 +24,7 @@ use std::{
         Arc, Mutex, MutexGuard, TryLockError,
         atomic::{AtomicU64, Ordering},
     },
-    time::Instant,
+    time::{Instant, SystemTime},
 };
 
 use bevy::{
@@ -128,6 +128,12 @@ struct Shared {
     /// Events [`LogBuffer::push`] gave up on rather than wait for the lock. Outside the `Mutex`,
     /// because the thread that has to count one is the thread that could not take it.
     dropped: AtomicU64,
+    /// The wall clock reading of the moment entry timestamps count from.
+    ///
+    /// Entries store elapsed seconds, measured on a monotonic `Instant`. This is the one wall
+    /// clock reading taken, so a reader that wants to show a time of day adds the two. The pair
+    /// can drift apart if the system clock is stepped mid-session; a log console does not care.
+    started: SystemTime,
 }
 
 struct Ring {
@@ -147,6 +153,7 @@ impl Default for LogBuffer {
                 next_sequence: 0,
             }),
             dropped: AtomicU64::new(0),
+            started: SystemTime::now(),
         }))
     }
 }
@@ -172,6 +179,11 @@ impl LogBuffer {
     /// console is missing lines, so it says so.
     pub fn dropped(&self) -> u64 {
         self.0.dropped.load(Ordering::Relaxed)
+    }
+
+    /// What the wall clock read when [`LogEntryRef::timestamp`] was zero.
+    pub fn started(&self) -> SystemTime {
+        self.0.started
     }
 
     fn push(&self, timestamp: f64, level: Level, target: &str, message: String) {
