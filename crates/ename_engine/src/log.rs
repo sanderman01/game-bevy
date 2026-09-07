@@ -20,7 +20,10 @@
 
 use std::{
     collections::{HashMap, VecDeque},
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{
+        Arc, Mutex, MutexGuard, TryLockError,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Instant,
 };
 
@@ -118,7 +121,14 @@ pub struct LogEntryRef<'a> {
 /// rather than plain resource data. A `Mutex` and not a channel, because a reader wants the last
 /// N entries rather than the ones that arrived since it last looked.
 #[derive(Resource, Clone)]
-pub struct LogBuffer(Arc<Mutex<Ring>>);
+pub struct LogBuffer(Arc<Shared>);
+
+struct Shared {
+    ring: Mutex<Ring>,
+    /// Events [`LogBuffer::push`] gave up on rather than wait for the lock. Outside the `Mutex`,
+    /// because the thread that has to count one is the thread that could not take it.
+    dropped: AtomicU64,
+}
 
 struct Ring {
     entries: VecDeque<LogEntry>,
@@ -129,21 +139,24 @@ struct Ring {
 
 impl Default for LogBuffer {
     fn default() -> Self {
-        Self(Arc::new(Mutex::new(Ring {
-            entries: VecDeque::with_capacity(DEFAULT_CAPACITY),
-            interner: Interner::default(),
-            capacity: DEFAULT_CAPACITY,
-            next_sequence: 0,
-        })))
+        Self(Arc::new(Shared {
+            ring: Mutex::new(Ring {
+                entries: VecDeque::with_capacity(DEFAULT_CAPACITY),
+                interner: Interner::default(),
+                capacity: DEFAULT_CAPACITY,
+                next_sequence: 0,
+            }),
+            dropped: AtomicU64::new(0),
+        }))
     }
 }
 
 impl LogBuffer {
     /// Runs `f` over a borrowed view of the entries. Nothing is cloned.
     ///
-    /// The lock is held for the whole closure, so a thread emitting an event waits on it. Keep
-    /// the closure to reading and laying out; do not call back into the buffer from inside it,
-    /// which deadlocks.
+    /// Events emitted while the lock is held are dropped, not queued, so keep the closure to
+    /// copying out what you need. In particular do not draw a UI inside it: egui logs through the
+    /// `log` crate, and every one of those lines would be lost.
     pub fn read<R>(&self, f: impl FnOnce(LogView<'_>) -> R) -> R {
         let ring = self.lock();
         f(LogView(&ring))
@@ -155,8 +168,24 @@ impl LogBuffer {
         self.lock().entries.clear();
     }
 
+    /// How many events were thrown away because a reader held the lock. Non-zero means the
+    /// console is missing lines, so it says so.
+    pub fn dropped(&self) -> u64 {
+        self.0.dropped.load(Ordering::Relaxed)
+    }
+
     fn push(&self, timestamp: f64, level: Level, target: &str, message: String) {
-        let mut ring = self.lock();
+        // Never waits. A reader holds this lock while it works, and a reader that logs -- egui
+        // does, through the `log` crate -- would otherwise deadlock its own thread against a
+        // `Mutex` it already holds. Dropping the line is the recoverable half of that trade.
+        let mut ring = match self.0.ring.try_lock() {
+            Ok(ring) => ring,
+            Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+            Err(TryLockError::WouldBlock) => {
+                self.0.dropped.fetch_add(1, Ordering::Relaxed);
+                return;
+            }
+        };
         if ring.capacity == 0 {
             return;
         }
@@ -188,6 +217,7 @@ impl LogBuffer {
     /// outcome.
     fn lock(&self) -> MutexGuard<'_, Ring> {
         self.0
+            .ring
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
@@ -420,6 +450,20 @@ mod tests {
             tracing_subscriber::{layer::SubscriberExt as _, registry::Registry},
         },
     };
+
+    /// A reader draws a UI, egui logs through the `log` crate while it does, and that event
+    /// arrives on the reader's own thread. Blocking on the lock it already holds hangs the
+    /// process, so the event is counted and thrown away instead.
+    ///
+    /// This test hangs rather than fails if [`LogBuffer::push`] goes back to waiting.
+    #[test]
+    fn an_event_emitted_while_reading_is_dropped_rather_than_deadlocking() {
+        let buffer = LogBuffer::default();
+        buffer.read(|_| buffer.push(0., Level::INFO, "test", "nested".to_owned()));
+
+        assert_eq!(buffer.read(|view| view.len()), 0);
+        assert_eq!(buffer.dropped(), 1);
+    }
 
     /// The whole point of the reloadable filter: a level nobody asked for is not captured, and
     /// asking for it starts capture without rebuilding the subscriber.

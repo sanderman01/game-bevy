@@ -7,7 +7,7 @@ use std::{borrow::Cow, collections::BTreeSet, fmt::Write as _};
 
 use bevy::{ecs::world::World, log::Level};
 use egui::{Align2, Color32, FontId, Key, Modifiers, Rect, Sense, TextStyle, Visuals, pos2, vec2};
-use ename_engine::log::{CaptureLevel, DEFAULT_LEVEL, LogBuffer, LogEntryRef, LogView};
+use ename_engine::log::{CaptureLevel, DEFAULT_LEVEL, LogBuffer, LogEntryRef};
 
 /// Character columns each field starts at. Monospace, so a column is a multiple of one glyph
 /// width and the eye can scan a field straight down the page.
@@ -16,6 +16,9 @@ const LEVEL_START: f32 = 11.;
 const TARGET_START: f32 = 17.;
 const TARGET_WIDTH: usize = 24;
 const MESSAGE_START: f32 = 42.;
+
+/// Characters of a message copied out for a row. Well past what fits on a line at any panel width.
+const MESSAGE_LIMIT: usize = 512;
 
 /// Drawn in place of a newline. A real one would lay the entry out as two rows and break the
 /// uniform row height `ScrollArea::show_rows` needs. The buffer keeps the true text, so a copied
@@ -108,67 +111,70 @@ pub(crate) fn ui(ui: &mut egui::Ui, state: &mut ConsoleState, world: &World) {
         return;
     };
 
-    // `LogBuffer::read` holds the lock for the whole closure, so `Clear` runs after it rather
-    // than deadlocking against it.
-    let mut clear = false;
-
-    buffer.read(|view| {
-        // One pass over the ring per frame. A filter toggled below lands on the next frame, which
-        // keeps this list and the selection cleaned against it describing the same thing.
-        let levels = state.levels;
-        let visible: Vec<LogEntryRef<'_>> = view
+    // Nothing below draws while the buffer is locked. Every `read` here copies what it needs and
+    // gets out, because a thread that logs while holding this lock deadlocks against itself, and
+    // egui logs through the `log` crate from inside the very calls this panel makes.
+    let levels = state.levels;
+    let (visible, total) = buffer.read(|view| {
+        let visible: Vec<u64> = view
             .iter()
             .filter(|entry| levels.allows(entry.level))
+            .map(|entry| entry.sequence)
             .collect();
-
-        // A row the filter hides cannot be seen, so it must not sit in a selection Ctrl+C would
-        // copy. This drops sequences that have aged out of the ring too.
-        state.selected.retain(|sequence| {
-            view.by_sequence(*sequence)
-                .is_some_and(|entry| levels.allows(entry.level))
-        });
-        if let Some(sequence) = state.detail
-            && !view
-                .by_sequence(sequence)
-                .is_some_and(|entry| levels.allows(entry.level))
-        {
-            state.detail = None;
-        }
-
-        ui.horizontal(|ui| {
-            if visible.len() == view.len() {
-                ui.label(format!("{} entries", view.len()));
-            } else {
-                ui.label(format!("{} of {} entries", visible.len(), view.len()));
-            }
-            if !state.selected.is_empty() {
-                ui.label(format!("{} selected", state.selected.len()));
-            }
-            ui.menu_button("Levels ⏷", |ui| {
-                for (flag, level) in state.levels.0.iter_mut().zip(LEVELS) {
-                    ui.checkbox(flag, level.as_str());
-                }
-            });
-            ui.checkbox(&mut state.follow_tail, "Follow");
-            clear = ui.button("Clear").clicked();
-        });
-        ui.separator();
-
-        // Added before the list, so what it takes is gone from the list's available space.
-        detail(ui, state, &view);
-
-        // Focus is the list's, not the whole tab's. A press in the detail pane hands Ctrl+C to
-        // the text there, which does its own selection.
-        let list = ui.available_rect_before_wrap();
-        if ui.input(|i| i.pointer.any_pressed()) {
-            state.focused = ui.rect_contains_pointer(list);
-        }
-        shortcuts(ui, state, &visible);
-        rows(ui, state, &visible);
+        (visible, view.len())
     });
+    let dropped = buffer.dropped();
 
-    // Outside `read`, which holds the buffer's lock: a level change rebuilds `tracing`'s callsite
-    // interest cache, and every thread that logs during it wants that same lock.
+    // A row the filter hides cannot be seen, so it must not sit in a selection Ctrl+C would copy.
+    // `visible` ascends, so this drops sequences that have aged out of the ring in the same pass.
+    state
+        .selected
+        .retain(|sequence| visible.binary_search(sequence).is_ok());
+    if state
+        .detail
+        .is_some_and(|sequence| visible.binary_search(&sequence).is_err())
+    {
+        state.detail = None;
+    }
+
+    let mut clear = false;
+    ui.horizontal(|ui| {
+        if visible.len() == total {
+            ui.label(format!("{total} entries"));
+        } else {
+            ui.label(format!("{} of {total} entries", visible.len()));
+        }
+        if !state.selected.is_empty() {
+            ui.label(format!("{} selected", state.selected.len()));
+        }
+        if dropped > 0 {
+            ui.label(format!("{dropped} dropped"))
+                .on_hover_text("Events that arrived while the console held the buffer.");
+        }
+        ui.menu_button("Levels ⏷", |ui| {
+            for (flag, level) in state.levels.0.iter_mut().zip(LEVELS) {
+                ui.checkbox(flag, level.as_str());
+            }
+        });
+        ui.checkbox(&mut state.follow_tail, "Follow");
+        clear = ui.button("Clear").clicked();
+    });
+    ui.separator();
+
+    // Added before the list, so what it takes is gone from the list's available space.
+    detail(ui, state, &buffer);
+
+    // Focus is the list's, not the whole tab's. A press in the detail pane hands Ctrl+C to the
+    // text there, which does its own selection.
+    let list = ui.available_rect_before_wrap();
+    if ui.input(|i| i.pointer.any_pressed()) {
+        state.focused = ui.rect_contains_pointer(list);
+    }
+    shortcuts(ui, state, &buffer, &visible);
+    rows(ui, state, &buffer, &visible);
+
+    // A level change rebuilds `tracing`'s callsite interest cache, so it waits until the panel is
+    // drawn rather than happening between two of its widgets.
     if let Some(capture) = world.get_resource::<CaptureLevel>() {
         capture.set(state.levels.capture_level());
     }
@@ -185,7 +191,11 @@ pub(crate) fn ui(ui: &mut egui::Ui, state: &mut ConsoleState, world: &World) {
 ///
 /// The list flattens a message onto one row and clips it at the panel edge, so this is the only
 /// place a long message or a backtrace can be read whole.
-fn detail(ui: &mut egui::Ui, state: &ConsoleState, view: &LogView<'_>) {
+fn detail(ui: &mut egui::Ui, state: &ConsoleState, buffer: &LogBuffer) {
+    // Copied before the panel is built, so the buffer is not locked while egui lays it out.
+    let entry = state
+        .detail
+        .and_then(|sequence| buffer.read(|view| view.by_sequence(sequence).map(text_of)));
     let line = ui.text_style_height(&TextStyle::Monospace);
     egui::Panel::bottom(ui.id().with("detail"))
         .resizable(true)
@@ -199,7 +209,7 @@ fn detail(ui: &mut egui::Ui, state: &ConsoleState, view: &LogView<'_>) {
             // instead of staying where `default_size` or the user's drag put it.
             ui.set_min_height(ui.available_height());
 
-            let Some(entry) = state.detail.and_then(|sequence| view.by_sequence(sequence)) else {
+            let Some(entry) = entry else {
                 ui.label("Select an entry.");
                 return;
             };
@@ -207,24 +217,15 @@ fn detail(ui: &mut egui::Ui, state: &ConsoleState, view: &LogView<'_>) {
                 .auto_shrink([false; 2])
                 .show(ui, |ui| {
                     ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(format!(
-                                "{:>9.3}  {:<5}  {}  {}",
-                                entry.timestamp,
-                                entry.level.as_str(),
-                                entry.target_name,
-                                entry.message
-                            ))
-                            .monospace(),
-                        )
-                        .wrap()
-                        .selectable(true),
+                        egui::Label::new(egui::RichText::new(entry).monospace())
+                            .wrap()
+                            .selectable(true),
                     );
                 });
         });
 }
 
-fn shortcuts(ui: &egui::Ui, state: &mut ConsoleState, visible: &[LogEntryRef<'_>]) {
+fn shortcuts(ui: &egui::Ui, state: &mut ConsoleState, buffer: &LogBuffer, visible: &[u64]) {
     if !state.focused {
         return;
     }
@@ -236,11 +237,11 @@ fn shortcuts(ui: &egui::Ui, state: &mut ConsoleState, visible: &[LogEntryRef<'_>
     });
 
     if select_all {
-        state.selected = visible.iter().map(|entry| entry.sequence).collect();
-        state.anchor = visible.first().map(|entry| entry.sequence);
+        state.selected = visible.iter().copied().collect();
+        state.anchor = visible.first().copied();
     }
     if copy {
-        let text = clipboard_text(state, visible);
+        let text = clipboard_text(state, buffer);
         if !text.is_empty() {
             ui.ctx().copy_text(text);
         }
@@ -250,24 +251,31 @@ fn shortcuts(ui: &egui::Ui, state: &mut ConsoleState, visible: &[LogEntryRef<'_>
 /// Builds the clipboard out of the buffer rather than out of what was drawn.
 ///
 /// egui's own cross-label selection accumulates the clipboard while it draws, which would drop
-/// every selected row that is scrolled out of view. Walking the filtered entries is right at any
-/// scroll position, and comes out chronological.
-fn clipboard_text(state: &ConsoleState, visible: &[LogEntryRef<'_>]) -> String {
-    let mut text = String::new();
-    for entry in visible
-        .iter()
-        .filter(|entry| state.selected.contains(&entry.sequence))
-    {
-        let _ = writeln!(
-            text,
-            "{:>9.3}  {:<5}  {}  {}",
-            entry.timestamp,
-            entry.level.as_str(),
-            entry.target_name,
-            entry.message
-        );
-    }
-    text
+/// every selected row that is scrolled out of view. Reading by sequence is right at any scroll
+/// position, and the selection is ordered, so the copy comes out chronological.
+fn clipboard_text(state: &ConsoleState, buffer: &LogBuffer) -> String {
+    buffer.read(|view| {
+        let mut text = String::new();
+        for entry in state
+            .selected
+            .iter()
+            .filter_map(|sequence| view.by_sequence(*sequence))
+        {
+            let _ = writeln!(text, "{}", text_of(entry));
+        }
+        text
+    })
+}
+
+/// One entry as a line of text: the detail pane's whole content, and one line of a copy.
+fn text_of(entry: LogEntryRef<'_>) -> String {
+    format!(
+        "{:>9.3}  {:<5}  {}  {}",
+        entry.timestamp,
+        entry.level.as_str(),
+        entry.target_name,
+        entry.message
+    )
 }
 
 /// Fixed row geometry, measured once per frame.
@@ -277,7 +285,7 @@ struct Columns {
     row_height: f32,
 }
 
-fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, visible: &[LogEntryRef<'_>]) {
+fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, buffer: &LogBuffer, visible: &[u64]) {
     let font = TextStyle::Monospace.resolve(ui.style());
     let char_width = ui.ctx().fonts_mut(|fonts| fonts.glyph_width(&font, ' '));
     let row_height = ui.text_style_height(&TextStyle::Monospace);
@@ -313,11 +321,16 @@ fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, visible: &[LogEntryRef<'_>]
         .min_scrolled_height(0.)
         .stick_to_bottom(state.follow_tail)
         .show_rows(ui, row_height, visible.len(), |ui, drawn| {
-            for index in drawn {
-                let Some(entry) = visible.get(index) else {
-                    continue;
-                };
-                row(ui, state, *entry, &columns);
+            // One lock for the fifty-odd rows on screen, released before any of them is painted.
+            let drawn: Vec<Row> = buffer.read(|view| {
+                visible[drawn.start.min(visible.len())..drawn.end.min(visible.len())]
+                    .iter()
+                    .filter_map(|sequence| view.by_sequence(*sequence))
+                    .map(Row::of)
+                    .collect()
+            });
+            for entry in &drawn {
+                row(ui, state, entry, &columns);
             }
         });
 
@@ -343,15 +356,37 @@ fn rows(ui: &mut egui::Ui, state: &mut ConsoleState, visible: &[LogEntryRef<'_>]
     {
         let y = pointer.y - output.inner_rect.top() + output.state.offset.y;
         let index = (y / row_height) as usize;
-        if let Some(entry) = visible.get(index) {
+        if let Some(sequence) = visible.get(index) {
             let modifiers = ui.input(|i| i.modifiers);
-            let sequences: Vec<u64> = visible.iter().map(|entry| entry.sequence).collect();
-            click(state, entry.sequence, modifiers, &sequences);
+            click(state, *sequence, modifiers, visible);
         }
     }
 }
 
-fn row(ui: &mut egui::Ui, state: &ConsoleState, entry: LogEntryRef<'_>, columns: &Columns) {
+/// One row as it is drawn, copied out of the buffer so the lock is not held while egui paints.
+struct Row {
+    sequence: u64,
+    timestamp: f64,
+    level: Level,
+    target: String,
+    message: String,
+}
+
+impl Row {
+    fn of(entry: LogEntryRef<'_>) -> Self {
+        Self {
+            sequence: entry.sequence,
+            timestamp: entry.timestamp,
+            level: entry.level,
+            target: truncate_left(entry.target_name, TARGET_WIDTH).into_owned(),
+            // Clipped at the panel edge long before this, so the tail of a backtrace is not worth
+            // copying every frame. The detail pane reads the entry whole.
+            message: flatten(entry.message).chars().take(MESSAGE_LIMIT).collect(),
+        }
+    }
+}
+
+fn row(ui: &mut egui::Ui, state: &ConsoleState, entry: &Row, columns: &Columns) {
     let (_, rect) = ui.allocate_space(vec2(ui.available_width(), columns.row_height));
     if !ui.is_rect_visible(rect) {
         return;
@@ -363,7 +398,7 @@ fn row(ui: &mut egui::Ui, state: &ConsoleState, entry: LogEntryRef<'_>, columns:
     paint(ui, rect, entry, columns);
 }
 
-fn paint(ui: &egui::Ui, rect: Rect, entry: LogEntryRef<'_>, columns: &Columns) {
+fn paint(ui: &egui::Ui, rect: Rect, entry: &Row, columns: &Columns) {
     let painter = ui.painter();
     let visuals = ui.visuals();
     let colour = level_colour(visuals, entry.level);
@@ -386,14 +421,14 @@ fn paint(ui: &egui::Ui, rect: Rect, entry: LogEntryRef<'_>, columns: &Columns) {
     painter.text(
         at(TARGET_START),
         Align2::LEFT_CENTER,
-        truncate_left(entry.target_name, TARGET_WIDTH),
+        &entry.target,
         columns.font.clone(),
         visuals.weak_text_color(),
     );
     painter.text(
         at(MESSAGE_START),
         Align2::LEFT_CENTER,
-        flatten(entry.message),
+        &entry.message,
         columns.font.clone(),
         colour,
     );
