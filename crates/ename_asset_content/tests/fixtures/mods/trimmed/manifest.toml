@@ -1,0 +1,9 @@
+[package]
+id = "trimmed"
+version = "1.0.0"
+authors = ["Test"]
+title = "Trimmed test package"
+description = "Removes core::farewell."
+
+[assets.remove]
+"core::farewell" = ""
