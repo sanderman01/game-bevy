@@ -7,7 +7,7 @@ use avian3d::{
 };
 use bevy::{math::DVec3, prelude::*};
 use big_space::commands::*;
-use ename_content::AssetRegistry;
+use ename_asset_alias::ALIAS_SOURCE;
 use ename_engine::{
     bigspace::grid::{GridQuery, on_grid, on_grid_looking_at},
     camera::{CameraDriver, MainCamera, VirtualCamera},
@@ -148,7 +148,6 @@ fn spawn_scene(
 fn load_models(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    asset_registry: Res<AssetRegistry>,
     grid_query: Query<GridQuery>,
 ) {
     info!("Loading models");
@@ -156,28 +155,20 @@ fn load_models(
         .single()
         .expect("Failed to spawn entity on grid. Grid not present!");
 
+    // No gate on the content layer: `alias://` resolves inside `bevy_asset`, so these handles are
+    // valid on frame 0 and the geometry appears when it has loaded.
     let alias = "core::map";
-    let Some(path) = asset_registry.get_path(alias) else {
-        return;
-    };
-    info!("{path}");
-    let label = GltfAssetLabel::Scene(0).from_asset(format!("{path}#Scene0"));
     commands.spawn((
         Name::new(alias),
-        WorldAssetRoot(asset_server.load(label)),
+        WorldAssetRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(alias_path(alias)))),
         ChildOf(grid_entity.entity),
         on_grid(grid_entity.grid, DVec3::ZERO),
     ));
 
     let alias = "core::airship";
-    let Some(path) = asset_registry.get_path(alias) else {
-        return;
-    };
-    info!("{path}");
-    let label = GltfAssetLabel::Scene(0).from_asset(format!("{path}#Scene0"));
     commands.spawn((
         Name::new(alias),
-        WorldAssetRoot(asset_server.load(label)),
+        WorldAssetRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(alias_path(alias)))),
         ChildOf(grid_entity.entity),
         on_grid(grid_entity.grid, DVec3::new(0.0, 5.0, 0.0)),
         ColliderConstructorHierarchy {
@@ -188,4 +179,10 @@ fn load_models(
         },
         RigidBody::Dynamic,
     ));
+}
+
+/// An `alias://` asset path for `alias`. Built from [`ALIAS_SOURCE`] rather than a literal, so a
+/// rename of the source is a compile error here instead of a load failure at runtime.
+fn alias_path(alias: &str) -> String {
+    format!("{ALIAS_SOURCE}://{alias}")
 }

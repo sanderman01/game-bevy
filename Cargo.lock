@@ -2940,7 +2940,6 @@ name = "ename"
 version = "0.0.0"
 dependencies = [
  "bevy",
- "ename_content",
  "ename_editor",
  "ename_engine",
  "ename_game",
@@ -2977,14 +2976,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ename_content"
-version = "0.0.0"
-dependencies = [
- "bevy",
- "ename_asset_package",
-]
-
-[[package]]
 name = "ename_editor"
 version = "0.0.0"
 dependencies = [
@@ -3013,7 +3004,8 @@ dependencies = [
  "avian3d",
  "bevy",
  "big_space",
- "ename_content",
+ "ename_asset_alias",
+ "ename_asset_content",
  "ename_engine",
 ]
 

@@ -10,8 +10,11 @@ license.workspace = true
 avian3d = { workspace = true }
 bevy = { workspace = true }
 big_space = { workspace = true }
-ename_content = { workspace = true }
+ename_asset_alias = { workspace = true }
 ename_engine = { workspace = true }
+
+[dev-dependencies]
+ename_asset_content = { workspace = true }
 
 [lints]
 workspace = true

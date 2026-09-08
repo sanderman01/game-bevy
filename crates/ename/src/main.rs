@@ -16,11 +16,7 @@ fn main() {
         })
         .with_content_search_paths(["basegame", "mods"]);
 
-    app.add_plugins(engine)
-        .add_plugins(
-            ename_content::ContentPlugin::default().with_search_paths(["basegame", "mods"]),
-        )
-        .add_plugins(ename_game::GamePlugins);
+    app.add_plugins(engine).add_plugins(ename_game::GamePlugins);
 
     #[cfg(feature = "editor")]
     app.add_plugins(ename_editor::EditorPlugins)
