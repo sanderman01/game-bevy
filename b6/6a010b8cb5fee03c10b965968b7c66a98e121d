@@ -1,0 +1,41 @@
+crates/ename_game/src/lib.rs
+  s_c45b82c2f785ea::t_16672c3adcd7a1 3,9,15-16
+scripts/check-layers.sh
+  s_c45b82c2f785ea::t_b2fa9711350e66 33-34
+crates/ename_game/Cargo.toml
+  s_c45b82c2f785ea::t_16672c3adcd7a1 13,16-17
+  s_c45b82c2f785ea::t_b5fd40896753d0 18
+crates/ename_game/tests/fixtures/packages/core/airship.txt
+  s_c45b82c2f785ea::t_676e6d4310dbc9 1
+crates/ename_game/tests/fixtures/packages/core/manifest.toml
+  s_c45b82c2f785ea::t_676e6d4310dbc9 1-9
+crates/ename_game/src/scene.rs
+  s_c45b82c2f785ea::t_16672c3adcd7a1 10,158-159,163,171,183-187
+  s_c45b82c2f785ea::t_3f8c4951bff800 188
+crates/ename_game/tests/scene_addressing.rs
+  s_c45b82c2f785ea::t_ab062c95fee178 13,66-68
+  s_c45b82c2f785ea::t_a6808f81f292e0 72-74
+  s_c45b82c2f785ea::t_676e6d4310dbc9 1-12,14-65,69-71,75-86
+crates/ename/src/main.rs
+  s_c45b82c2f785ea::t_b2fa9711350e66 19
+crates/ename_game/src/state.rs
+  s_c45b82c2f785ea::t_16672c3adcd7a1 1,20-21,25-29
+Cargo.lock
+  s_c45b82c2f785ea::t_b108d079945f12 3007-3008
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "b66a010b8cb5fee03c10b965968b7c66a98e121d",
+  "prompts": {},
+  "sessions": {
+    "s_c45b82c2f785ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5dd5165d-54f5-457d-9db3-376ee8a2e5cd",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
