@@ -1,0 +1,29 @@
+crates/ename_asset_content/tests/alias_source.rs
+  s_c45b82c2f785ea::t_e43d97530b22d3 1-209
+crates/ename_asset_content/tests/fixtures/mods/loud/manifest.toml
+  s_c45b82c2f785ea::t_734e5a1fe2891f 1-9
+crates/ename_asset_content/tests/fixtures/base/core/manifest.toml
+  s_c45b82c2f785ea::t_734e5a1fe2891f 1-10
+crates/ename_asset_content/tests/fixtures/mods/loud/greeting.txt
+  s_c45b82c2f785ea::t_734e5a1fe2891f 1
+crates/ename_asset_content/tests/fixtures/mods/trimmed/manifest.toml
+  s_c45b82c2f785ea::t_734e5a1fe2891f 1-9
+crates/ename_asset_content/tests/fixtures/base/core/greeting.txt
+  s_c45b82c2f785ea::t_734e5a1fe2891f 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "1a10a845ed15a73cf739ec53223378cd21e40c7e",
+  "prompts": {},
+  "sessions": {
+    "s_c45b82c2f785ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5dd5165d-54f5-457d-9db3-376ee8a2e5cd",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
