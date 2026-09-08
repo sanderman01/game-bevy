@@ -21,10 +21,11 @@ here no longer exists after an upgrade, fix this document in the same commit as 
 The graph itself is in [design/crate-layout.md](design/crate-layout.md#layer-graph). Keep one copy;
 this file only states the rules that follow from it.
 
-`ename_engine` never depends on `ename_game`, `ename_editor`, or `ename_content`.
-`ename_content` is a leaf too, not a layer above the engine. If engine code needs something
-from a higher layer, the design is wrong: move the shared type down into `ename_engine` or
-invert the call into an event the higher layer observes.
+`ename_engine` never depends on `ename_game` or `ename_editor`. It does depend on
+`ename_asset_content`, because the `alias://` source has to be registered before `AssetPlugin`
+builds and `EnginePlugins` owns `AssetPlugin`; the asset crates are a layer below the engine, not
+beside it. If engine code needs something from a higher layer, the design is wrong: move the
+shared type down into `ename_engine` or invert the call into an event the higher layer observes.
 
 `scripts/check-layers.sh` enforces this in CI. Record any change to the layer graph in
 `docs/design/crate-layout.md` before making it.

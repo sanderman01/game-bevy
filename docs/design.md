@@ -59,8 +59,33 @@ workspace root. Cargo applies `[env]` to `cargo run` and `cargo test` only. A bi
 directly from `target/` falls back to Bevy's executable-directory heuristic and gets a different
 asset root. That hits the first real build, so it is a live bug.
 
-Package search paths (`basegame`, `mods`) are game policy. `ename_content` defaults to none and
-`ename`'s `main` passes them in.
+Package search paths (`basegame`, `mods`) are game policy. `EnginePlugins` defaults to none and
+`ename`'s `main` passes them in with `with_content_search_paths`.
+
+Assets are addressed by alias through a custom asset source: `alias://core::airship#Scene0`. A
+handle is keyed on the alias, not on the file it resolved to, so which package won an override is
+invisible to game code and to anything serialized. The reader awaits the index inside `bevy_asset`
+and delegates to the platform default reader, which is why nothing above the asset layer sequences
+content loading any more.
+
+An alias carries no file extension, and `AssetLoaders::find` skips the by-asset-type loader lookup
+whenever an `AssetPath` has a label, so `alias://core::airship#Scene0` would resolve no loader at
+all. The reader closes that in `read_meta`: where the resolved file has no `.meta` of its own, it
+answers with the default meta of whichever loader claims that file's extension. A real `.meta`
+still wins, so an author keeps control of loader settings.
+
+The scan reads the default asset source directly and must never read through `alias://`. It would
+await an index only the scan can fill, and hang.
+
+The source has to be registered before `AssetPlugin` builds. `App::register_asset_source` only
+fills `AssetSourceBuilders`, and `AssetPlugin` turns that resource into live sources once, when it
+builds; registering afterwards logs an error and leaves the source dead. `EnginePlugins` owns
+`DefaultPlugins` and therefore owns `AssetPlugin`, so it adds `AssetContentPlugin` with
+`add_before::<AssetPlugin>` and the ordering is structural rather than a rule a target has to
+remember. `AliasSourcePlugin::build` asserts on it as well, for anyone adding it by hand.
+
+The full design, including the `.alias` files and package resolution that phases 2 and 3 add, is
+in `scratch/content-addressing-design.md`.
 
 ## Open questions
 
@@ -86,12 +111,16 @@ Package search paths (`basegame`, `mods`) are game policy. `ename_content` defau
 - `ename_engine::bigspace::grid` exposes `big_space::Grid` in its signatures, so every consumer is
   pinned to that git revision. Accepted deliberately; newtype it if the engine is ever consumed
   outside this workspace.
-- Nothing that runs an `App` is tested. `ename_mcp` and `ename_remote` have unit tests over pure
-  helpers; the engine, game and editor crates have none. The prerequisites exist: the game is a
-  library, every feature is a plugin that can be added to a headless `App`, and camera input goes
-  through an injectable intent resource. A harness needs `MinimalPlugins` plus
-  `BigSpaceDefaultPlugins`, because transform propagation comes from big_space and this project
-  disables Bevy's `TransformPlugin`.
+- The asset crates and `ename_game` have integration tests that run a headless `App`
+  (`crates/ename_asset_alias/tests/alias_reader.rs`,
+  `crates/ename_asset_content/tests/alias_source.rs`,
+  `crates/ename_game/tests/scene_addressing.rs`), and `ename_asset_package` tests its scan over a
+  real `AssetReader` with no `App` at all. They use `TaskPoolPlugin` plus `AssetPlugin` over
+  committed fixture trees in each crate's own `tests/fixtures`, never the `assets/` symlink, which
+  is not present on a fresh clone. Nothing that needs a renderer or a window is covered:
+  `ScenePlugin`, `ename_engine` and `ename_editor` still have no tests. A harness for those needs
+  `MinimalPlugins` plus `BigSpaceDefaultPlugins`, because transform propagation comes from
+  big_space and this project disables Bevy's `TransformPlugin`.
 - `GameState::{Loading, Scene, Play}` all live in one `App` with the editor resident. The moment
   `Play` mutates the world, entering and leaving play will destroy authored state.
 - `ename_editor` exposes no ordering point or selection access to the layer above it.
