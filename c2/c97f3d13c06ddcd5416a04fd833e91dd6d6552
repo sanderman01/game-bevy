@@ -1,0 +1,31 @@
+Cargo.toml
+  s_c45b82c2f785ea::t_583914e04a322c 37
+crates/ename_asset_content/src/apply.rs
+  s_c45b82c2f785ea::t_1523cd5b693987 1-90
+  s_c45b82c2f785ea::t_7839c0c3e943d3 91-243
+crates/ename_asset_content/src/lib.rs
+  s_c45b82c2f785ea::t_7839c0c3e943d3 1-10
+  s_c45b82c2f785ea::t_1523cd5b693987 11-103
+scripts/check-layers.sh
+  s_c45b82c2f785ea::t_583914e04a322c 31-32
+crates/ename_asset_content/Cargo.toml
+  s_c45b82c2f785ea::t_583914e04a322c 1-18
+Cargo.lock
+  s_c45b82c2f785ea::t_d56bd4ba69c62c 2960-2969
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "c2c97f3d13c06ddcd5416a04fd833e91dd6d6552",
+  "prompts": {},
+  "sessions": {
+    "s_c45b82c2f785ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5dd5165d-54f5-457d-9db3-376ee8a2e5cd",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
