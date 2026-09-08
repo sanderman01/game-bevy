@@ -1,0 +1,18 @@
+[package]
+name = "ename_asset_content"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+bevy.workspace = true
+ename_asset_alias.workspace = true
+ename_asset_package.workspace = true
+
+[dev-dependencies]
+toml.workspace = true
+
+[lints]
+workspace = true

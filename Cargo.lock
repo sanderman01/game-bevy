@@ -2958,12 +2958,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ename_asset_content"
+version = "0.0.0"
+dependencies = [
+ "bevy",
+ "ename_asset_alias",
+ "ename_asset_package",
+ "toml",
+]
+
+[[package]]
 name = "ename_asset_package"
 version = "0.0.0"
 dependencies = [
  "bevy",
  "serde",
- "thiserror 2.0.20",
  "toml",
 ]
 
@@ -2973,9 +2982,6 @@ version = "0.0.0"
 dependencies = [
  "bevy",
  "ename_asset_package",
- "serde",
- "thiserror 2.0.20",
- "toml",
 ]
 
 [[package]]
