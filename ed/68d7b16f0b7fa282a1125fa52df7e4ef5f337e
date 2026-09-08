@@ -1,0 +1,40 @@
+crates/ename_asset_alias/tests/fixtures/files/plain.txt
+  s_c45b82c2f785ea::t_d5341b4cf9ac46 1
+crates/ename_asset_alias/tests/fixtures/files/plain_with_meta.txt.meta
+  s_c45b82c2f785ea::t_e0297d89cdd132 1-7
+crates/ename_asset_alias/Cargo.toml
+  s_c45b82c2f785ea::t_6c2fd503a31262 10
+crates/ename_asset_alias/tests/fixtures/files/replacement.txt
+  s_c45b82c2f785ea::t_d5341b4cf9ac46 1
+crates/ename_asset_alias/tests/fixtures/files/plain_with_meta.txt
+  s_c45b82c2f785ea::t_e0297d89cdd132 1
+crates/ename_asset_alias/src/lib.rs
+  s_c45b82c2f785ea::t_6c2fd503a31262 9,12
+crates/ename_asset_alias/tests/fixtures/files/noisy.shout
+  s_c45b82c2f785ea::t_e0297d89cdd132 1
+crates/ename_asset_alias/src/reader.rs
+  s_c45b82c2f785ea::t_6c2fd503a31262 1-20,23-27,29-105,107-215,224-243
+  s_c45b82c2f785ea::t_1a0ff326295674 21-22,216-223
+  s_c45b82c2f785ea::t_3cb9aabbddbbdf 28,106
+crates/ename_asset_alias/tests/alias_reader.rs
+  s_c45b82c2f785ea::t_a59bd1b292ff88 36,66
+  s_c45b82c2f785ea::t_344711f523d6e2 141-150,174,201,225,246,273
+  s_c45b82c2f785ea::t_1be519d3efaaad 100-101
+  s_c45b82c2f785ea::t_e0297d89cdd132 1-35,37-65,67-99,102-140,151-173,175-200,202-224,226-245,247-272,274-310
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "ed68d7b16f0b7fa282a1125fa52df7e4ef5f337e",
+  "prompts": {},
+  "sessions": {
+    "s_c45b82c2f785ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5dd5165d-54f5-457d-9db3-376ee8a2e5cd",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
