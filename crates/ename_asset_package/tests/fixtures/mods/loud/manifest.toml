@@ -1,0 +1,9 @@
+[package]
+id = "loud"
+version = "1.2.3"
+authors = ["Test"]
+title = "Loud test package"
+description = "In the mods search path, so it loads after core."
+
+[assets.replace]
+"core::greeting" = "greeting.txt"

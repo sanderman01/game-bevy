@@ -1,0 +1,9 @@
+[package]
+id = "core"
+version = "1.0.0"
+authors = ["Test"]
+title = "Core test package"
+description = "Base package."
+
+[assets.add]
+greeting = "greeting.txt"

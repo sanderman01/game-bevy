@@ -27,6 +27,7 @@ check ename_engine 'ename_editor|ename_content|ename_game|ename_game_editor'
 # The asset leaves. Neither may name any other first-party crate, which is what keeps
 # `ename_asset_package` free of alias types and lets a command line tool link either one alone.
 check ename_asset_alias 'ename_.*'
+check ename_asset_package 'ename_.*'
 check ename_content 'ename_engine|ename_editor|ename_game|ename_game_editor'
 check ename_editor 'ename_game|ename_content|ename_game_editor'
 check ename_game 'ename_editor|ename_game_editor'

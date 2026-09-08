@@ -1,5 +1,5 @@
 [package]
-name = "ename_content"
+name = "ename_asset_package"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,7 +8,8 @@ license.workspace = true
 
 [dependencies]
 bevy.workspace = true
-ename_asset_package.workspace = true
+serde.workspace = true
+toml.workspace = true
 
 [lints]
 workspace = true
