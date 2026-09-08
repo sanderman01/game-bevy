@@ -2949,6 +2949,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ename_asset_alias"
+version = "0.0.0"
+dependencies = [
+ "async-lock",
+ "bevy",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "ename_content"
 version = "0.0.0"
 dependencies = [
