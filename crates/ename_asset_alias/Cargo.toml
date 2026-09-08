@@ -7,6 +7,7 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+async-lock.workspace = true
 bevy.workspace = true
 thiserror.workspace = true
 

@@ -6,5 +6,7 @@
 //! them in `ename_asset_content`. See `docs/design/crate-layout.md`.
 
 mod index;
+mod reader;
 
 pub use crate::index::{AliasError, ContentIndex, validate_alias};
+pub use crate::reader::{ALIAS_SOURCE, AliasSourcePlugin, ContentIndexCell};
