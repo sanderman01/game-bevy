@@ -8,11 +8,13 @@ use bevy::{prelude::*, window::WindowResolution};
 fn main() {
     let mut app = App::new();
 
-    let engine = ename_engine::EnginePlugins::default().with_window(Window {
-        title: "My Bevy Game".into(),
-        resolution: WindowResolution::new(1360, 710),
-        ..default()
-    });
+    let engine = ename_engine::EnginePlugins::default()
+        .with_window(Window {
+            title: "My Bevy Game".into(),
+            resolution: WindowResolution::new(1360, 710),
+            ..default()
+        })
+        .with_content_search_paths(["basegame", "mods"]);
 
     app.add_plugins(engine)
         .add_plugins(

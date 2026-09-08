@@ -23,7 +23,8 @@ check() {
     fi
 }
 
-check ename_engine 'ename_editor|ename_content|ename_game|ename_game_editor'
+# `ename_engine` may depend on the asset crates below it, and must not name anything above.
+check ename_engine 'ename_editor|ename_game|ename_game_editor'
 # The asset leaves. Neither may name any other first-party crate, which is what keeps
 # `ename_asset_package` free of alias types and lets a command line tool link either one alone.
 check ename_asset_alias 'ename_.*'

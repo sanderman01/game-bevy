@@ -3003,6 +3003,7 @@ dependencies = [
  "avian3d",
  "bevy",
  "big_space",
+ "ename_asset_content",
 ]
 
 [[package]]

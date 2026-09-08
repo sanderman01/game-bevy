@@ -1,9 +1,11 @@
 //! `ename_engine` -- the runtime layer: camera rig, big_space integration, physics glue, input,
 //! time control, log capture.
 //!
-//! Bottom of the layer graph, alongside `ename_content`. It must never depend on `ename_editor`,
-//! `ename_content`, or `ename_game`: if engine code needs something from a higher layer, move the
-//! shared type down or invert the call into an event. See `docs/design/crate-layout.md`.
+//! Sits directly above the asset crates. It must never depend on `ename_editor` or `ename_game`:
+//! if engine code needs something from a higher layer, move the shared type down or invert the
+//! call into an event. It does depend on `ename_asset_content`, because the `alias://` source has
+//! to be registered before `AssetPlugin` builds and this group owns `AssetPlugin`.
+//! See `docs/design/crate-layout.md`.
 
 pub mod bigspace;
 pub mod camera;
@@ -12,8 +14,12 @@ pub mod log;
 pub mod physics;
 pub mod time;
 
-use bevy::{app::PluginGroupBuilder, log::LogPlugin, prelude::*, transform::TransformPlugin};
+use bevy::{
+    app::PluginGroupBuilder, asset::AssetPlugin, log::LogPlugin, prelude::*,
+    transform::TransformPlugin,
+};
 use big_space::plugin::{BigSpaceDebugPlugins, BigSpaceDefaultPlugins};
+use ename_asset_content::AssetContentPlugin;
 
 /// Everything a target needs to run on this engine, `DefaultPlugins` included.
 ///
@@ -22,9 +28,15 @@ use big_space::plugin::{BigSpaceDebugPlugins, BigSpaceDefaultPlugins};
 /// belonging to a different group. If a binary assembled `DefaultPlugins` itself, every target
 /// would have to remember that call, and forgetting it gives double propagation with no
 /// compile error.
+///
+/// It also owns the `alias://` asset source, for the same reason it owns `DefaultPlugins`: the
+/// source has to be registered before `AssetPlugin` builds, and only the group holding
+/// `AssetPlugin` can guarantee that. `with_content_search_paths` is how a target says which
+/// directories to scan.
 pub struct EnginePlugins {
     window: Window,
     log_capacity: usize,
+    content_search_paths: Vec<String>,
 }
 
 impl Default for EnginePlugins {
@@ -32,6 +44,7 @@ impl Default for EnginePlugins {
         Self {
             window: Window::default(),
             log_capacity: log::DEFAULT_CAPACITY,
+            content_search_paths: Vec::new(),
         }
     }
 }
@@ -47,6 +60,17 @@ impl EnginePlugins {
     /// Sets how many events [`log::LogBuffer`] keeps before it drops the oldest.
     pub fn with_log_capacity(mut self, capacity: usize) -> Self {
         self.log_capacity = capacity;
+        self
+    }
+
+    /// Sets the directories scanned for content packages, relative to the asset root. Empty by
+    /// default: which directories a game ships is game policy, not engine policy.
+    pub fn with_content_search_paths<I, S>(mut self, paths: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.content_search_paths = paths.into_iter().map(Into::into).collect();
         self
     }
 }
@@ -67,6 +91,14 @@ impl PluginGroup for EnginePlugins {
                 fmt_layer: log::terminal_layer,
                 ..default()
             })
+            // Before `AssetPlugin`, not merely early: `register_asset_source` fills a resource
+            // that `AssetPlugin` turns into live sources exactly once, when it builds. Registering
+            // afterwards logs an error and leaves `alias://` dead. `add_before` panics if
+            // `AssetPlugin` is not in the group, so a future `.disable::<AssetPlugin>()` fails
+            // loudly here instead of silently at the first load.
+            .add_before::<AssetPlugin>(
+                AssetContentPlugin::default().with_search_paths(self.content_search_paths),
+            )
             .disable::<TransformPlugin>()
             .add_group(BigSpaceDefaultPlugins)
             // No longer bundled with BigSpaceDefaultPlugins as of big_space 0.13.
