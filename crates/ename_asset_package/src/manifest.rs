@@ -6,24 +6,17 @@
 #[cfg(feature = "bevy")]
 use bevy::reflect::Reflect;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::HashMap;
 use std::{fmt::Display, str::FromStr};
 
-/// A Mod Package Manifest contains metadata defining a base game content, or mod, or dlc, or other extension package.
+/// A package manifest: the entry point of a base game, mod, DLC or other content package.
 ///
-/// The manifest can be considered the 'entry-point' of the package.
-/// Similar to a shipping manifest document, this file contains data such as the id, name, description, authors and other relevant information used to identify the mod package and its origin.
-///
-/// Additionally the manifest contains information declaring all assets in the package and how they are to be inserted and used inside the game.
+/// It no longer declares assets. An asset's alias comes from a `.alias` file beside it or from the
+/// `_rules.toml` covering its folder, which is what removed the hand-written list that did not
+/// scale and the quoted TOML keys that made a typo silent.
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "bevy", derive(Reflect))]
 pub struct Manifest {
     pub package: PackageInfo,
-    /// Absent entirely for a package that only carries assets a folder rule or a `.alias`
-    /// sidecar already names, which is the common case. `AssetsInfo`'s own fields are all
-    /// optional; this is the same default at the table level.
-    #[serde(default)]
-    pub assets: AssetsInfo,
 }
 
 /// Package section of a package [Manifest](Manifest). Contains all the information required to unique identify and load a package.
@@ -49,15 +42,6 @@ pub struct PackageInfo {
 
     /// Describes the contents and/or functionality included in this mod package.
     pub description: String,
-}
-
-/// Assets section of a package [Manifest](Manifest). Used to declare assets added or modified by this package.
-#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "bevy", derive(Reflect))]
-pub struct AssetsInfo {
-    pub add: Option<HashMap<String, String>>,
-    pub replace: Option<HashMap<String, String>>,
-    pub remove: Option<HashMap<String, String>>,
 }
 
 impl Display for Manifest {

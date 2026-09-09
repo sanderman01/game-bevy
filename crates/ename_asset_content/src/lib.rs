@@ -5,9 +5,11 @@
 //! where they meet. It is also where the plugin lives, because deciding what goes in an `App` is
 //! composition, not asset logic. See `docs/design/crate-layout.md`.
 
-mod apply;
+mod index;
+mod report;
 
-pub use crate::apply::{apply_manifest, build_index};
+pub use crate::index::build_index;
+pub use crate::report::{ContentReport, PackageSummary};
 
 use bevy::{
     app::{App, Plugin, Startup},
@@ -97,7 +99,8 @@ fn start_content_scan(cell: Res<ContentIndexCell>, config: Res<ContentScanConfig
             let mut make_reader = AssetSource::get_default_reader(config.asset_root);
             let vfs = AssetReaderVfs::new(make_reader());
             let scan = scan_packages(&vfs, &config.search_paths).await;
-            let _ = cell.set(build_index(&scan.packages)).await;
+            let (index, _report) = build_index(&scan);
+            let _ = cell.set(index).await;
         })
         .detach();
 }

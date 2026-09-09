@@ -135,8 +135,9 @@ fn a_handle_requested_before_the_first_frame_still_loads() {
     assert_loaded(run_until_settled(&mut app, &handle));
 }
 
-/// A mod replacing a base-game asset is the reason the system exists. The alias is unchanged; only
-/// what it resolves to moves.
+/// A mod replacing a base-game asset is the reason the system exists. `mods/loud` claims
+/// `core::greeting` in a `.alias` file beside its own `greeting.txt`; there is no list of
+/// overrides anywhere. The alias is unchanged and only what it resolves to moves.
 #[test]
 fn a_later_package_overrides_an_earlier_alias() {
     let mut app = test_app(&["base", "mods"]);
@@ -167,18 +168,18 @@ fn without_the_overriding_package_the_base_file_wins() {
     assert_eq!(greeting_text(&app, &handle), "hello from core");
 }
 
+/// The base game names its assets with one `_rules.toml` line and no per-asset file at all. That
+/// is the property that makes the system scale past a few dozen assets.
 #[test]
-fn a_removed_alias_no_longer_resolves() {
-    let mut app = test_app(&["base", "mods"]);
+fn a_folder_rule_names_an_asset_with_no_sidecar() {
+    let mut app = test_app(&["base"]);
     let handle: Handle<Greeting> = app
         .world()
         .resource::<AssetServer>()
         .load("alias://core::farewell");
 
-    assert!(matches!(
-        run_until_settled(&mut app, &handle),
-        LoadState::Failed(_)
-    ));
+    assert_loaded(run_until_settled(&mut app, &handle));
+    assert_eq!(greeting_text(&app, &handle), "goodbye from core");
 }
 
 #[test]

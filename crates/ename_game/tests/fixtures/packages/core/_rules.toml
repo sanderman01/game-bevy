@@ -1,0 +1,2 @@
+alias = "core::{stem}"
+include = ["*.txt"]

@@ -4,7 +4,3 @@ version = "1.0.0"
 authors = ["Test"]
 title = "Core test package"
 description = "Base package for the alias source tests."
-
-[assets.add]
-greeting = "greeting.txt"
-farewell = "greeting.txt"

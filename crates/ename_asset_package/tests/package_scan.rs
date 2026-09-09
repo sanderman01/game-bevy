@@ -62,7 +62,18 @@ fn manifest_fields_round_trip_from_toml() {
     let loud = &packages[0];
     assert_eq!(loud.manifest.package.title, "Loud test package");
     assert_eq!(loud.manifest.package.version, Version::new(1, 2, 3));
-    assert!(loud.manifest.assets.replace.is_some());
+    assert_eq!(loud.manifest.package.authors, ["Test"]);
+}
+
+/// The fake `Vfs` covers the discovery rules exhaustively. This proves the same walk works over a
+/// real filesystem, which is the other implementation of the trait.
+#[test]
+fn a_package_carries_the_assets_its_folder_rule_names() {
+    let packages = scan(&["base"]);
+    let assets = &packages[0].assets;
+    assert_eq!(assets.len(), 1);
+    assert_eq!(assets[0].alias, "core::greeting");
+    assert_eq!(assets[0].path.to_str(), Some("base/core/greeting.txt"));
 }
 
 /// One malformed mod must cost that mod and nothing else. `broken` sorts before `loud` by name, so

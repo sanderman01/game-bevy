@@ -4,6 +4,3 @@ version = "1.0.0"
 authors = ["Test"]
 title = "Trimmed test package"
 description = "Sorts after loud on directory name."
-
-[assets.remove]
-"core::greeting" = ""

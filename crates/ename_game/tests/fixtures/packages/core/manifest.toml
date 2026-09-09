@@ -4,6 +4,3 @@ version = "1.0.0"
 authors = ["Test"]
 title = "Core test package"
 description = "Just enough for the scene addressing tests."
-
-[assets.add]
-airship = "airship.txt"

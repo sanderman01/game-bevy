@@ -3,7 +3,4 @@ id = "loud"
 version = "1.0.0"
 authors = ["Test"]
 title = "Loud test package"
-description = "Overrides core::greeting. In the mods search path, so it loads later and wins."
-
-[assets.replace]
-"core::greeting" = "greeting.txt"
+description = "Claims core::greeting. In the mods search path, so it loads later and wins."
