@@ -8,8 +8,8 @@ license.workspace = true
 
 [features]
 default = ["bevy"]
-# Bevy's `AssetReader` as a `Vfs`, plus `Reflect` on the manifest types. Off for a command line
-# tool: `ename_xtask` scans the same tree with `StdVfs` and must not link a renderer to do it.
+# Bevy's `AssetReader` as a `Vfs`. Off for a command line tool: `ename_xtask` scans the same tree
+# with `StdVfs` and must not link a renderer to do it.
 bevy = ["dep:bevy"]
 
 [dependencies]
@@ -24,7 +24,7 @@ uuid.workspace = true
 [dev-dependencies]
 # Drives the scan's futures in tests without going through Bevy, so the test suite does not
 # depend on the optional `bevy` feature being on. Already in `Cargo.lock` via Bevy.
-futures-lite = "2.6.1"
+futures-lite.workspace = true
 
 [lints]
 workspace = true

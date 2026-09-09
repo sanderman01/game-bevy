@@ -41,6 +41,7 @@ ename_engine = { path = "crates/ename_engine", version = "0.0.0" }
 ename_game = { path = "crates/ename_game", version = "0.0.0" }
 ename_game_editor = { path = "crates/ename_game_editor", version = "0.0.0" }
 ename_remote = { path = "crates/ename_remote", version = "0.0.0" }
+futures-lite = "2.6.1"
 glob = "0.3.4"
 reqwest = { version = "0.12.24", default-features = false, features = ["json", "rustls-tls"] }
 rmcp = { version = "3.2.0", default-features = false }
