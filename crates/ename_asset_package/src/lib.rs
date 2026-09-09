@@ -1,10 +1,10 @@
-//! `ename_asset_package` -- finding content packages on disk and reading their manifests.
+//! `ename_asset_package` -- finding content packages on disk and reading what they contain.
 //!
-//! A leaf of the layer graph with no first-party dependencies. It deliberately knows nothing about
-//! aliases: a manifest's `[assets]` table is alias-shaped, but discovering packages, parsing them
-//! and ordering them is not, and keeping the mapping out of here is what lets a command line tool
-//! link this crate without the Bevy asset source. `ename_asset_content` owns the mapping.
-//! See `docs/design/crate-layout.md`.
+//! A leaf of the layer graph with no first-party dependencies. It finds packages, parses their
+//! manifests, and discovers each package's assets from `.alias` sidecars and `_rules.toml` folder
+//! rules. It carries the alias *strings* it finds and never validates one -- validating needs the
+//! alias type, and that type lives in the sibling leaf `ename_asset_alias`. `ename_asset_content`
+//! is where the two meet. See `docs/design/crate-layout.md`.
 
 mod alias_file;
 mod manifest;

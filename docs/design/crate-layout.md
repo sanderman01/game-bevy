@@ -23,8 +23,9 @@ ename_remote         -> ename_engine
 ename_game           -> ename_engine, ename_asset_alias
 ename_editor         -> ename_engine
 ename_engine         -> ename_asset_content, bevy, avian3d, big_space
-ename_asset_content  -> ename_asset_alias, ename_asset_package, bevy
-ename_asset_package  -> serde, toml, bevy                 (no first-party deps)
+ename_asset_content  -> ename_asset_alias, ename_asset_package, async-lock, bevy
+ename_asset_package  -> serde, toml, tracing, uuid, glob, thiserror   (no first-party deps)
+                        + bevy, behind the default `bevy` feature
 ename_asset_alias    -> async-lock, thiserror, bevy       (no first-party deps)
 
 ename_mcp (bin)      -> rmcp, reqwest, tokio, serde_json  (no first-party deps, no bevy)
@@ -39,11 +40,17 @@ cycle appears, the fix is to move the shared type down a layer or invert the cal
 
 The asset layer is three crates, not one. `ename_asset_alias` knows what an alias is and serves it
 as a Bevy asset source. `ename_asset_package` finds packages on disk and parses their manifests.
-Neither depends on the other, which is the point: a manifest's `[assets.add]` table is
-alias-shaped, but discovering, parsing and ordering packages is not, and keeping the mapping out of
-`ename_asset_package` lets a command line tool link either crate alone. `ename_asset_content` is
-where the two meet, and it owns the plugin, because deciding what goes in an `App` is composition
-rather than asset logic.
+Neither depends on the other, which is the point. `ename_asset_package` reads alias *strings* out
+of `.alias` files and folder rules and never validates one, because validating needs the alias type
+and that lives in the other leaf. `ename_asset_content` is where both are in scope, and it is the
+only place a string becomes an entry in an index.
+
+`ename_asset_package`'s Bevy dependency is optional and on by default. `ename_xtask` in phase 4
+links it with `default-features = false` and scans the same tree through `StdVfs`, so the command
+line tool and the running game share one implementation of the walk rather than growing two that
+drift. CI proves the bevy-free build stays buildable; nothing else in the workspace would, because
+every other consumer turns the feature on. `ename_asset_content` is where the two meet, and it owns
+the plugin, because deciding what goes in an `App` is composition rather than asset logic.
 
 `ename_engine` depends on `ename_asset_content`. That is new, and it is the one place a lower
 crate's constraint reaches upward. `App::register_asset_source` fills a resource that `AssetPlugin`

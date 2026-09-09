@@ -77,6 +77,36 @@ still wins, so an author keeps control of loader settings.
 The scan reads the default asset source directly and must never read through `alias://`. It would
 await an index only the scan can fill, and hang.
 
+An asset's alias comes from a file, never from a list. `_rules.toml` names a whole folder with one
+template -- `alias = "core::{stem}"` -- and inherits into the folders under it, with the nearest
+rule winning outright rather than merging. A `airship.glb.alias` sidecar beside one asset overrides
+that with a hand-chosen name, carries the guid tooling tracks the file by, and says with
+`alias_origin` whether a human chose the name or tooling derived it, which is what decides whether
+tooling may ever rewrite it. Claiming an alias another package already has *is* the override; there
+is no override list anywhere, which is what removed the quoted TOML keys whose typos were silent.
+
+We own `.alias` and Bevy owns `.meta`, and neither writes the other's. Bevy reconstructs a `.meta`
+from `AssetMeta` through its own serializer and drops every field it does not recognise, so
+anything of ours in there is one run of somebody else's tool away from being deleted. `.alias` is
+an extension nobody else claims; its contents are TOML.
+
+`.alias` and `_rules.toml` reject unknown keys, because we generate them and a key we do not know
+is a mistake. `manifest.toml` does not: a mod is written by a third party against whatever version
+of the game they had, and one carrying a key from a later version must still load.
+
+Nothing fails a scan. A missing search path, an unreadable directory, an unparseable manifest, a
+`.alias` naming a file that is not there: each is recorded as a problem and skipped, so one broken
+mod costs that mod and nothing else. `ename_asset_content` mirrors the finished scan into
+`Res<ContentIndex>` and `Res<ContentReport>` for the editor and the log. Those are copies, for
+inspection -- the reader resolves through the `OnceCell` it was built with, because an
+`AssetReader` cannot reach a resource.
+
+The scanner reads through a `Vfs` trait rather than through `std::fs` or a Bevy type. The game
+supplies an `AssetReader` implementation, so wasm over HTTP and Android's APK work with no second
+code path; `ename_xtask` will supply a `std::fs` one with no Bevy in its graph at all, which is why
+`ename_asset_package`'s Bevy dependency sits behind a default feature and CI checks the crate
+builds without it. One walk over one trait is what stops the tool and the game from drifting.
+
 The source has to be registered before `AssetPlugin` builds. `App::register_asset_source` only
 fills `AssetSourceBuilders`, and `AssetPlugin` turns that resource into live sources once, when it
 builds; registering afterwards logs an error and leaves the source dead. `EnginePlugins` owns
@@ -84,8 +114,8 @@ builds; registering afterwards logs an error and leaves the source dead. `Engine
 `add_before::<AssetPlugin>` and the ordering is structural rather than a rule a target has to
 remember. `AliasSourcePlugin::build` asserts on it as well, for anyone adding it by hand.
 
-The full design, including the `.alias` files and package resolution that phases 2 and 3 add, is
-in `scratch/content-addressing-design.md`.
+The full design, including the package ordering constraints and the `xtask` tooling that phases 3
+and 4 add, is in `scratch/content-addressing-design.md`.
 
 ## Open questions
 
@@ -114,13 +144,15 @@ in `scratch/content-addressing-design.md`.
 - The asset crates and `ename_game` have integration tests that run a headless `App`
   (`crates/ename_asset_alias/tests/alias_reader.rs`,
   `crates/ename_asset_content/tests/alias_source.rs`,
-  `crates/ename_game/tests/scene_addressing.rs`), and `ename_asset_package` tests its scan over a
-  real `AssetReader` with no `App` at all. They use `TaskPoolPlugin` plus `AssetPlugin` over
+  `crates/ename_game/tests/scene_addressing.rs`), using `TaskPoolPlugin` plus `AssetPlugin` over
   committed fixture trees in each crate's own `tests/fixtures`, never the `assets/` symlink, which
-  is not present on a fresh clone. Nothing that needs a renderer or a window is covered:
-  `ScenePlugin`, `ename_engine` and `ename_editor` still have no tests. A harness for those needs
-  `MinimalPlugins` plus `BigSpaceDefaultPlugins`, because transform propagation comes from
-  big_space and this project disables Bevy's `TransformPlugin`.
+  is not present on a fresh clone. `ename_asset_package` needs none of that: its scan runs through
+  a `Vfs` trait, so `tests/package_scan.rs` drives it over `StdVfs` against a fixture tree and
+  `tests/asset_discovery.rs` drives it over an in-memory `FakeVfs`, with no `App` and no Bevy in the
+  graph either way. Nothing that needs a renderer or a window is covered: `ScenePlugin`,
+  `ename_engine` and `ename_editor` still have no tests. A harness for those needs `MinimalPlugins`
+  plus `BigSpaceDefaultPlugins`, because transform propagation comes from big_space and this
+  project disables Bevy's `TransformPlugin`.
 - `GameState::{Loading, Scene, Play}` all live in one `App` with the editor resident. The moment
   `Play` mutates the world, entering and leaving play will destroy authored state.
 - `ename_editor` exposes no ordering point or selection access to the layer above it.
