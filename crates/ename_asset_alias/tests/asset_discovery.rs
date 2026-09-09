@@ -1,47 +1,40 @@
-//! What the scanner finds inside a package, over a fake `Vfs`.
+//! What the alias walk finds in a directory tree, over a fake `Vfs`.
 //!
-//! `package_scan.rs` covers finding the packages themselves against a real tree. This file covers
-//! the walk inside one: folder rules, `.alias` sidecars, and every way the pair can be wrong.
+//! Folder rules, `.alias` sidecars, and every way the pair can be wrong. No packages and no
+//! manifests: `ename_asset_package`'s `package_scan.rs` covers what happens when a caller puts an
+//! order on top of this.
 
 mod support;
 
-use ename_asset_package::{AliasOrigin, DiscoveredAsset, ProblemKind, Scan, scan_packages};
+use ename_asset_alias::{AliasOrigin, AliasScan, DiscoveredAsset, ProblemKind, scan_aliases};
 use futures_lite::future::block_on;
+use std::path::Path;
 use support::FakeVfs;
 
-/// The smallest thing that counts as a package, so each test writes only what it is about.
-const MANIFEST: &str = r#"
-[package]
-id = "core"
-version = "1.0.0"
-authors = []
-title = "Core"
-description = ""
-"#;
+/// Everything is written under one directory so the tests read the way a package does, and so the
+/// walk has a root that is not the whole fake tree.
+const ROOT: &str = "base/core";
 
-fn scan(vfs: &FakeVfs) -> Scan {
-    block_on(scan_packages(vfs, &["base".to_owned()]))
+fn scan(vfs: &FakeVfs) -> AliasScan {
+    block_on(scan_aliases(vfs, Path::new(ROOT), &[]))
 }
 
-fn package(vfs: &FakeVfs) -> Vec<DiscoveredAsset> {
-    let scan = scan(vfs);
-    assert_eq!(scan.packages.len(), 1, "expected exactly one package");
-    scan.packages.into_iter().next().unwrap().assets
+fn discovered(vfs: &FakeVfs) -> Vec<DiscoveredAsset> {
+    scan(vfs).assets
 }
 
 fn aliases(assets: &[DiscoveredAsset]) -> Vec<&str> {
     assets.iter().map(|a| a.alias.as_str()).collect()
 }
 
-fn kinds(scan: &Scan) -> Vec<ProblemKind> {
+fn kinds(scan: &AliasScan) -> Vec<ProblemKind> {
     scan.problems.iter().map(|p| p.kind).collect()
 }
 
 #[test]
 fn a_folder_rule_names_every_file_it_includes() {
-    let assets = package(
+    let assets = discovered(
         &FakeVfs::new()
-            .file("base/core/manifest.toml", MANIFEST)
             .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/airship.glb", "")
             .file("base/core/map.glb", ""),
@@ -58,9 +51,8 @@ fn a_folder_rule_names_every_file_it_includes() {
 
 #[test]
 fn a_file_the_rule_excludes_is_not_discovered() {
-    let assets = package(
+    let assets = discovered(
         &FakeVfs::new()
-            .file("base/core/manifest.toml", MANIFEST)
             .file(
                 "base/core/_rules.toml",
                 "alias = \"core::{stem}\"\ninclude = [\"*.glb\"]\n",
@@ -74,9 +66,8 @@ fn a_file_the_rule_excludes_is_not_discovered() {
 
 #[test]
 fn an_alias_sidecar_overrides_the_derived_name() {
-    let assets = package(
+    let assets = discovered(
         &FakeVfs::new()
-            .file("base/core/manifest.toml", MANIFEST)
             .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/ship_final_v2.glb", "")
             .file(
@@ -96,9 +87,8 @@ fn an_alias_sidecar_overrides_the_derived_name() {
 
 #[test]
 fn a_sidecar_can_exclude_a_file_the_rule_covers() {
-    let assets = package(
+    let assets = discovered(
         &FakeVfs::new()
-            .file("base/core/manifest.toml", MANIFEST)
             .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/airship.glb", "")
             .file("base/core/wip.glb", "")
@@ -112,9 +102,8 @@ fn a_sidecar_can_exclude_a_file_the_rule_covers() {
 /// patterns happen not to match would be a rule nobody could guess.
 #[test]
 fn a_sidecar_alias_is_included_even_where_the_rule_does_not_match() {
-    let assets = package(
+    let assets = discovered(
         &FakeVfs::new()
-            .file("base/core/manifest.toml", MANIFEST)
             .file(
                 "base/core/_rules.toml",
                 "alias = \"core::{stem}\"\ninclude = [\"*.glb\"]\n",
@@ -128,9 +117,8 @@ fn a_sidecar_alias_is_included_even_where_the_rule_does_not_match() {
 
 #[test]
 fn a_rule_inherits_into_subdirectories() {
-    let assets = package(
+    let assets = discovered(
         &FakeVfs::new()
-            .file("base/core/manifest.toml", MANIFEST)
             .file("base/core/_rules.toml", r#"alias = "core::{path}""#)
             .file("base/core/props/barrel.png", ""),
     );
@@ -141,9 +129,8 @@ fn a_rule_inherits_into_subdirectories() {
 /// Replacing rather than merging, so "what does this file get" is answerable by reading one file.
 #[test]
 fn a_deeper_rule_replaces_the_inherited_one() {
-    let assets = package(
+    let assets = discovered(
         &FakeVfs::new()
-            .file("base/core/manifest.toml", MANIFEST)
             .file("base/core/_rules.toml", r#"alias = "core::{path}""#)
             .file(
                 "base/core/props/_rules.toml",
@@ -158,21 +145,16 @@ fn a_deeper_rule_replaces_the_inherited_one() {
 /// One warning per README would bury the warnings that matter.
 #[test]
 fn a_file_no_rule_covers_is_skipped_silently() {
-    let scan = scan(
-        &FakeVfs::new()
-            .file("base/core/manifest.toml", MANIFEST)
-            .file("base/core/README.txt", ""),
-    );
+    let scan = scan(&FakeVfs::new().file("base/core/README.txt", ""));
 
-    assert!(scan.packages[0].assets.is_empty());
+    assert!(scan.assets.is_empty());
     assert!(scan.problems.is_empty(), "got {:?}", scan.problems);
 }
 
 #[test]
 fn sidecars_are_never_assets_themselves() {
-    let assets = package(
+    let assets = discovered(
         &FakeVfs::new()
-            .file("base/core/manifest.toml", MANIFEST)
             .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/airship.glb", "")
             .file(
@@ -184,7 +166,7 @@ fn sidecars_are_never_assets_themselves() {
     assert_eq!(
         aliases(&assets),
         ["core::airship"],
-        "manifest.toml, _rules.toml and the .alias file must not become assets"
+        "_rules.toml and the .alias file must not become assets"
     );
 }
 
@@ -194,13 +176,12 @@ fn sidecars_are_never_assets_themselves() {
 fn an_orphan_alias_file_is_reported() {
     let scan = scan(
         &FakeVfs::new()
-            .file("base/core/manifest.toml", MANIFEST)
             .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/deleted.glb.alias", r#"alias = "core::deleted""#),
     );
 
     assert_eq!(kinds(&scan), [ProblemKind::OrphanAliasFile]);
-    assert!(scan.packages[0].assets.is_empty());
+    assert!(scan.assets.is_empty());
 }
 
 /// A guid is only useful if every asset has one, and nothing generates them until phase 4. The
@@ -209,20 +190,18 @@ fn an_orphan_alias_file_is_reported() {
 fn a_sidecar_without_a_guid_is_reported_but_still_registers() {
     let scan = scan(
         &FakeVfs::new()
-            .file("base/core/manifest.toml", MANIFEST)
             .file("base/core/airship.glb", "")
             .file("base/core/airship.glb.alias", r#"alias = "core::airship""#),
     );
 
     assert_eq!(kinds(&scan), [ProblemKind::MissingGuid]);
-    assert_eq!(aliases(&scan.packages[0].assets), ["core::airship"]);
+    assert_eq!(aliases(&scan.assets), ["core::airship"]);
 }
 
 #[test]
 fn a_duplicate_alias_keeps_the_first_and_reports_the_second() {
     let scan = scan(
         &FakeVfs::new()
-            .file("base/core/manifest.toml", MANIFEST)
             .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
             // Both reduce to the stem `airship`, and the walk sorts, so `.glb` comes first.
             .file("base/core/airship.glb", "")
@@ -230,7 +209,7 @@ fn a_duplicate_alias_keeps_the_first_and_reports_the_second() {
     );
 
     assert_eq!(kinds(&scan), [ProblemKind::DuplicateAlias]);
-    let assets = &scan.packages[0].assets;
+    let assets = &scan.assets;
     assert_eq!(aliases(assets), ["core::airship"]);
     assert_eq!(assets[0].path.to_str(), Some("base/core/airship.glb"));
 }
@@ -239,7 +218,6 @@ fn a_duplicate_alias_keeps_the_first_and_reports_the_second() {
 fn an_unparseable_alias_file_is_reported_and_the_rest_still_load() {
     let scan = scan(
         &FakeVfs::new()
-            .file("base/core/manifest.toml", MANIFEST)
             .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/airship.glb", "")
             .file("base/core/map.glb", "")
@@ -248,7 +226,7 @@ fn an_unparseable_alias_file_is_reported_and_the_rest_still_load() {
 
     assert_eq!(kinds(&scan), [ProblemKind::UnparseableAliasFile]);
     assert_eq!(
-        aliases(&scan.packages[0].assets),
+        aliases(&scan.assets),
         ["core::airship", "core::map"],
         "the broken sidecar costs its own overrides and nothing else"
     );
@@ -260,21 +238,19 @@ fn an_unparseable_alias_file_is_reported_and_the_rest_still_load() {
 fn an_unparseable_rules_file_leaves_the_inherited_rule_in_force() {
     let scan = scan(
         &FakeVfs::new()
-            .file("base/core/manifest.toml", MANIFEST)
             .file("base/core/_rules.toml", r#"alias = "core::{path}""#)
             .file("base/core/props/_rules.toml", "alias = [[[")
             .file("base/core/props/barrel.png", ""),
     );
 
     assert_eq!(kinds(&scan), [ProblemKind::UnparseableRules]);
-    assert_eq!(aliases(&scan.packages[0].assets), ["core::props/barrel"]);
+    assert_eq!(aliases(&scan.assets), ["core::props/barrel"]);
 }
 
 #[test]
 fn an_unreadable_directory_is_reported() {
     let scan = scan(
         &FakeVfs::new()
-            .file("base/core/manifest.toml", MANIFEST)
             .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/airship.glb", "")
             .file("base/core/locked/secret.glb", "")
@@ -282,7 +258,7 @@ fn an_unreadable_directory_is_reported() {
     );
 
     assert_eq!(kinds(&scan), [ProblemKind::UnreadableDirectory]);
-    assert_eq!(aliases(&scan.packages[0].assets), ["core::airship"]);
+    assert_eq!(aliases(&scan.assets), ["core::airship"]);
 }
 
 /// Pins the order the walk produces within one directory: alphabetical, and files before it
@@ -293,14 +269,13 @@ fn an_unreadable_directory_is_reported() {
 #[test]
 fn assets_are_ordered_alphabetically_with_files_before_subdirectories() {
     let vfs = FakeVfs::new()
-        .file("base/core/manifest.toml", MANIFEST)
         .file("base/core/_rules.toml", r#"alias = "core::{path}""#)
         .file("base/core/zebra.glb", "")
         .file("base/core/apple.glb", "")
         .file("base/core/props/barrel.glb", "");
 
     assert_eq!(
-        aliases(&package(&vfs)).join(","),
+        aliases(&discovered(&vfs)).join(","),
         "core::apple,core::zebra,core::props/barrel"
     );
 }
@@ -312,7 +287,6 @@ fn assets_are_ordered_alphabetically_with_files_before_subdirectories() {
 #[test]
 fn a_directory_chain_deeper_than_the_cap_is_reported_and_does_not_cost_the_rest_of_the_package() {
     let mut vfs = FakeVfs::new()
-        .file("base/core/manifest.toml", MANIFEST)
         .file("base/core/_rules.toml", r#"alias = "core::{path}""#)
         .file("base/core/shallow.glb", "");
 
@@ -332,8 +306,46 @@ fn a_directory_chain_deeper_than_the_cap_is_reported_and_does_not_cost_the_rest_
         scan.problems
     );
     assert_eq!(
-        aliases(&scan.packages[0].assets),
+        aliases(&scan.assets),
         ["core::shallow"],
-        "the shallow asset must still register; one runaway subtree must not cost the package"
+        "the shallow asset must still register; one runaway subtree must not cost the rest"
     );
+}
+
+/// The walk skips `_rules.toml`, `*.alias` and `*.meta` on its own. Anything else a caller's own
+/// format owns has to be named, or a permissive rule sweeps it up as content --
+/// `ename_asset_package` passes `manifest.toml` for exactly this reason.
+#[test]
+fn a_caller_can_name_files_the_walk_must_not_treat_as_assets() {
+    let vfs = FakeVfs::new()
+        .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
+        .file("base/core/manifest.toml", "")
+        .file("base/core/airship.glb", "");
+
+    assert_eq!(
+        aliases(&discovered(&vfs)),
+        ["core::airship", "core::manifest"],
+        "nothing is ignored by default beyond the alias layer's own files"
+    );
+
+    let scan = block_on(scan_aliases(&vfs, Path::new(ROOT), &["manifest.toml"]));
+    assert_eq!(aliases(&scan.assets), ["core::airship"]);
+}
+
+/// An alias `AssetPath` would misread can never resolve, so it is reported here rather than
+/// silently dropped by whoever builds the index. This crate owns the alias type, so this is the
+/// first place the check can happen at all.
+#[test]
+fn an_alias_the_validator_rejects_is_reported_and_costs_only_itself() {
+    let scan = scan(
+        &FakeVfs::new()
+            .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
+            .file("base/core/airship.glb", "")
+            .file("base/core/bad.glb", "")
+            .file("base/core/bad.glb.alias", r#"alias = "core::bad#Scene0""#),
+    );
+
+    // Only `InvalidAlias`: an alias that can never resolve is not also worth a guid warning.
+    assert_eq!(kinds(&scan), [ProblemKind::InvalidAlias]);
+    assert_eq!(aliases(&scan.assets), ["core::airship"]);
 }

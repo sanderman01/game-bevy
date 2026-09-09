@@ -9,7 +9,7 @@ license.workspace = true
 [dependencies]
 async-lock.workspace = true
 bevy.workspace = true
-ename_asset_alias.workspace = true
+ename_asset_alias = { workspace = true, features = ["bevy"] }
 ename_asset_package.workspace = true
 
 [dev-dependencies]

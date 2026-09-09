@@ -4,7 +4,7 @@
 //! to test an unreadable directory at all. `package_scan.rs` covers `StdVfs` against a real tree,
 //! so both implementations stay exercised.
 
-use ename_asset_package::{BoxedFuture, DirEntry, Vfs, VfsError};
+use ename_asset_alias::{BoxedFuture, DirEntry, Vfs, VfsError};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},

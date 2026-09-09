@@ -6,8 +6,8 @@
 
 use crate::report::{ContentReport, PackageSummary};
 use bevy::log::{info, warn};
-use ename_asset_alias::ContentIndex;
-use ename_asset_package::{Problem, ProblemKind, Scan};
+use ename_asset_alias::{ContentIndex, Problem, ProblemKind};
+use ename_asset_package::Scan;
 
 /// Folds a scan into one index, and reports what happened.
 ///
@@ -73,9 +73,8 @@ pub fn build_index(scan: &Scan) -> (ContentIndex, ContentReport) {
 #[cfg(test)]
 mod tests {
     use super::build_index;
-    use ename_asset_package::{
-        AliasOrigin, DiscoveredAsset, Manifest, Package, Problem, ProblemKind, Scan,
-    };
+    use ename_asset_alias::{AliasOrigin, DiscoveredAsset, Problem, ProblemKind};
+    use ename_asset_package::{Manifest, Package, Scan};
     use std::path::{Path, PathBuf};
 
     fn manifest(id: &str) -> Manifest {

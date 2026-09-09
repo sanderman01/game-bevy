@@ -1,23 +1,16 @@
 //! `ename_asset_package` -- finding content packages on disk and reading what they contain.
 //!
-//! A leaf of the layer graph with no first-party dependencies. It finds packages, parses their
-//! manifests, and discovers each package's assets from `.alias` sidecars and `_rules.toml` folder
-//! rules. It carries the alias *strings* it finds and never validates one -- validating needs the
-//! alias type, and that type lives in the sibling leaf `ename_asset_alias`. `ename_asset_content`
-//! is where the two meet. See `docs/design/crate-layout.md`.
+//! It finds packages, parses their manifests, and puts them in load order. Discovering the assets
+//! inside one is not its job: `.alias` sidecars, `_rules.toml` folder rules and the walk over them
+//! belong to `ename_asset_alias`, which is the crate that knows what an alias is. This crate calls
+//! that walk once per package root and adds the only thing it has that the walk does not -- an
+//! order. See `docs/design/crate-layout.md`.
+//!
+//! Its one first-party dependency is `ename_asset_alias`, taken with `default-features = false`,
+//! so a command line tool can link both without a renderer.
 
-mod alias_file;
 mod manifest;
-mod rules;
 mod scan;
-mod vfs;
 
-pub use crate::alias_file::{ALIAS_EXTENSION, AliasFile, AliasOrigin, alias_sidecar_target};
 pub use crate::manifest::{Manifest, PackageInfo, Version, VersionError};
-pub use crate::rules::{CompiledRules, RULES_FILE, Rules, RulesError};
-pub use crate::scan::{
-    DiscoveredAsset, MANIFEST_FILE, Package, Problem, ProblemKind, Scan, scan_packages,
-};
-#[cfg(feature = "bevy")]
-pub use crate::vfs::AssetReaderVfs;
-pub use crate::vfs::{BoxedFuture, DirEntry, StdVfs, Vfs, VfsError};
+pub use crate::scan::{MANIFEST_FILE, Package, Scan, scan_packages};

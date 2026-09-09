@@ -3,8 +3,10 @@
 //! No Bevy io here on purpose. Resolution is a lookup, and keeping it that way lets it be tested
 //! without an `App`.
 
-use bevy::{ecs::resource::Resource, platform::collections::HashMap};
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 use thiserror::Error;
 
 /// Why an alias was rejected.
@@ -45,7 +47,8 @@ pub fn validate_alias(alias: &str) -> Result<(), AliasError> {
 /// The live copy the reader resolves through lives in a `ContentIndexCell`, not in the `World`:
 /// an `AssetReader` cannot reach a resource. `ename_asset_content` mirrors the finished index in
 /// here as well, for the editor and the log to read. That copy is for inspection only.
-#[derive(Debug, Default, Clone, Resource)]
+#[derive(Debug, Default, Clone)]
+#[cfg_attr(feature = "bevy", derive(bevy::ecs::resource::Resource))]
 pub struct ContentIndex {
     alias_to_path: HashMap<String, PathBuf>,
 }

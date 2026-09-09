@@ -1,3 +1,7 @@
+// The whole file is Bevy: the `alias://` source only exists under the `bevy` feature, and the
+// bevy-free build still has to compile its test targets.
+#![cfg(feature = "bevy")]
+
 //! Integration tests for the `alias://` asset source, over a real `App`.
 //!
 //! The index is filled by the test rather than by a scan, which is the point of the crate split:

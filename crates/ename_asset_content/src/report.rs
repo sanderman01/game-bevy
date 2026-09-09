@@ -4,7 +4,8 @@
 //! report, and dropping it would cost visibility and nothing else.
 
 use bevy::ecs::resource::Resource;
-use ename_asset_package::{Problem, Version};
+use ename_asset_alias::Problem;
+use ename_asset_package::Version;
 use std::path::PathBuf;
 
 /// One package that made it into the index.

@@ -10,7 +10,7 @@ mod report;
 
 pub use crate::index::build_index;
 pub use crate::report::{ContentReport, PackageSummary};
-pub use ename_asset_package::{Problem, ProblemKind};
+pub use ename_asset_alias::{Problem, ProblemKind};
 
 use async_lock::OnceCell;
 use bevy::{
@@ -23,8 +23,8 @@ use bevy::{
     log::info,
     tasks::IoTaskPool,
 };
-use ename_asset_alias::{AliasSourcePlugin, ContentIndexCell};
-use ename_asset_package::{AssetReaderVfs, scan_packages};
+use ename_asset_alias::{AliasSourcePlugin, AssetReaderVfs, ContentIndexCell};
+use ename_asset_package::scan_packages;
 use std::sync::Arc;
 
 /// Relative path to the asset root. Mirrors `AssetPlugin::file_path`'s default.

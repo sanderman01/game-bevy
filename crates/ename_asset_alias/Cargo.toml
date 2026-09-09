@@ -6,10 +6,26 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+default = ["bevy"]
+# The `alias://` asset source, the scan plugin, and Bevy's `AssetReader` as a `Vfs`. Off for a
+# command line tool: `ename_xtask` reads the same `.alias` files and folder rules with `StdVfs`
+# and must not link a renderer to do it.
+bevy = ["dep:bevy"]
+
 [dependencies]
 async-lock.workspace = true
-bevy.workspace = true
+bevy = { workspace = true, optional = true }
+glob.workspace = true
+serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
+toml.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+# Drives the walk's futures in tests without going through Bevy, so the test suite does not
+# depend on the optional `bevy` feature being on. Already in `Cargo.lock` via Bevy.
+futures-lite.workspace = true
 
 [lints]
 workspace = true

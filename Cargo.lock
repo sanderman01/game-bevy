@@ -2953,7 +2953,12 @@ version = "0.0.0"
 dependencies = [
  "async-lock",
  "bevy",
+ "futures-lite",
+ "glob",
+ "serde",
  "thiserror 2.0.20",
+ "toml",
+ "uuid",
 ]
 
 [[package]]
@@ -2972,13 +2977,11 @@ name = "ename_asset_package"
 version = "0.0.0"
 dependencies = [
  "bevy",
+ "ename_asset_alias",
  "futures-lite",
- "glob",
  "serde",
- "thiserror 2.0.20",
  "toml",
  "tracing",
- "uuid",
 ]
 
 [[package]]

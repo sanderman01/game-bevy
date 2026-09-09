@@ -33,7 +33,9 @@ bevy_egui = "0.40"
 big_space = { git = "https://github.com/aevyrie/big_space", rev = "5f25522", features = ["debug", "camera"] }
 egui = "0.34"
 egui_dock = "0.19"
-ename_asset_alias = { path = "crates/ename_asset_alias", version = "0.0.0" }
+# `default-features = false` here so `ename_asset_package` can take it without Bevy. Every
+# consumer that wants the `alias://` source and the scan plugin asks for `features = ["bevy"]`.
+ename_asset_alias = { path = "crates/ename_asset_alias", version = "0.0.0", default-features = false }
 ename_asset_content = { path = "crates/ename_asset_content", version = "0.0.0" }
 ename_asset_package = { path = "crates/ename_asset_package", version = "0.0.0" }
 ename_editor = { path = "crates/ename_editor", version = "0.0.0" }

@@ -25,10 +25,12 @@ check() {
 
 # `ename_engine` may depend on the asset crates below it, and must not name anything above.
 check ename_engine 'ename_editor|ename_game|ename_game_editor'
-# The asset leaves. Neither may name any other first-party crate, which is what keeps
-# `ename_asset_package` free of alias types and lets a command line tool link either one alone.
+# The bottom of the asset stack. `ename_asset_alias` is the leaf: it owns the alias, the
+# `.alias` and `_rules.toml` schema, and the walk over them, and names nothing first-party.
 check ename_asset_alias 'ename_.*'
-check ename_asset_package 'ename_.*'
+# `ename_asset_package` adds packages and load order on top of that one walk, so the alias leaf
+# is the only first-party crate it may name.
+check ename_asset_package 'ename_asset_content|ename_engine|ename_editor|ename_game|ename_game_editor|ename_remote|ename_mcp'
 # The glue may name the two asset leaves and nothing above it.
 check ename_asset_content 'ename_engine|ename_editor|ename_game|ename_game_editor'
 check ename_editor 'ename_game|ename_game_editor'
