@@ -60,9 +60,13 @@ pub struct AliasFile {
 ///
 /// The full file name is used, `airship.glb.alias` and not `airship.alias`, which is Bevy's
 /// convention for `.meta` and which stops `abc.png` and `abc.jpg` fighting over one sidecar.
+///
+/// The extension is matched case-insensitively, the same way `.meta` is matched elsewhere in this
+/// crate: an author saving `airship.glb.ALIAS` on macOS or Windows must still get a recognised
+/// sidecar, not a file that is silently handed to discovery as an asset of its own.
 pub fn alias_sidecar_target(file_name: &str) -> Option<&str> {
-    let target = file_name.strip_suffix(".alias")?;
-    (!target.is_empty()).then_some(target)
+    let (target, extension) = file_name.rsplit_once('.')?;
+    (!target.is_empty() && extension.eq_ignore_ascii_case(ALIAS_EXTENSION)).then_some(target)
 }
 
 #[cfg(test)]
@@ -175,5 +179,21 @@ mod tests {
         assert_eq!(alias_sidecar_target("barrel.png.alias"), Some("barrel.png"));
         assert_eq!(alias_sidecar_target("airship.glb"), None);
         assert_eq!(alias_sidecar_target(".alias"), None);
+    }
+
+    /// macOS and Windows both preserve whatever case an author saved a file in. `.meta` is matched
+    /// case-insensitively elsewhere in this crate, and `.alias` must be too, or `airship.glb.ALIAS`
+    /// is silently handed to discovery as an asset of its own instead of being recognised as a
+    /// sidecar.
+    #[test]
+    fn the_extension_is_matched_case_insensitively() {
+        assert_eq!(
+            alias_sidecar_target("airship.glb.ALIAS"),
+            Some("airship.glb")
+        );
+        assert_eq!(
+            alias_sidecar_target("airship.glb.Alias"),
+            Some("airship.glb")
+        );
     }
 }
