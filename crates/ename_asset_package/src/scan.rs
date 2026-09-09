@@ -16,7 +16,7 @@
 //! aliases are phase 3. Packages are ordered by search path and then directory name, which is the
 //! tiebreaker those constraints will sort on top of.
 
-use crate::Manifest;
+use crate::{Manifest, validate_package_id};
 use ename_asset_alias::{DiscoveredAsset, Problem, ProblemKind, Vfs, VfsError, scan_aliases};
 use std::{
     fmt::Display,
@@ -109,6 +109,12 @@ async fn read_packages_in(vfs: &dyn Vfs, search_path: &Path, scan: &mut Scan) {
                 continue;
             }
         };
+
+        if let Err(err) = validate_package_id(&manifest.package.id) {
+            scan.problems
+                .push(problem(&manifest_path, ProblemKind::InvalidPackageId, err));
+            continue;
+        }
 
         let mut found = scan_aliases(vfs, &entry.path, &[MANIFEST_FILE]).await;
         scan.problems.append(&mut found.problems);

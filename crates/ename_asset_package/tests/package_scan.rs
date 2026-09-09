@@ -114,6 +114,24 @@ fn an_unparseable_manifest_is_recorded_as_a_problem() {
     assert_eq!(broken.kind, ProblemKind::UnparseableManifest);
 }
 
+/// An id nothing could name in `requires` is not a package. Skipping it costs that package and
+/// nothing else, exactly like an unparseable manifest.
+#[test]
+fn a_package_whose_id_has_whitespace_is_skipped_and_reported() {
+    let scan = full_scan(&["mods"]);
+    assert!(
+        !scan.packages.iter().any(|p| p.root.ends_with("nameless")),
+        "the package with the unusable id must not load"
+    );
+    assert!(
+        scan.problems
+            .iter()
+            .any(|p| p.kind == ProblemKind::InvalidPackageId),
+        "and it must be reported, got {:?}",
+        scan.problems
+    );
+}
+
 /// A missing search path must not take the scan down, and must not stop the packages that were
 /// found from registering.
 #[test]

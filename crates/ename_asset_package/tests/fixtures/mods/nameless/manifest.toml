@@ -1,0 +1,6 @@
+[package]
+id = "no good"
+version = "1.0.0"
+authors = ["Test"]
+title = "Package with an unusable id"
+description = "Its id has a space in it, so nothing could name it in `requires`."

@@ -12,5 +12,8 @@
 mod manifest;
 mod scan;
 
-pub use crate::manifest::{Manifest, PackageInfo, Version, VersionReq};
+pub use crate::manifest::{
+    Manifest, PackageIdError, PackageInfo, Requirement, RequirementError, Version, VersionReq,
+    validate_package_id,
+};
 pub use crate::scan::{MANIFEST_FILE, Package, Scan, scan_packages};

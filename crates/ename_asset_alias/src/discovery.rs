@@ -67,6 +67,8 @@ pub enum ProblemKind {
     /// this crate has no concept of a package. The variant lives here so there is one list, the
     /// way `InvalidAlias` used to live a layer up for the mirror-image reason.
     UnparseableManifest,
+    /// A `manifest.toml` whose package id could not be used. Produced by `ename_asset_package`.
+    InvalidPackageId,
 }
 
 impl Display for ProblemKind {
@@ -81,6 +83,7 @@ impl Display for ProblemKind {
             Self::InvalidAlias => "invalid alias",
             Self::DirectoryTooDeep => "directory nested too deep",
             Self::UnparseableManifest => "unparseable manifest",
+            Self::InvalidPackageId => "invalid package id",
         };
         f.write_str(text)
     }
