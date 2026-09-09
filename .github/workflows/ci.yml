@@ -39,9 +39,10 @@ jobs:
 
       # `ename_asset_package` is the crate `ename_xtask` will link in phase 4, and it has to
       # build with no Bevy in the graph at all. Nothing else in the workspace proves that: every
-      # other consumer turns the `bevy` feature on.
+      # other consumer turns the `bevy` feature on. `--all-targets` covers the test binaries too,
+      # which are bevy-free today and should stay that way.
       - name: Check the scanner without Bevy
-        run: cargo check -p ename_asset_package --no-default-features
+        run: cargo check -p ename_asset_package --no-default-features --all-targets
 
       - name: Layer graph
         run: ./scripts/check-layers.sh
