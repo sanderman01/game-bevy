@@ -1,0 +1,38 @@
+Cargo.toml
+  s_0f4b9c9cb12bff::t_c613cd3009e108 51
+crates/ename_asset_package/Cargo.toml
+  s_0f4b9c9cb12bff::t_5bce68e123b609 11-15,19
+crates/ename_asset_content/src/index.rs
+  s_0f4b9c9cb12bff::t_36769bf2f3d312 59
+crates/ename_asset_package/src/manifest.rs
+  s_0f4b9c9cb12bff::t_03f42f252fbbb0 23,29
+  s_0f4b9c9cb12bff::t_2c1d75aad275d6 6-15
+crates/ename_asset_package/src/lib.rs
+  s_0f4b9c9cb12bff::t_f19660da2187c0 15
+Cargo.lock
+  s_95fee36bdc283e::t_65d4310673414f 2981,6283-6286
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "69a30ab55c47bfcb47fa695c5abdbe1e8432f7ba",
+  "prompts": {},
+  "sessions": {
+    "s_0f4b9c9cb12bff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "441d9b46-9ba6-4f00-9467-d20ca2e54726",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_95fee36bdc283e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a334b080c08d47067",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
