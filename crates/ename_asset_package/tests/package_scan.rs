@@ -4,7 +4,7 @@
 //! implementation a command line tool would use. `futures_lite::future::block_on` drives it,
 //! because `StdVfs`'s io is blocking and there is nothing to schedule.
 
-use ename_asset_package::{Package, StdVfs, Version, scan_packages};
+use ename_asset_package::{Package, ProblemKind, Scan, StdVfs, Version, scan_packages};
 use futures_lite::future::block_on;
 
 /// Relative to this crate's manifest directory: Cargo runs a test binary with that as the
@@ -14,9 +14,15 @@ use futures_lite::future::block_on;
 const FIXTURE_ROOT: &str = "tests/fixtures";
 
 fn scan(search_paths: &[&str]) -> Vec<Package> {
+    full_scan(search_paths).packages
+}
+
+/// Like `scan`, but keeps the problems too. A separate helper because most tests here are about
+/// which packages loaded, not what went wrong finding them.
+fn full_scan(search_paths: &[&str]) -> Scan {
     let vfs = StdVfs::new(FIXTURE_ROOT);
     let paths: Vec<String> = search_paths.iter().map(|p| (*p).to_owned()).collect();
-    block_on(scan_packages(&vfs, &paths)).packages
+    block_on(scan_packages(&vfs, &paths))
 }
 
 fn ids(packages: &[Package]) -> Vec<&str> {
@@ -93,6 +99,20 @@ fn an_unparseable_manifest_is_skipped_and_the_rest_still_load() {
     );
 }
 
+/// Problem recording is the load-bearing new behaviour, and every other test in this file only
+/// asserts on `scan.packages` -- so nothing over a real `Vfs` proves a `Problem` is ever produced
+/// until this one reads `scan.problems` too. `broken/manifest.toml` is invalid TOML on every run.
+#[test]
+fn an_unparseable_manifest_is_recorded_as_a_problem() {
+    let scan = full_scan(&["mods"]);
+    let broken = scan
+        .problems
+        .iter()
+        .find(|p| p.path.ends_with("broken/manifest.toml"))
+        .unwrap_or_else(|| panic!("expected a problem for the broken manifest, got {scan:?}"));
+    assert_eq!(broken.kind, ProblemKind::UnparseableManifest);
+}
+
 /// A missing search path must not take the scan down, and must not stop the packages that were
 /// found from registering.
 #[test]
@@ -106,6 +126,26 @@ fn a_missing_search_path_is_survivable() {
 #[test]
 fn no_search_paths_finds_nothing() {
     assert!(scan(&[]).is_empty());
+}
+
+/// The order decides which of two colliding aliases wins, so it must not come from the platform.
+/// `tests/fixtures/order/pkg` was written to disk in an order that is not alphabetical (`zebra`
+/// before `apple`), so this only passes because `StdVfs::read_dir` sorts -- unlike the fake `Vfs`
+/// in `asset_discovery.rs`, which is backed by a `BTreeSet` and would pass this even without a
+/// sort in the implementation it does not exercise.
+#[test]
+fn assets_come_back_in_the_same_order_every_time() {
+    let first = scan(&["order"]);
+    let second = scan(&["order"]);
+    let aliases = |packages: &[Package]| -> Vec<String> {
+        packages[0].assets.iter().map(|a| a.alias.clone()).collect()
+    };
+
+    assert_eq!(aliases(&first), aliases(&second));
+    assert_eq!(
+        aliases(&first),
+        ["order::apple", "order::zebra", "order::props/barrel"]
+    );
 }
 
 /// The running game reads directories through Bevy's `AssetReader`, whose `is_directory` follows

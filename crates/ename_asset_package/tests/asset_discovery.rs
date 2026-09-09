@@ -285,9 +285,13 @@ fn an_unreadable_directory_is_reported() {
     assert_eq!(aliases(&scan.packages[0].assets), ["core::airship"]);
 }
 
-/// The order decides which of two colliding aliases wins, so it must not come from the platform.
+/// Pins the order the walk produces within one directory: alphabetical, and files before it
+/// descends into subdirectories. (Whether that order is stable *across runs* -- i.e. does not
+/// come from the platform's own iteration order -- is a claim about `StdVfs`'s sort, which this
+/// fake, backed by a `BTreeSet`, cannot exercise either way; see
+/// `package_scan.rs::assets_come_back_in_the_same_order_every_time`.)
 #[test]
-fn assets_come_back_in_a_stable_order() {
+fn assets_are_ordered_alphabetically_with_files_before_subdirectories() {
     let vfs = FakeVfs::new()
         .file("base/core/manifest.toml", MANIFEST)
         .file("base/core/_rules.toml", r#"alias = "core::{path}""#)
@@ -295,10 +299,10 @@ fn assets_come_back_in_a_stable_order() {
         .file("base/core/apple.glb", "")
         .file("base/core/props/barrel.glb", "");
 
-    let first = aliases(&package(&vfs)).join(",");
-    let second = aliases(&package(&vfs)).join(",");
-    assert_eq!(first, second);
-    assert_eq!(first, "core::apple,core::zebra,core::props/barrel");
+    assert_eq!(
+        aliases(&package(&vfs)).join(","),
+        "core::apple,core::zebra,core::props/barrel"
+    );
 }
 
 /// A symlink cycle cannot be built with `FakeVfs` -- it has no notion of a symlink at all -- so

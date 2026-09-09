@@ -1,0 +1,6 @@
+[package]
+id = "order"
+version = "1.0.0"
+authors = ["Test"]
+title = "Order test package"
+description = "Exercises StdVfs's own sort, over a real directory listing."
