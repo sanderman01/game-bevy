@@ -27,6 +27,16 @@ use uuid::Uuid;
 /// The file that marks a directory as a package.
 pub const MANIFEST_FILE: &str = "manifest.toml";
 
+/// How many directories deep one package's asset walk may descend before it is cut off.
+///
+/// This is not a real limit on asset trees -- 64 is far deeper than any of them go. It exists so a
+/// symlink cycle (a mod directory linking into itself, or two packages cross-linking shared art)
+/// cannot recurse forever: both `Vfs` implementations report `is_dir` through calls that follow
+/// symlinks, so `Walk::visit` cannot tell a cycle from a normal subdirectory. A visited set cannot
+/// catch this either, because the relative path keeps growing instead of repeating. A depth cap is
+/// the one check that is guaranteed to terminate.
+const MAX_DEPTH: usize = 64;
+
 /// One package found on disk: its parsed manifest, the directory it was found in, and every asset
 /// discovered under it.
 ///
@@ -69,6 +79,9 @@ pub enum ProblemKind {
     /// An alias the alias layer rejected. Produced by `ename_asset_content`, never here: this
     /// crate must not name an alias type. The variant lives here so there is one list.
     InvalidAlias,
+    /// The walk hit [`MAX_DEPTH`] and stopped descending. In practice this means a symlink cycle,
+    /// since no real asset tree goes anywhere near that deep.
+    DirectoryTooDeep,
 }
 
 impl Display for ProblemKind {
@@ -82,6 +95,7 @@ impl Display for ProblemKind {
             Self::MissingGuid => "missing guid",
             Self::DuplicateAlias => "duplicate alias",
             Self::InvalidAlias => "invalid alias",
+            Self::DirectoryTooDeep => "directory nested too deep",
         };
         f.write_str(text)
     }
@@ -166,7 +180,7 @@ async fn read_packages_in(vfs: &dyn Vfs, search_path: &Path, scan: &mut Scan) {
         };
 
         let mut walk = Walk::new(vfs);
-        walk.visit(entry.path.clone(), None).await;
+        walk.visit(entry.path.clone(), None, 0).await;
         scan.problems.append(&mut walk.problems);
         scan.packages.push(Package {
             manifest,
@@ -222,12 +236,26 @@ impl<'a> Walk<'a> {
 
     /// Visits one directory: adopt its rule if it has one, index its sidecars, discover its files,
     /// then descend. The future is boxed because it is recursive.
+    ///
+    /// `depth` is how many directories below the package root `dir` is; the root call is `0`. Past
+    /// [`MAX_DEPTH`] the walk reports and returns without reading `dir` at all, which is what stops
+    /// a symlink cycle from recursing forever.
     fn visit<'s>(
         &'s mut self,
         dir: PathBuf,
         inherited: Option<CompiledRules>,
+        depth: usize,
     ) -> BoxedFuture<'s, ()> {
         Box::pin(async move {
+            if depth > MAX_DEPTH {
+                self.problems.push(Problem {
+                    path: dir,
+                    kind: ProblemKind::DirectoryTooDeep,
+                    detail: format!("more than {MAX_DEPTH} directories deep; stopped descending"),
+                });
+                return;
+            }
+
             let vfs = self.vfs;
             let entries = match vfs.read_dir(&dir).await {
                 Ok(entries) => entries,
@@ -289,7 +317,8 @@ impl<'a> Walk<'a> {
             }
 
             for entry in entries.iter().filter(|e| e.is_dir) {
-                self.visit(entry.path.clone(), rules.clone()).await;
+                self.visit(entry.path.clone(), rules.clone(), depth + 1)
+                    .await;
             }
         })
     }

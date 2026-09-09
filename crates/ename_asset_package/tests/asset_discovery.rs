@@ -300,3 +300,36 @@ fn assets_come_back_in_a_stable_order() {
     assert_eq!(first, second);
     assert_eq!(first, "core::apple,core::zebra,core::props/barrel");
 }
+
+/// A symlink cycle cannot be built with `FakeVfs` -- it has no notion of a symlink at all -- so
+/// this builds the equivalent failure: a directory chain deeper than any real asset tree, which is
+/// exactly what an unbounded recursion through a cycle would look like from the walk's side.
+/// Without the depth cap this either overflows the stack or runs forever.
+#[test]
+fn a_directory_chain_deeper_than_the_cap_is_reported_and_does_not_cost_the_rest_of_the_package() {
+    let mut vfs = FakeVfs::new()
+        .file("base/core/manifest.toml", MANIFEST)
+        .file("base/core/_rules.toml", r#"alias = "core::{path}""#)
+        .file("base/core/shallow.glb", "");
+
+    let mut deep_path = "base/core".to_owned();
+    for level in 0..100 {
+        deep_path.push_str(&format!("/lvl{level}"));
+    }
+    deep_path.push_str("/too_deep.glb");
+    vfs = vfs.file(&deep_path, "");
+
+    let scan = scan(&vfs);
+
+    assert_eq!(
+        kinds(&scan),
+        [ProblemKind::DirectoryTooDeep],
+        "got {:?}",
+        scan.problems
+    );
+    assert_eq!(
+        aliases(&scan.packages[0].assets),
+        ["core::shallow"],
+        "the shallow asset must still register; one runaway subtree must not cost the package"
+    );
+}
