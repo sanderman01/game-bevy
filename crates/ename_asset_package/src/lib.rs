@@ -9,9 +9,11 @@
 //! Its one first-party dependency is `ename_asset_alias`, taken with `default-features = false`,
 //! so a command line tool can link both without a renderer.
 
+mod load_order;
 mod manifest;
 mod scan;
 
+pub use crate::load_order::{LOAD_ORDER_FILE, LoadOrder, LoadOrderError, UserConstraint};
 pub use crate::manifest::{
     Manifest, PackageIdError, PackageInfo, Requirement, RequirementError, Version, VersionReq,
     validate_package_id,
