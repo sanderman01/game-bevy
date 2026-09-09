@@ -101,9 +101,11 @@ mod tests {
     }
 
     fn package(id: &str, root: &str, assets: Vec<DiscoveredAsset>) -> Package {
+        let root = PathBuf::from(root);
         Package {
             manifest: manifest(id),
-            root: PathBuf::from(root),
+            search_path: root.parent().unwrap_or(Path::new("")).to_path_buf(),
+            root,
             assets,
         }
     }

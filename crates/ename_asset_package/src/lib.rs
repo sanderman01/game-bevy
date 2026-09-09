@@ -11,6 +11,7 @@
 
 mod load_order;
 mod manifest;
+mod resolve;
 mod scan;
 
 pub use crate::load_order::{LOAD_ORDER_FILE, LoadOrder, LoadOrderError, UserConstraint};
@@ -18,4 +19,10 @@ pub use crate::manifest::{
     Manifest, PackageIdError, PackageInfo, Requirement, RequirementError, Version, VersionReq,
     validate_package_id,
 };
+pub use crate::resolve::{
+    ConstraintSource, DisableReason, Disabled, OrderEdges, Resolution, resolve,
+};
 pub use crate::scan::{MANIFEST_FILE, Package, Scan, scan_packages};
+
+/// Re-exported so a caller reading a [`Scan`] or a [`Resolution`] needs only this crate.
+pub use ename_asset_alias::{DiscoveredAsset, Problem, ProblemKind, Vfs};

@@ -69,6 +69,17 @@ pub enum ProblemKind {
     UnparseableManifest,
     /// A `manifest.toml` whose package id could not be used. Produced by `ename_asset_package`.
     InvalidPackageId,
+    /// A package's `requires` names something absent or the wrong version, so the package is
+    /// disabled. Produced by `ename_asset_package`.
+    UnsatisfiedRequirement,
+    /// `after`/`before` constraints form a loop. Every package in it is disabled, because any
+    /// order the resolver invented would be one nobody asked for. Produced by
+    /// `ename_asset_package`.
+    DependencyCycle,
+    /// A user constraint contradicted a manifest constraint, so the manifest's lost. Reported
+    /// rather than logged, because "why did my mod load in that order" is the question the report
+    /// exists to answer. Produced by `ename_asset_package`.
+    OverruledConstraint,
 }
 
 impl Display for ProblemKind {
@@ -84,6 +95,9 @@ impl Display for ProblemKind {
             Self::DirectoryTooDeep => "directory nested too deep",
             Self::UnparseableManifest => "unparseable manifest",
             Self::InvalidPackageId => "invalid package id",
+            Self::UnsatisfiedRequirement => "unsatisfied requirement",
+            Self::DependencyCycle => "dependency cycle",
+            Self::OverruledConstraint => "constraint overruled by the user",
         };
         f.write_str(text)
     }

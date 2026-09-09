@@ -37,6 +37,10 @@ pub const MANIFEST_FILE: &str = "manifest.toml";
 pub struct Package {
     pub manifest: Manifest,
     pub root: PathBuf,
+    /// The search path this package was found under, as the caller wrote it. Kept because it is
+    /// half the answer to "why did this one win": two packages in different search paths were
+    /// ordered by the target's list, and two in the same one by directory name.
+    pub search_path: PathBuf,
     pub assets: Vec<DiscoveredAsset>,
 }
 
@@ -121,6 +125,7 @@ async fn read_packages_in(vfs: &dyn Vfs, search_path: &Path, scan: &mut Scan) {
         scan.packages.push(Package {
             manifest,
             root: entry.path,
+            search_path: search_path.to_path_buf(),
             assets: found.assets,
         });
     }
