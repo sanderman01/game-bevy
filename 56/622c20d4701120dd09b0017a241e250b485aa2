@@ -1,0 +1,61 @@
+crates/ename_asset_alias/src/lib.rs
+  s_c45b82c2f785ea::t_ae4119daec0a3b 5
+  s_c45b82c2f785ea::t_3edb558ef8c845 25
+  s_c45b82c2f785ea::t_f171e23270b6fc 3-4,6-13,15-16,18-21,24,27-30,32-33
+crates/ename_asset_alias/src/discovery.rs
+  s_c45b82c2f785ea::t_baadfb38529cbd 1-361
+crates/ename_asset_alias/Cargo.toml
+  s_c45b82c2f785ea::t_fc3d0e1dec5a91 9-15,18-20,22-28
+crates/ename_asset_alias/tests/support/mod.rs
+  s_c45b82c2f785ea::t_3bc0c457bb343e 1-85
+crates/ename_asset_content/src/lib.rs
+  s_c45b82c2f785ea::t_be56af5a4e0c30 13,26-27
+scripts/check-layers.sh
+  s_c45b82c2f785ea::t_a2364f352466cf 28-29,31-33
+crates/ename_asset_content/src/index.rs
+  s_c45b82c2f785ea::t_be56af5a4e0c30 9-10,76-77
+crates/ename_asset_package/src/scan.rs
+  s_c45b82c2f785ea::t_cdf4a5998451c4 4-7,19-20,27-28,113-114,118
+crates/ename_asset_alias/tests/asset_discovery.rs
+  s_c45b82c2f785ea::t_434b2e936e8591 348-349
+  s_c45b82c2f785ea::t_6dd062c5fb16ad 148
+  s_c45b82c2f785ea::t_6a7a391c8a1715 1-21,23-35,37-53,55-68,70-89,91-104,106-119,121-131,133-147,149-155,157-277,279-312,351
+  s_c45b82c2f785ea::t_3bc0c457bb343e 22,36,54,69,90,105,120,132,156,278,313-347,350
+crates/ename_asset_content/Cargo.toml
+  s_c45b82c2f785ea::t_9b2cf846005de0 12
+crates/ename_asset_package/src/lib.rs
+  s_c45b82c2f785ea::t_518601a93615bd 3-10,16
+crates/ename_asset_alias/src/index.rs
+  s_c45b82c2f785ea::t_7143ce190b297f 6-9,50-51
+crates/ename_asset_package/tests/package_scan.rs
+  s_c45b82c2f785ea::t_3bc0c457bb343e 7-8
+crates/ename_asset_package/Cargo.toml
+  s_c45b82c2f785ea::t_796ebe25a99d73 11-14
+  s_c45b82c2f785ea::t_9b2cf846005de0 18
+crates/ename_asset_alias/tests/alias_reader.rs
+  s_c45b82c2f785ea::t_1966e6413120e8 1-4
+Cargo.toml
+  s_c45b82c2f785ea::t_9b2cf846005de0 36-38
+crates/ename_game/Cargo.toml
+  s_c45b82c2f785ea::t_9b2cf846005de0 13
+crates/ename_asset_content/src/report.rs
+  s_c45b82c2f785ea::t_be56af5a4e0c30 7-8
+Cargo.lock
+  s_c45b82c2f785ea::t_8981d78c5c47ab 2956-2958,2960-2961,2980
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "56622c20d4701120dd09b0017a241e250b485aa2",
+  "prompts": {},
+  "sessions": {
+    "s_c45b82c2f785ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5dd5165d-54f5-457d-9db3-376ee8a2e5cd",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
