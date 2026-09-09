@@ -6,10 +6,12 @@
 //! link this crate without the Bevy asset source. `ename_asset_content` owns the mapping.
 //! See `docs/design/crate-layout.md`.
 
+mod alias_file;
 mod manifest;
 mod scan;
 mod vfs;
 
+pub use crate::alias_file::{ALIAS_EXTENSION, AliasFile, AliasOrigin, alias_sidecar_target};
 pub use crate::manifest::{AssetsInfo, Manifest, PackageInfo, Version, VersionError};
 pub use crate::scan::{MANIFEST_FILE, Package, scan_packages};
 #[cfg(feature = "bevy")]
