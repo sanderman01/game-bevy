@@ -31,7 +31,7 @@ check ename_asset_alias 'ename_.*'
 # `ename_asset_package` adds packages and load order on top of that one walk, so the alias leaf
 # is the only first-party crate it may name.
 check ename_asset_package 'ename_asset_content|ename_engine|ename_editor|ename_game|ename_game_editor|ename_remote|ename_mcp'
-# The glue may name the two asset leaves and nothing above it.
+# The glue may name both asset crates and nothing above it.
 check ename_asset_content 'ename_engine|ename_editor|ename_game|ename_game_editor'
 check ename_editor 'ename_game|ename_game_editor'
 check ename_game 'ename_editor|ename_game_editor'

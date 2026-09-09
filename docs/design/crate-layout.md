@@ -24,9 +24,10 @@ ename_game           -> ename_engine, ename_asset_alias
 ename_editor         -> ename_engine
 ename_engine         -> ename_asset_content, bevy, avian3d, big_space
 ename_asset_content  -> ename_asset_alias, ename_asset_package, async-lock, bevy
-ename_asset_package  -> serde, toml, tracing, uuid, glob, thiserror   (no first-party deps)
+ename_asset_package  -> ename_asset_alias, serde, toml, tracing
                         + bevy, behind the default `bevy` feature
-ename_asset_alias    -> async-lock, thiserror, bevy       (no first-party deps)
+ename_asset_alias    -> async-lock, serde, toml, glob, uuid, thiserror   (no first-party deps)
+                        + bevy, behind the default `bevy` feature
 
 ename_mcp (bin)      -> rmcp, reqwest, tokio, serde_json  (no first-party deps, no bevy)
 ```
@@ -38,19 +39,31 @@ Dependencies point down only. Nothing points sideways between the asset crates a
 and nothing points up. There is no `core`, `common`, or `shared` crate on the release path. If a
 cycle appears, the fix is to move the shared type down a layer or invert the call into an event.
 
-The asset layer is three crates, not one. `ename_asset_alias` knows what an alias is and serves it
-as a Bevy asset source. `ename_asset_package` finds packages on disk and parses their manifests.
-Neither depends on the other, which is the point. `ename_asset_package` reads alias *strings* out
-of `.alias` files and folder rules and never validates one, because validating needs the alias type
-and that lives in the other leaf. `ename_asset_content` is where both are in scope, and it is the
-only place a string becomes an entry in an index.
+The asset layer is three crates, not one. `ename_asset_alias` is the leaf. It owns the alias
+end to end: what one is, the `.alias` sidecars and `_rules.toml` folder rules that name one, the
+walk that finds them, the validation that rejects one `AssetPath` would misread, and the `alias://`
+source that serves it. Adding `AliasPlugins` is the whole setup, which is what lets the crate be
+published and used on its own.
 
-`ename_asset_package`'s Bevy dependency is optional and on by default. `ename_xtask` in phase 4
-links it with `default-features = false` and scans the same tree through `StdVfs`, so the command
-line tool and the running game share one implementation of the walk rather than growing two that
-drift. CI proves the bevy-free build stays buildable; nothing else in the workspace would, because
-every other consumer turns the feature on. `ename_asset_content` is where the two meet, and it owns
-the plugin, because deciding what goes in an `App` is composition rather than asset logic.
+`ename_asset_package` sits on top and adds the one thing the walk has no opinion about: an order.
+It finds packages on disk, parses their manifests, calls `scan_aliases` once per package root, and
+puts the results in load order. It is the only first-party crate the alias leaf's consumers gain,
+and the arrow points down, so the two never grow a second walk between them. `ename_asset_content`
+is above both. It folds an ordered scan into one index and owns the `App` wiring, because deciding
+what goes in an `App` is composition rather than asset logic.
+
+Scanning is `AliasScanPlugin`, separate from `AliasSourcePlugin`, rather than a flag on one plugin.
+`ename_asset_content` needs the source but supplies its own package-ordered index, and with two
+plugins it composes -- it adds the source and never adds the scan -- instead of switching a default
+off. A negative flag ages into a second code path; an unadded plugin does not.
+
+Both crates' Bevy dependency is optional and on by default. `ename_xtask` in phase 4 links them
+with `default-features = false` and scans the same tree through `StdVfs`, so the command line tool
+and the running game share one implementation of the walk rather than growing two that drift. CI
+proves each bevy-free build stays buildable; nothing else in the workspace would, because every
+other consumer turns the feature on. The workspace dependency entry for `ename_asset_alias` sets
+`default-features = false` for the same reason, so every consumer that wants the Bevy half asks for
+it by name.
 
 `ename_engine` depends on `ename_asset_content`. That is new, and it is the one place a lower
 crate's constraint reaches upward. `App::register_asset_source` fills a resource that `AssetPlugin`

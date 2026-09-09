@@ -85,6 +85,17 @@ that with a hand-chosen name, carries the guid tooling tracks the file by, and s
 tooling may ever rewrite it. Claiming an alias another package already has *is* the override; there
 is no override list anywhere, which is what removed the quoted TOML keys whose typos were silent.
 
+Both files, and the walk that reads them, belong to `ename_asset_alias` -- the crate that knows
+what an alias is is the crate that knows how one is named. That is what lets the crate stand alone:
+adding `AliasPlugins` scans the asset root on startup and fills the index the `alias://` source
+waits on, so a project with a `_rules.toml` and no packages at all addresses its assets by alias
+with no registration code and no other first-party crate. `ename_asset_package` adds the one thing
+the walk has no opinion about -- an order -- by calling it once per package root and folding the
+results in load order. Scanning is a second plugin rather than a flag on the first, so a project
+that decides its own order composes rather than opts out: `ename_asset_content` adds
+`AliasSourcePlugin` alone and never adds `AliasScanPlugin`, and there is nothing for it to switch
+off.
+
 We own `.alias` and Bevy owns `.meta`, and neither writes the other's. Bevy reconstructs a `.meta`
 from `AssetMeta` through its own serializer and drops every field it does not recognise, so
 anything of ours in there is one run of somebody else's tool away from being deleted. `.alias` is
@@ -95,10 +106,11 @@ is a mistake. `manifest.toml` does not: a mod is written by a third party agains
 of the game they had, and one carrying a key from a later version must still load.
 
 Nothing fails a scan. An unreadable directory, an unparseable manifest, a `.alias` naming a file
-that is not there: each is recorded as a problem and skipped, so one broken mod costs that mod and
-nothing else. A missing search path is not one of those: a target may list a `mods` directory a
-fresh install has not created, so that case is logged and passed over without being anybody's
-fault. `ename_asset_content` mirrors the finished scan into
+that is not there, an alias `AssetPath` would misread: each is recorded as a problem and skipped,
+so one broken mod costs that mod and nothing else. A missing search path is not one of those: a
+target may list a `mods` directory a fresh install has not created, so that case is logged and
+passed over without being anybody's fault. `AliasScanPlugin` mirrors what it found into
+`Res<AliasScan>`; `ename_asset_content` mirrors its own package-ordered version into
 `Res<ContentIndex>` and `Res<ContentReport>` for the editor and the log. Those are copies, for
 inspection -- the reader resolves through the `OnceCell` it was built with, because an
 `AssetReader` cannot reach a resource.
@@ -109,9 +121,9 @@ does not -- `HttpWasmAssetReader::read_directory` and `is_directory` log an erro
 anyway (an empty stream, `false`) rather than failing loudly, so a directory walk over wasm finds
 nothing and every alias fails with nothing explaining why. Shipping to wasm will need a manifest
 of packages instead of a directory walk, not a third `Vfs` impl. `ename_xtask` will supply a
-`std::fs` one with no Bevy in its graph at all, which is why `ename_asset_package`'s Bevy
-dependency sits behind a default feature and CI checks the crate builds without it. One walk over
-one trait is what stops the tool and the game from drifting.
+`std::fs` one with no Bevy in its graph at all, which is why both asset crates' Bevy dependency
+sits behind a default feature and CI checks each builds without it. One walk over one trait is what
+stops the tool and the game from drifting.
 
 The source has to be registered before `AssetPlugin` builds. `App::register_asset_source` only
 fills `AssetSourceBuilders`, and `AssetPlugin` turns that resource into live sources once, when it
@@ -148,14 +160,16 @@ and 4 add, is in `scratch/content-addressing-design.md`.
   pinned to that git revision. Accepted deliberately; newtype it if the engine is ever consumed
   outside this workspace.
 - The asset crates and `ename_game` have integration tests that run a headless `App`
-  (`crates/ename_asset_alias/tests/alias_reader.rs`,
+  (`crates/ename_asset_alias/tests/alias_reader.rs` and `alias_scan.rs`,
   `crates/ename_asset_content/tests/alias_source.rs`,
   `crates/ename_game/tests/scene_addressing.rs`), using `TaskPoolPlugin` plus `AssetPlugin` over
   committed fixture trees in each crate's own `tests/fixtures`, never the `assets/` symlink, which
-  is not present on a fresh clone. `ename_asset_package` needs none of that: its scan runs through
-  a `Vfs` trait, so `tests/package_scan.rs` drives it over `StdVfs` against a fixture tree and
-  `tests/asset_discovery.rs` drives it over an in-memory `FakeVfs`, with no `App` and no Bevy in the
-  graph either way. Nothing that needs a renderer or a window is covered: `ScenePlugin`,
+  is not present on a fresh clone. The walk itself needs none of that, because it runs through a
+  `Vfs` trait: `ename_asset_alias/tests/asset_discovery.rs` drives it over an in-memory `FakeVfs`
+  and `ename_asset_package/tests/package_scan.rs` over `StdVfs` against a fixture tree, with no
+  `App` and no Bevy in the graph either way. A `.meta` names its loader by Rust type path, and that
+  path is scoped to the test binary that defines the type, so the one fixture carrying a `.meta`
+  sits outside the tree `alias_scan.rs` walks. Nothing that needs a renderer or a window is covered: `ScenePlugin`,
   `ename_engine` and `ename_editor` still have no tests. A harness for those needs `MinimalPlugins`
   plus `BigSpaceDefaultPlugins`, because transform propagation comes from big_space and this
   project disables Bevy's `TransformPlugin`.
