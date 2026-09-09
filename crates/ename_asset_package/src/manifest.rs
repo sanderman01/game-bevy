@@ -19,6 +19,10 @@ use std::{fmt::Display, str::FromStr};
 #[cfg_attr(feature = "bevy", derive(Reflect))]
 pub struct Manifest {
     pub package: PackageInfo,
+    /// Absent entirely for a package that only carries assets a folder rule or a `.alias`
+    /// sidecar already names, which is the common case. `AssetsInfo`'s own fields are all
+    /// optional; this is the same default at the table level.
+    #[serde(default)]
     pub assets: AssetsInfo,
 }
 
