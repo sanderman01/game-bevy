@@ -2960,6 +2960,7 @@ dependencies = [
 name = "ename_asset_content"
 version = "0.0.0"
 dependencies = [
+ "async-lock",
  "bevy",
  "ename_asset_alias",
  "ename_asset_package",

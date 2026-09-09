@@ -16,7 +16,9 @@ use bevy::{
     reflect::TypePath,
     tasks::futures_lite::AsyncReadExt,
 };
-use ename_asset_content::AssetContentPlugin;
+use ename_asset_alias::ContentIndex;
+use ename_asset_content::{AssetContentPlugin, ContentReport, ProblemKind};
+use std::path::Path;
 use std::time::Duration;
 
 /// Relative to the workspace root, which `BEVY_ASSET_ROOT` pins in `.cargo/config.toml`.
@@ -96,6 +98,21 @@ fn run_until_settled(app: &mut App, handle: &Handle<Greeting>) -> LoadState {
         }
     }
     panic!("handle never settled within {MAX_FRAMES} frames");
+}
+
+/// Runs frames until the scan has been mirrored into the `World`.
+///
+/// Separate from `run_until_settled` because the two land in an unspecified order: a handle can
+/// finish loading in the same frame the mirror system first sees the index.
+fn run_until_mirrored(app: &mut App) {
+    for _ in 0..MAX_FRAMES {
+        if app.world().get_resource::<ContentReport>().is_some() {
+            return;
+        }
+        app.update();
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    panic!("the scan was never mirrored into resources within {MAX_FRAMES} frames");
 }
 
 /// `LoadState` is not `PartialEq`, so the assertion is a `matches!` that still reports what it
@@ -207,4 +224,38 @@ fn a_missing_search_path_is_survivable() {
         .load("alias://core::greeting");
 
     assert_loaded(run_until_settled(&mut app, &handle));
+}
+
+/// The editor and the log need to answer "what content is loaded, and what is wrong with it"
+/// without going near the addressing path.
+#[test]
+fn the_finished_scan_is_mirrored_into_resources() {
+    let mut app = test_app(&["base", "mods"]);
+    run_until_mirrored(&mut app);
+
+    let report = app.world().resource::<ContentReport>();
+    assert_eq!(
+        report
+            .packages
+            .iter()
+            .map(|p| p.id.as_str())
+            .collect::<Vec<_>>(),
+        ["core", "loud"],
+        "packages are listed in load order"
+    );
+    assert!(
+        report
+            .problems
+            .iter()
+            .any(|p| p.kind == ProblemKind::OrphanAliasFile),
+        "the .alias file naming a missing asset must be reported, got {:?}",
+        report.problems
+    );
+
+    let index = app.world().resource::<ContentIndex>();
+    assert_eq!(
+        index.resolve("core::greeting"),
+        Some(Path::new("mods/loud/greeting.txt")),
+        "the mirrored index shows the winner, not the base game's file"
+    );
 }
