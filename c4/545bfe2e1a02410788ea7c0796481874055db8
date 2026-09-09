@@ -1,0 +1,36 @@
+crates/ename_asset_alias/src/discovery.rs
+  s_0f4b9c9cb12bff::t_dc3d5304a3a28f 98-100
+  s_0f4b9c9cb12bff::t_bfa73723de740d 72-82
+crates/ename_asset_package/src/resolve.rs
+  s_0f4b9c9cb12bff::t_76fcc4318a75d3 260
+  s_0f4b9c9cb12bff::t_bc9fc1829bda33 1-182,184-211,213,215-259,261-397
+  s_0f4b9c9cb12bff::t_7ed33454b52546 183
+  s_0f4b9c9cb12bff::t_aa90f14c383517 212
+  s_0f4b9c9cb12bff::t_467f0f38dc936f 214
+crates/ename_asset_package/tests/resolution.rs
+  s_0f4b9c9cb12bff::t_67cfd6f328f7f2 1-258
+crates/ename_asset_package/src/scan.rs
+  s_0f4b9c9cb12bff::t_35c8049797950c 128
+  s_0f4b9c9cb12bff::t_8e52ec4b0f6c03 40-43
+crates/ename_asset_package/src/lib.rs
+  s_0f4b9c9cb12bff::t_9ada194f66c874 14
+  s_0f4b9c9cb12bff::t_bbb39f306dc8e2 22-24,26-28
+crates/ename_asset_content/src/index.rs
+  s_0f4b9c9cb12bff::t_809a92bee7b7d8 104,107-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "c4545bfe2e1a02410788ea7c0796481874055db8",
+  "prompts": {},
+  "sessions": {
+    "s_0f4b9c9cb12bff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "441d9b46-9ba6-4f00-9467-d20ca2e54726",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
