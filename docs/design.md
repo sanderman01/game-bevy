@@ -104,10 +104,14 @@ inspection -- the reader resolves through the `OnceCell` it was built with, beca
 `AssetReader` cannot reach a resource.
 
 The scanner reads through a `Vfs` trait rather than through `std::fs` or a Bevy type. The game
-supplies an `AssetReader` implementation, so wasm over HTTP and Android's APK work with no second
-code path; `ename_xtask` will supply a `std::fs` one with no Bevy in its graph at all, which is why
-`ename_asset_package`'s Bevy dependency sits behind a default feature and CI checks the crate
-builds without it. One walk over one trait is what stops the tool and the game from drifting.
+supplies an `AssetReader` implementation, so Android's APK works with no second code path; wasm
+does not -- `HttpWasmAssetReader::read_directory` and `is_directory` log an error and return `Ok`
+anyway (an empty stream, `false`) rather than failing loudly, so a directory walk over wasm finds
+nothing and every alias fails with nothing explaining why. Shipping to wasm will need a manifest
+of packages instead of a directory walk, not a third `Vfs` impl. `ename_xtask` will supply a
+`std::fs` one with no Bevy in its graph at all, which is why `ename_asset_package`'s Bevy
+dependency sits behind a default feature and CI checks the crate builds without it. One walk over
+one trait is what stops the tool and the game from drifting.
 
 The source has to be registered before `AssetPlugin` builds. `App::register_asset_source` only
 fills `AssetSourceBuilders`, and `AssetPlugin` turns that resource into live sources once, when it
