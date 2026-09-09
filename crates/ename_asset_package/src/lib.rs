@@ -8,11 +8,13 @@
 
 mod alias_file;
 mod manifest;
+mod rules;
 mod scan;
 mod vfs;
 
 pub use crate::alias_file::{ALIAS_EXTENSION, AliasFile, AliasOrigin, alias_sidecar_target};
 pub use crate::manifest::{AssetsInfo, Manifest, PackageInfo, Version, VersionError};
+pub use crate::rules::{CompiledRules, RULES_FILE, Rules, RulesError};
 pub use crate::scan::{MANIFEST_FILE, Package, scan_packages};
 #[cfg(feature = "bevy")]
 pub use crate::vfs::AssetReaderVfs;
