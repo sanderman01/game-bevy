@@ -116,7 +116,15 @@ impl Vfs for StdVfs {
                 if is_hidden_from_listings(&relative) {
                     continue;
                 }
-                let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                // `entry.file_type()` is symlink metadata and does not follow the link.
+                // `AssetReaderVfs::read_dir` asks `ErasedAssetReader::is_directory`, which for
+                // `FileAssetReader` follows it, so a symlinked package directory must be found
+                // through this path too. `std::fs::metadata` follows symlinks; a broken link or
+                // any other error falls back to "not a directory", matching `AssetReaderVfs`'s
+                // error path.
+                let is_dir = std::fs::metadata(entry.path())
+                    .map(|m| m.is_dir())
+                    .unwrap_or(false);
                 entries.push(DirEntry {
                     path: relative,
                     is_dir,

@@ -96,3 +96,40 @@ fn a_missing_search_path_is_survivable() {
 fn no_search_paths_finds_nothing() {
     assert!(scan(&[]).is_empty());
 }
+
+/// The running game reads directories through Bevy's `AssetReader`, whose `is_directory` follows
+/// symlinks. `StdVfs` must agree, or a symlinked package directory is found by the game and
+/// silently skipped by a command line tool -- this repo's own `assets/` is exactly that shape.
+///
+/// The symlink is created and removed here rather than committed under `tests/fixtures/`: a
+/// checked-in symlink is a portability trap.
+#[cfg(unix)]
+#[test]
+fn a_symlinked_package_directory_is_found_like_a_real_one() {
+    let root = std::env::temp_dir().join(format!(
+        "ename_asset_package_symlink_test_{}",
+        std::process::id()
+    ));
+
+    /// Removes the temp tree on the way out, including when an assertion below panics.
+    struct RemoveOnDrop(std::path::PathBuf);
+    impl Drop for RemoveOnDrop {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    let _cleanup = RemoveOnDrop(root.clone());
+    let _ = std::fs::remove_dir_all(&root);
+
+    let search_dir = root.join("search");
+    std::fs::create_dir_all(&search_dir).expect("create the search directory");
+
+    let real_package = std::fs::canonicalize(std::path::Path::new(FIXTURE_ROOT).join("base/core"))
+        .expect("canonicalize the real fixture package");
+    std::os::unix::fs::symlink(&real_package, search_dir.join("core")).expect("create the symlink");
+
+    let vfs = StdVfs::new(&root);
+    let packages = block_on(scan_packages(&vfs, &["search".to_owned()]));
+
+    assert_eq!(ids(&packages), ["core"]);
+}
