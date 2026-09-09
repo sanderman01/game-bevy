@@ -1,0 +1,19 @@
+.github/workflows/ci.yml
+  s_c45b82c2f785ea::t_6003fb54d4178e 42-43,45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "4127a421465257b589f65f7807c4e366ac29dd22",
+  "prompts": {},
+  "sessions": {
+    "s_c45b82c2f785ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5dd5165d-54f5-457d-9db3-376ee8a2e5cd",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
