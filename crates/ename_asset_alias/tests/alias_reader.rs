@@ -4,21 +4,23 @@
 
 //! Integration tests for the `alias://` asset source, over a real `App`.
 //!
-//! The index is filled by the test rather than by a scan, which is the point of the crate split:
-//! the reader's behaviour has nothing to do with manifests, and testing it here means a failure
-//! in `ename_asset_content` can never be mistaken for a failure in the reader.
+//! The index is filled by the test rather than by a scan. `AliasSourcePlugin` is added alone, with
+//! no `AliasScanPlugin`, which is exactly how `ename_asset_content` uses it: the reader's
+//! behaviour has nothing to do with where an index came from, and testing it this way means a
+//! failure in the walk can never be mistaken for a failure in the reader. `alias_scan.rs` covers
+//! the other half, where the crate fills its own index.
 //!
 //! Headless: `TaskPoolPlugin` supplies the pools and `AssetPlugin` the asset system. No window,
 //! no renderer.
 
+mod bevy_support;
+
 use bevy::{
     app::{App, TaskPoolPlugin},
-    asset::{
-        Asset, AssetApp, AssetLoader, AssetPlugin, AssetServer, Assets, Handle, LoadContext,
-        LoadState, io::Reader,
-    },
-    reflect::TypePath,
-    tasks::futures_lite::AsyncReadExt,
+    asset::{AssetPlugin, AssetServer, Handle, LoadState},
+};
+use bevy_support::{
+    Shout, Text, assert_loaded, register_test_assets, run_until_settled, shout, text,
 };
 use ename_asset_alias::{AliasSourcePlugin, ContentIndex, ContentIndexCell};
 use std::time::Duration;
@@ -27,73 +29,6 @@ use std::time::Duration;
 /// workspace root in `.cargo/config.toml`, and Cargo applies `[env]` to `cargo test`, so this
 /// resolves the same way from any working directory.
 const FIXTURE_ROOT: &str = "crates/ename_asset_alias/tests/fixtures";
-
-/// Frames to run before giving up on a load. Generous: the read is async and a loaded CI machine
-/// can take a while to get round to it.
-const MAX_FRAMES: usize = 2_000;
-
-// --- a trivial asset type, so the tests need no renderer ------------------------------------
-
-#[derive(Asset, TypePath, Debug)]
-struct Text(String);
-
-#[derive(Default, TypePath)]
-struct TextLoader;
-
-impl AssetLoader for TextLoader {
-    type Asset = Text;
-    type Settings = ();
-    type Error = std::io::Error;
-
-    async fn load(
-        &self,
-        reader: &mut dyn Reader,
-        _settings: &(),
-        _load_context: &mut LoadContext<'_>,
-    ) -> Result<Text, Self::Error> {
-        let mut text = String::new();
-        reader.read_to_string(&mut text).await?;
-        Ok(Text(text.trim().to_owned()))
-    }
-
-    fn extensions(&self) -> &[&str] {
-        &["txt"]
-    }
-}
-
-/// A second asset type over the same extension, so a labelled load has an ambiguous asset type
-/// and can only be resolved through the meta. See
-/// `a_labelled_alias_resolves_a_loader_through_the_synthesized_meta`.
-#[derive(Asset, TypePath, Debug)]
-struct Shout(String);
-
-#[derive(Default, TypePath)]
-struct ShoutLoader;
-
-impl AssetLoader for ShoutLoader {
-    type Asset = Shout;
-    type Settings = ();
-    type Error = std::io::Error;
-
-    async fn load(
-        &self,
-        reader: &mut dyn Reader,
-        _settings: &(),
-        load_context: &mut LoadContext<'_>,
-    ) -> Result<Shout, Self::Error> {
-        let mut text = String::new();
-        reader.read_to_string(&mut text).await?;
-        let text = text.trim().to_uppercase();
-        load_context.add_labeled_asset("Loud".to_owned(), Shout(text.clone()));
-        Ok(Shout(text))
-    }
-
-    fn extensions(&self) -> &[&str] {
-        &["shout"]
-    }
-}
-
-// --- harness --------------------------------------------------------------------------------
 
 /// Builds a headless `App` over the fixture tree.
 ///
@@ -106,11 +41,8 @@ fn test_app() -> App {
         .add_plugins(AssetPlugin {
             file_path: FIXTURE_ROOT.to_owned(),
             ..Default::default()
-        })
-        .init_asset::<Text>()
-        .init_asset_loader::<TextLoader>()
-        .init_asset::<Shout>()
-        .init_asset_loader::<ShoutLoader>();
+        });
+    register_test_assets(&mut app);
     app
 }
 
@@ -121,44 +53,6 @@ fn fill_index(app: &App, index: ContentIndex) {
         .0
         .set_blocking(index)
         .expect("the index cell was already filled");
-}
-
-/// Runs frames until `handle` settles, then returns its final state.
-///
-/// Sleeps a millisecond per frame so a single-core runner does not spin the main thread hard
-/// enough to starve the io pool the read is running on.
-fn run_until_settled<A: Asset>(app: &mut App, handle: &Handle<A>) -> LoadState {
-    for _ in 0..MAX_FRAMES {
-        app.update();
-        let state = app
-            .world()
-            .resource::<AssetServer>()
-            .load_state(handle.id());
-        match state {
-            LoadState::Loaded | LoadState::Failed(_) => return state,
-            _ => std::thread::sleep(Duration::from_millis(1)),
-        }
-    }
-    panic!("handle never settled within {MAX_FRAMES} frames");
-}
-
-/// `LoadState` is not `PartialEq`, so the assertion is a `matches!` that still reports what it
-/// actually got.
-#[track_caller]
-fn assert_loaded(state: LoadState) {
-    assert!(
-        matches!(state, LoadState::Loaded),
-        "expected the handle to load, got {state:?}"
-    );
-}
-
-fn text(app: &App, handle: &Handle<Text>) -> String {
-    app.world()
-        .resource::<Assets<Text>>()
-        .get(handle)
-        .expect("asset is loaded")
-        .0
-        .clone()
 }
 
 // --- tests ----------------------------------------------------------------------------------
@@ -248,24 +142,17 @@ fn a_labelled_alias_resolves_a_loader_through_the_synthesized_meta() {
         .load("alias://core::noisy#Loud");
 
     assert_loaded(run_until_settled(&mut app, &handle));
-    assert_eq!(
-        app.world()
-            .resource::<Assets<Shout>>()
-            .get(&handle)
-            .expect("asset is loaded")
-            .0,
-        "QUIETLY"
-    );
+    assert_eq!(shout(&app, &handle), "QUIETLY");
 }
 
 /// A real `.meta` beside the resolved file wins over the synthesized one, so an author keeps
-/// control of loader settings. `plain_with_meta.txt.meta` names `TextLoader` explicitly.
+/// control of loader settings. `meta/plain_with_meta.txt.meta` names `TextLoader` explicitly.
 #[test]
 fn a_real_meta_beside_the_resolved_file_is_used() {
     let mut app = test_app();
     let mut index = ContentIndex::default();
     index
-        .insert("core::metad", "files/plain_with_meta.txt")
+        .insert("core::metad", "meta/plain_with_meta.txt")
         .unwrap();
     fill_index(&app, index);
 

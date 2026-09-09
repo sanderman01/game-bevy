@@ -1,0 +1,4 @@
+# Deliberately orphaned: `gone.txt` does not exist. The scan reports it and carries on, which is
+# what `the_scan_is_mirrored_into_the_world_with_its_problems` asserts.
+guid = "018f2c00-0000-7000-8000-00000000a003"
+alias = "fixture::gone"

@@ -1,0 +1,2 @@
+# Replaces the inherited rule wholesale for this directory and below.
+alias = "fixture::props/{stem}"

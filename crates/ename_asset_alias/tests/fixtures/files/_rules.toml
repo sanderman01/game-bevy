@@ -1,0 +1,5 @@
+# Every `.txt` beside this file is addressable as `fixture::<name without extensions>`.
+# `noisy.shout` is deliberately outside the pattern: it is reachable only through its own
+# `.alias` file, which is what proves a sidecar does not need the rule's permission.
+alias = "fixture::{stem}"
+include = ["*.txt"]

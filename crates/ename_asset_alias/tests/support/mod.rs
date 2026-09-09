@@ -1,8 +1,9 @@
 //! A `Vfs` backed by a map, so a discovery test can put its whole tree in the test body.
 //!
 //! Reading the tree next to the assertion beats reading five fixture files, and it is the only way
-//! to test an unreadable directory at all. `package_scan.rs` covers `StdVfs` against a real tree,
-//! so both implementations stay exercised.
+//! to test an unreadable directory at all. `alias_scan.rs` here and `package_scan.rs` in
+//! `ename_asset_package` both drive real trees, so `StdVfs` and `AssetReaderVfs` stay exercised
+//! too.
 
 use ename_asset_alias::{BoxedFuture, DirEntry, Vfs, VfsError};
 use std::{
