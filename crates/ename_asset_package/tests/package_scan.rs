@@ -1,23 +1,22 @@
-//! Integration tests for package discovery, over a real `AssetReader`.
+//! Integration tests for package discovery, over a real filesystem.
 //!
-//! No `App` here. `scan_packages` is a plain `async fn` over an `ErasedAssetReader`, so the test
-//! constructs the reader directly and blocks on it. `FileAssetReader` runs its io on the
-//! `blocking` crate's pool, not on a Bevy task pool, so there is nothing to schedule.
+//! No `App` and no Bevy: `scan_packages` takes a `&dyn Vfs`, and `StdVfs` is the `std::fs`
+//! implementation a command line tool would use. `futures_lite::future::block_on` drives it,
+//! because `StdVfs`'s io is blocking and there is nothing to schedule.
 
-use bevy::{
-    asset::io::{AssetSource, ErasedAssetReader},
-    tasks::block_on,
-};
-use ename_asset_package::{Package, Version, scan_packages};
+use ename_asset_package::{Package, StdVfs, Version, scan_packages};
+use futures_lite::future::block_on;
 
-/// Relative to the workspace root, which `BEVY_ASSET_ROOT` pins in `.cargo/config.toml`.
-const FIXTURE_ROOT: &str = "crates/ename_asset_package/tests/fixtures";
+/// Relative to this crate's manifest directory: Cargo runs a test binary with that as the
+/// working directory, not the workspace root. The old test relied on Bevy's `FileAssetReader`
+/// resolving through `BEVY_ASSET_ROOT` instead, which is workspace-root-relative; `StdVfs` has
+/// no such indirection, so the fixture path changes to match where the process actually runs.
+const FIXTURE_ROOT: &str = "tests/fixtures";
 
 fn scan(search_paths: &[&str]) -> Vec<Package> {
-    let mut make_reader = AssetSource::get_default_reader(FIXTURE_ROOT.to_owned());
-    let reader: Box<dyn ErasedAssetReader> = make_reader();
+    let vfs = StdVfs::new(FIXTURE_ROOT);
     let paths: Vec<String> = search_paths.iter().map(|p| (*p).to_owned()).collect();
-    block_on(scan_packages(reader.as_ref(), &paths))
+    block_on(scan_packages(&vfs, &paths))
 }
 
 fn ids(packages: &[Package]) -> Vec<&str> {

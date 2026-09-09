@@ -41,6 +41,7 @@ ename_engine = { path = "crates/ename_engine", version = "0.0.0" }
 ename_game = { path = "crates/ename_game", version = "0.0.0" }
 ename_game_editor = { path = "crates/ename_game_editor", version = "0.0.0" }
 ename_remote = { path = "crates/ename_remote", version = "0.0.0" }
+glob = "0.3.4"
 reqwest = { version = "0.12.24", default-features = false, features = ["json", "rustls-tls"] }
 rmcp = { version = "3.2.0", default-features = false }
 schemars = "1.0.4"
@@ -51,6 +52,7 @@ tokio = { version = "1.48.0", default-features = false }
 toml = "1.1.2"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
+uuid = { version = "1.26.0", features = ["serde"] }
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]

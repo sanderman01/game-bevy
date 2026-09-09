@@ -2971,8 +2971,11 @@ name = "ename_asset_package"
 version = "0.0.0"
 dependencies = [
  "bevy",
+ "futures-lite",
  "serde",
+ "thiserror 2.0.20",
  "toml",
+ "tracing",
 ]
 
 [[package]]

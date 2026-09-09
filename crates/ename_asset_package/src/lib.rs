@@ -8,6 +8,10 @@
 
 mod manifest;
 mod scan;
+mod vfs;
 
 pub use crate::manifest::{AssetsInfo, Manifest, PackageInfo, Version, VersionError};
 pub use crate::scan::{MANIFEST_FILE, Package, scan_packages};
+#[cfg(feature = "bevy")]
+pub use crate::vfs::AssetReaderVfs;
+pub use crate::vfs::{BoxedFuture, DirEntry, StdVfs, Vfs, VfsError};

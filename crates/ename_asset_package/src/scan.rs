@@ -8,13 +8,9 @@
 //! Nothing here fails the scan. A missing search path, an unreadable directory or an unparseable
 //! manifest is logged and skipped, so one broken mod costs that mod and nothing else.
 
-use crate::Manifest;
-use bevy::{
-    asset::io::{AssetReaderError, ErasedAssetReader},
-    log::{error, info, warn},
-    tasks::futures_lite::{AsyncReadExt, StreamExt},
-};
+use crate::{Manifest, Vfs, VfsError};
 use std::path::{Path, PathBuf};
+use tracing::{error, info, warn};
 
 /// The file that marks a directory as a package.
 pub const MANIFEST_FILE: &str = "manifest.toml";
@@ -38,23 +34,20 @@ pub struct Package {
 /// each. Phase 3 topologically sorts declared `after`/`before` constraints ahead of this and
 /// leaves it as the tiebreaker for whatever no constraint relates. See
 /// `scratch/content-addressing-design.md`.
-pub async fn scan_packages(
-    reader: &dyn ErasedAssetReader,
-    search_paths: &[String],
-) -> Vec<Package> {
+pub async fn scan_packages(vfs: &dyn Vfs, search_paths: &[String]) -> Vec<Package> {
     let mut packages = Vec::new();
     for search_path in search_paths {
-        packages.extend(read_packages_in(reader, Path::new(search_path)).await);
+        packages.extend(read_packages_in(vfs, Path::new(search_path)).await);
     }
     info!("Found {} packages", packages.len());
     packages
 }
 
 /// Reads every package directly inside `search_path`.
-async fn read_packages_in(reader: &dyn ErasedAssetReader, search_path: &Path) -> Vec<Package> {
-    let mut entries = match reader.read_directory(search_path).await {
+async fn read_packages_in(vfs: &dyn Vfs, search_path: &Path) -> Vec<Package> {
+    let entries = match vfs.read_dir(search_path).await {
         Ok(entries) => entries,
-        Err(AssetReaderError::NotFound(_)) => {
+        Err(VfsError::NotFound(_)) => {
             warn!("Package search path not found: {}", search_path.display());
             return Vec::new();
         }
@@ -67,27 +60,18 @@ async fn read_packages_in(reader: &dyn ErasedAssetReader, search_path: &Path) ->
         }
     };
 
-    let mut directories = Vec::new();
-    while let Some(entry) = entries.next().await {
-        if matches!(reader.is_directory(&entry).await, Ok(true)) {
-            directories.push(entry);
-        }
-    }
-
-    // `read_directory` yields in whatever order the platform gives, and directory name is the
-    // tiebreaker the whole ordering rests on. Without this sort the load order differs between
-    // machines and the bug shows up as an override that works for one person.
-    directories.sort();
-
     let mut packages = Vec::new();
-    for entry in directories {
-        let manifest_path = entry.join(MANIFEST_FILE);
-        match read_manifest(reader, &manifest_path).await {
+    // `Vfs::read_dir` returns entries sorted by path, and directory name is the tiebreaker the
+    // whole load order rests on. Without that guarantee the order differs between machines and
+    // the bug shows up as an override that works for one person.
+    for entry in entries.into_iter().filter(|e| e.is_dir) {
+        let manifest_path = entry.path.join(MANIFEST_FILE);
+        match read_manifest(vfs, &manifest_path).await {
             Ok(manifest) => packages.push(Package {
                 manifest,
-                root: entry,
+                root: entry.path,
             }),
-            Err(AssetReaderError::NotFound(_)) => {}
+            Err(VfsError::NotFound(_)) => {}
             Err(err) => error!("Failed to read {}: {err}", manifest_path.display()),
         }
     }
@@ -96,15 +80,11 @@ async fn read_packages_in(reader: &dyn ErasedAssetReader, search_path: &Path) ->
 
 /// Reads and parses one manifest. A parse failure is logged here and reported as `NotFound`, which
 /// the caller already treats as "this directory is not a package".
-async fn read_manifest(
-    reader: &dyn ErasedAssetReader,
-    path: &Path,
-) -> Result<Manifest, AssetReaderError> {
-    let mut bytes = Vec::new();
-    reader.read(path).await?.read_to_end(&mut bytes).await?;
+async fn read_manifest(vfs: &dyn Vfs, path: &Path) -> Result<Manifest, VfsError> {
+    let bytes = vfs.read_file(path).await?;
     let text = String::from_utf8_lossy(&bytes);
     toml::from_str(&text).map_err(|err| {
         error!("Failed to parse {}: {err}", path.display());
-        AssetReaderError::NotFound(path.to_path_buf())
+        VfsError::NotFound(path.to_path_buf())
     })
 }

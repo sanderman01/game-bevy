@@ -3,8 +3,10 @@
 //! Plain data. Not a Bevy `Asset`: the scanner reads and parses these itself, which is what lets
 //! the whole scan finish inside one async function with nothing to sequence.
 
-use bevy::{platform::collections::HashMap, reflect::Reflect};
+#[cfg(feature = "bevy")]
+use bevy::reflect::Reflect;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::collections::HashMap;
 use std::{fmt::Display, str::FromStr};
 
 /// A Mod Package Manifest contains metadata defining a base game content, or mod, or dlc, or other extension package.
@@ -13,14 +15,16 @@ use std::{fmt::Display, str::FromStr};
 /// Similar to a shipping manifest document, this file contains data such as the id, name, description, authors and other relevant information used to identify the mod package and its origin.
 ///
 /// Additionally the manifest contains information declaring all assets in the package and how they are to be inserted and used inside the game.
-#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "bevy", derive(Reflect))]
 pub struct Manifest {
     pub package: PackageInfo,
     pub assets: AssetsInfo,
 }
 
 /// Package section of a package [Manifest](Manifest). Contains all the information required to unique identify and load a package.
-#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "bevy", derive(Reflect))]
 pub struct PackageInfo {
     /// Unique human readable mod package identifier. eg. 'spacewar'
     pub id: String,
@@ -44,7 +48,8 @@ pub struct PackageInfo {
 }
 
 /// Assets section of a package [Manifest](Manifest). Used to declare assets added or modified by this package.
-#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "bevy", derive(Reflect))]
 pub struct AssetsInfo {
     pub add: Option<HashMap<String, String>>,
     pub replace: Option<HashMap<String, String>>,
@@ -80,7 +85,8 @@ impl std::fmt::Display for VersionError {
 /// - 1.0.0 -> 2.0.0 (major change and/or breaking changes)
 ///
 /// See also: <https://semver.org/>
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Reflect)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "bevy", derive(Reflect))]
 pub struct Version {
     pub major: u64,
     pub minor: u64,

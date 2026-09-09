@@ -17,7 +17,7 @@ use bevy::{
     tasks::IoTaskPool,
 };
 use ename_asset_alias::{AliasSourcePlugin, ContentIndexCell};
-use ename_asset_package::scan_packages;
+use ename_asset_package::{AssetReaderVfs, scan_packages};
 
 /// Relative path to the asset root. Mirrors `AssetPlugin::file_path`'s default.
 const DEFAULT_ASSET_ROOT: &str = "assets";
@@ -95,8 +95,8 @@ fn start_content_scan(cell: Res<ContentIndexCell>, config: Res<ContentScanConfig
         .spawn(async move {
             info!("Scanning for packages in {:?}", config.search_paths);
             let mut make_reader = AssetSource::get_default_reader(config.asset_root);
-            let reader = make_reader();
-            let packages = scan_packages(reader.as_ref(), &config.search_paths).await;
+            let vfs = AssetReaderVfs::new(make_reader());
+            let packages = scan_packages(&vfs, &config.search_paths).await;
             let _ = cell.set(build_index(&packages)).await;
         })
         .detach();
