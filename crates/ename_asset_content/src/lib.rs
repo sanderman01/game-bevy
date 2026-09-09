@@ -24,7 +24,7 @@ use bevy::{
     tasks::IoTaskPool,
 };
 use ename_asset_alias::{AliasSourcePlugin, AssetReaderVfs, ContentIndexCell};
-use ename_asset_package::scan_packages;
+use ename_asset_package::{LoadOrder, scan_packages};
 use std::sync::Arc;
 
 /// Relative path to the asset root. Mirrors `AssetPlugin::file_path`'s default.
@@ -118,7 +118,7 @@ fn start_content_scan(
             info!("Scanning for packages in {:?}", config.search_paths);
             let mut make_reader = AssetSource::get_default_reader(config.asset_root);
             let vfs = AssetReaderVfs::new(make_reader());
-            let scan = scan_packages(&vfs, &config.search_paths).await;
+            let scan = scan_packages(&vfs, &config.search_paths, &LoadOrder::default()).await;
             let (index, report) = build_index(&scan);
 
             // The report goes first. Filling the index cell is what releases every `alias://`

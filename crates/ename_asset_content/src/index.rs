@@ -118,7 +118,7 @@ mod tests {
                 "base/core",
                 vec![asset("core::airship", "base/core/airship.glb")],
             )],
-            problems: Vec::new(),
+            ..Scan::default()
         };
 
         let (index, report) = build_index(&scan);
@@ -146,7 +146,7 @@ mod tests {
                     vec![asset("core::airship", "mods/bigships/big.glb")],
                 ),
             ],
-            problems: Vec::new(),
+            ..Scan::default()
         };
 
         let (index, _) = build_index(&scan);
@@ -169,7 +169,7 @@ mod tests {
                     asset("core::map", "base/core/map.glb"),
                 ],
             )],
-            problems: Vec::new(),
+            ..Scan::default()
         };
 
         let (index, report) = build_index(&scan);
@@ -189,12 +189,12 @@ mod tests {
     #[test]
     fn the_scans_problems_are_carried_into_the_report() {
         let scan = Scan {
-            packages: Vec::new(),
             problems: vec![Problem {
                 path: PathBuf::from("base/core/gone.glb.alias"),
                 kind: ProblemKind::OrphanAliasFile,
                 detail: String::new(),
             }],
+            ..Scan::default()
         };
 
         let (_, report) = build_index(&scan);

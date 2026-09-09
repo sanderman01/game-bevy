@@ -12,11 +12,10 @@
 //! may list a `mods` directory a fresh install has not created, so that case is logged and passed
 //! over without touching the list.
 //!
-//! `after`/`before`/`requires` ordering, the user constraint file and cross-package contested
-//! aliases are phase 3. Packages are ordered by search path and then directory name, which is the
-//! tiebreaker those constraints will sort on top of.
+//! The order the packages come back in is the resolver's, not the walk's: search path and then
+//! directory name is only the baseline `resolve` sorts its constraints on top of.
 
-use crate::{Manifest, validate_package_id};
+use crate::{Disabled, LoadOrder, Manifest, OrderEdges, resolve, validate_package_id};
 use ename_asset_alias::{DiscoveredAsset, Problem, ProblemKind, Vfs, VfsError, scan_aliases};
 use std::{
     fmt::Display,
@@ -47,28 +46,50 @@ pub struct Package {
 /// Everything one scan found.
 #[derive(Debug, Default, Clone)]
 pub struct Scan {
-    /// In load order: search paths as the caller gave them, then directory name within each.
+    /// In **resolved** load order: constraints first, and search path then directory name
+    /// underneath them. Packages the resolver disabled are not here.
     pub packages: Vec<Package>,
+    /// Found on disk and deliberately not loaded, each with the reason.
+    pub disabled: Vec<Disabled>,
     pub problems: Vec<Problem>,
+    /// What ordered the packages, kept so contest reporting can explain a winner.
+    pub edges: OrderEdges,
 }
 
-/// Scans every search path for packages, in load order, discovering the assets in each.
+/// Scans every search path for packages, resolves their constraints, and discovers the assets in
+/// each.
 ///
 /// A search path holds one directory per package. Package discovery does not recurse:
 /// `basegame/core` is a package, `basegame/core/props` is not. *Asset* discovery inside a package
 /// does recurse, all the way down.
-pub async fn scan_packages(vfs: &dyn Vfs, search_paths: &[String]) -> Scan {
+///
+/// The packages come back in the order the resolver settled on. Search path order and directory
+/// name are underneath that, as the tiebreaker for whatever no constraint relates.
+pub async fn scan_packages(vfs: &dyn Vfs, search_paths: &[String], load_order: &LoadOrder) -> Scan {
     let mut scan = Scan::default();
     for search_path in search_paths {
         read_packages_in(vfs, Path::new(search_path), &mut scan).await;
     }
 
+    let resolution = resolve(&scan.packages, load_order);
+    let found = std::mem::take(&mut scan.packages);
+    // A clone per package rather than a `swap_remove` dance. This list is dozens of entries long
+    // and reading straight is worth more than the allocation.
+    scan.packages = resolution.order.iter().map(|i| found[*i].clone()).collect();
+    scan.disabled = resolution.disabled;
+    scan.problems.extend(resolution.problems);
+    scan.edges = resolution.edges;
+
     let assets: usize = scan.packages.iter().map(|p| p.assets.len()).sum();
     info!(
-        "Found {} packages, {assets} assets, {} problems",
+        "Found {} packages, {assets} assets, {} disabled, {} problems",
         scan.packages.len(),
+        scan.disabled.len(),
         scan.problems.len()
     );
+    for disabled in &scan.disabled {
+        warn!("  -- {} disabled: {}", disabled.id, disabled.reason);
+    }
     for problem in &scan.problems {
         warn!(
             "  !! {} at {}: {}",

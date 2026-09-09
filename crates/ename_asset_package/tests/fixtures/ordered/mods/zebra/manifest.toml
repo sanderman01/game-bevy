@@ -1,0 +1,7 @@
+[package]
+id = "zebra"
+version = "1.0.0"
+authors = ["Test"]
+title = "Zebra"
+description = "Sorts last by directory name, and requires a core that is installed."
+requires = ["core >= 1.0"]

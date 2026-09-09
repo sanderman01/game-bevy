@@ -1,0 +1,7 @@
+[package]
+id = "apple"
+version = "1.0.0"
+authors = ["Test"]
+title = "Apple"
+description = "Sorts first by directory name, but says it loads after zebra."
+after = ["zebra"]

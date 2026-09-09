@@ -5,7 +5,7 @@
 //! because `StdVfs`'s io is blocking and there is nothing to schedule.
 
 use ename_asset_alias::{ProblemKind, StdVfs};
-use ename_asset_package::{Package, Scan, Version, scan_packages};
+use ename_asset_package::{LoadOrder, Package, Scan, Version, scan_packages};
 use futures_lite::future::block_on;
 
 /// Relative to this crate's manifest directory: Cargo runs a test binary with that as the
@@ -23,7 +23,7 @@ fn scan(search_paths: &[&str]) -> Vec<Package> {
 fn full_scan(search_paths: &[&str]) -> Scan {
     let vfs = StdVfs::new(FIXTURE_ROOT);
     let paths: Vec<String> = search_paths.iter().map(|p| (*p).to_owned()).collect();
-    block_on(scan_packages(&vfs, &paths))
+    block_on(scan_packages(&vfs, &paths, &LoadOrder::default()))
 }
 
 fn ids(packages: &[Package]) -> Vec<&str> {
@@ -199,7 +199,65 @@ fn a_symlinked_package_directory_is_found_like_a_real_one() {
     std::os::unix::fs::symlink(&real_package, search_dir.join("core")).expect("create the symlink");
 
     let vfs = StdVfs::new(&root);
-    let packages = block_on(scan_packages(&vfs, &["search".to_owned()])).packages;
+    let packages = block_on(scan_packages(
+        &vfs,
+        &["search".to_owned()],
+        &LoadOrder::default(),
+    ))
+    .packages;
 
     assert_eq!(ids(&packages), ["core"]);
+}
+
+/// The end-to-end proof that a manifest constraint survives a real directory tree. `apple` sorts
+/// before `zebra` on directory name, so this only passes because the resolver ran.
+#[test]
+fn a_manifest_constraint_reorders_a_real_directory_tree() {
+    let vfs = StdVfs::new(FIXTURE_ROOT);
+    let scan = block_on(scan_packages(
+        &vfs,
+        &["ordered/base".to_owned(), "ordered/mods".to_owned()],
+        &LoadOrder::default(),
+    ));
+    assert_eq!(ids(&scan.packages), ["core", "zebra", "apple"]);
+    assert!(scan.disabled.is_empty(), "{:?}", scan.disabled);
+}
+
+/// And that the user's file overrules it, over the same tree.
+#[test]
+fn a_user_constraint_overrules_a_manifest_over_a_real_directory_tree() {
+    let load_order = LoadOrder::parse(
+        r#"
+        [[constraint]]
+        package = "apple"
+        before = ["zebra"]
+        "#,
+    )
+    .expect("parses");
+
+    let vfs = StdVfs::new(FIXTURE_ROOT);
+    let scan = block_on(scan_packages(
+        &vfs,
+        &["ordered/base".to_owned(), "ordered/mods".to_owned()],
+        &load_order,
+    ));
+    assert_eq!(ids(&scan.packages), ["core", "apple", "zebra"]);
+}
+
+/// A package whose `requires` cannot be met is not in the load order, and the scan says so rather
+/// than leaving it silently missing.
+#[test]
+fn an_unsatisfiable_requirement_keeps_a_package_out_of_the_scan() {
+    let vfs = StdVfs::new(FIXTURE_ROOT);
+    let scan = block_on(scan_packages(
+        &vfs,
+        &["ordered/mods".to_owned()],
+        &LoadOrder::default(),
+    ));
+
+    // Without `ordered/base` in the search paths, `core` is not installed, so `zebra` cannot load
+    // and `apple` follows it out only if it required it -- it does not, it merely orders after it.
+    assert_eq!(ids(&scan.packages), ["apple"]);
+    assert_eq!(scan.disabled.len(), 1);
+    assert_eq!(scan.disabled[0].id, "zebra");
 }
