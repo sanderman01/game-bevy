@@ -42,7 +42,8 @@ fn order<'a>(packages: &'a [Package], load_order: &LoadOrder) -> Vec<&'a str> {
 }
 
 /// With nothing to relate them, the resolved order is exactly the order that came in -- search
-/// path first, directory name second. Adding constraints must only ever move what they name.
+/// path first, directory name second. That baseline is what breaks every tie the constraints
+/// leave open.
 #[test]
 fn unconstrained_packages_keep_the_order_they_came_in() {
     let packages = [
@@ -226,6 +227,54 @@ fn a_cycle_costs_only_its_members() {
             .map(|i| packages[*i].manifest.package.id.as_str())
             .collect::<Vec<_>>(),
         ["core"]
+    );
+}
+
+/// A package ordered after a cycle cannot load either, but it is not *in* the loop and must not
+/// be told it is: the constraints to fix are `a`'s and `b`'s, and `c` has none to look at.
+#[test]
+fn a_package_behind_a_cycle_is_not_reported_as_one_of_its_members() {
+    let packages = [
+        package("mods", "a", r#"after = ["b"]"#),
+        package("mods", "b", r#"after = ["a"]"#),
+        package("mods", "c", r#"after = ["a"]"#),
+    ];
+    let resolution = resolve(&packages, &LoadOrder::default());
+
+    assert!(resolution.order.is_empty());
+    let reason = |id: &str| {
+        resolution
+            .disabled
+            .iter()
+            .find(|d| d.id == id)
+            .unwrap_or_else(|| panic!("{id} is disabled, got {:?}", resolution.disabled))
+            .reason
+            .clone()
+    };
+
+    for id in ["a", "b"] {
+        match reason(id) {
+            DisableReason::Cycle { members } => {
+                assert_eq!(members, ["a", "b"], "{id} names the loop it is in");
+            }
+            other => panic!("expected {id} to be a cycle member, got {other:?}"),
+        }
+    }
+    match reason("c") {
+        DisableReason::BehindCycle { cycle } => assert_eq!(cycle, ["a", "b"]),
+        other => panic!("expected c to be behind the cycle, got {other:?}"),
+    }
+
+    let cycles: Vec<&ename_asset_package::Problem> = resolution
+        .problems
+        .iter()
+        .filter(|p| p.kind == ename_asset_package::ProblemKind::DependencyCycle)
+        .collect();
+    assert_eq!(cycles.len(), 1, "{:?}", resolution.problems);
+    assert!(
+        cycles[0].detail.ends_with("a, b"),
+        "the loop is a and b, and c is not in it: {}",
+        cycles[0].detail
     );
 }
 

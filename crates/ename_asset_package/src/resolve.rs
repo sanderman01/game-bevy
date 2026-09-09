@@ -13,7 +13,8 @@
 //!    manifest one wins and the manifest's edge is dropped, with a [`Problem`] recording it.
 //! 3. **The edges are topologically sorted**, with the incoming order as the tiebreaker whenever
 //!    more than one package could go next. An unconstrained set therefore comes out exactly as it
-//!    went in, so adding a constraint only ever moves what it names. A cycle disables its members.
+//!    went in, and the baseline breaks every tie the constraints leave open. A cycle disables its
+//!    members, and whatever is ordered behind one goes with them.
 //!
 //! Nothing here fails. The spec calls a cycle a hard error, and in a command line tool it is one:
 //! `xtask content check` turns these problems into a non-zero exit. In the running game a hard
@@ -81,8 +82,11 @@ impl OrderEdges {
             .insert(later.to_owned(), source);
     }
 
-    /// Floyd-Warshall over ids. The package count is in the dozens, so the cubic term is nothing
-    /// and a closure computed once beats a search per contested alias.
+    /// Floyd-Warshall over ids, run once the edge set is complete. The package count is in the
+    /// dozens, so the cubic term is nothing and a closure computed once beats a search per
+    /// contested alias.
+    ///
+    /// The closure is also how a cycle is identified: an id that reaches itself is on one.
     fn close(&mut self) {
         let ids: Vec<String> = self
             .edges
@@ -127,6 +131,13 @@ pub enum DisableReason {
     /// Part of an `after`/`before` loop. Every member is disabled, because any order the resolver
     /// picked would be one nobody asked for.
     Cycle { members: Vec<String> },
+    /// Ordered after a cycle without being in one. It cannot be placed either -- nothing can go
+    /// after a package that never loads -- but the constraints to edit are inside the cycle.
+    ///
+    /// Worth a variant of its own because the reason is the whole point: telling an author their
+    /// package is *in* a loop sends them looking through their own `after` and `before` for a
+    /// loop that is not there.
+    BehindCycle { cycle: Vec<String> },
 }
 
 impl Display for DisableReason {
@@ -142,6 +153,9 @@ impl Display for DisableReason {
             } => write!(f, "requires {requirement}, which is not installed"),
             Self::RequirementDisabled { id } => write!(f, "requires {id}, which is disabled"),
             Self::Cycle { members } => write!(f, "in a load order cycle: {}", members.join(" -> ")),
+            Self::BehindCycle { cycle } => {
+                write!(f, "depends on a load order cycle: {}", cycle.join(" -> "))
+            }
         }
     }
 }
@@ -181,9 +195,11 @@ pub fn resolve(packages: &[Package], load_order: &LoadOrder) -> Resolution {
         .collect();
 
     collect_constraints(packages, load_order, &live, &index_of, &mut resolution);
+    // Before the sort, not after: the sort needs the closure to tell a cycle's members from the
+    // packages merely stuck behind it.
+    resolution.edges.close();
     sort_and_report_cycles(packages, &live, &index_of, &mut resolution);
 
-    resolution.edges.close();
     resolution
 }
 
@@ -206,6 +222,10 @@ fn check_requirements(packages: &[Package], enabled: &mut [bool], resolution: &m
             let info = &package.manifest.package;
             for requirement in &info.requires {
                 let found = versions.get(requirement.id.as_str()).copied();
+                let satisfied = packages.iter().enumerate().any(|(j, other)| {
+                    let other = &other.manifest.package;
+                    enabled[j] && requirement.matches(&other.id, &other.version)
+                });
                 // The package exists in the input but no *enabled* copy of it is left, so this is
                 // a cascade rather than a version mismatch and deserves to say so.
                 let dependency_disabled = found.is_some()
@@ -213,12 +233,12 @@ fn check_requirements(packages: &[Package], enabled: &mut [bool], resolution: &m
                         enabled[j] && other.manifest.package.id == requirement.id
                     });
 
-                let reason = if dependency_disabled {
+                let reason = if satisfied {
+                    None
+                } else if dependency_disabled {
                     Some(DisableReason::RequirementDisabled {
                         id: requirement.id.clone(),
                     })
-                } else if found.is_some_and(|version| requirement.req.matches(version)) {
-                    None
                 } else {
                     Some(DisableReason::Unsatisfied {
                         requirement: requirement.clone(),
@@ -323,6 +343,9 @@ fn collect_constraints(
 ///
 /// A `BinaryHeap` of `Reverse` indices pops the earliest-in-baseline package that is ready, so an
 /// unconstrained set comes out exactly as it went in.
+///
+/// Expects [`OrderEdges::close`] to have run: the reachability it computed is what separates a
+/// cycle's members from the packages stuck behind them.
 fn sort_and_report_cycles(
     packages: &[Package],
     live: &[usize],
@@ -367,31 +390,56 @@ fn sort_and_report_cycles(
     }
 
     let placed: BTreeSet<usize> = resolution.order.iter().copied().collect();
-    let stuck: Vec<usize> = live
+    // An id that reaches itself is on a loop; one that is merely stuck is downstream of somebody
+    // else's. The two get different reasons because they need different fixes.
+    let (in_cycle, behind): (Vec<usize>, Vec<usize>) = live
         .iter()
         .copied()
         .filter(|i| !placed.contains(i))
-        .collect();
-    let members: Vec<String> = stuck
+        .partition(|i| {
+            let id = &packages[*i].manifest.package.id;
+            resolution.edges.ordered(id, id)
+        });
+    let members: Vec<String> = in_cycle
         .iter()
         .map(|i| packages[*i].manifest.package.id.clone())
         .collect();
 
-    resolution.problems.push(Problem {
-        path: packages[stuck[0]].root.clone(),
-        kind: ProblemKind::DependencyCycle,
-        detail: format!(
-            "these packages constrain each other in a loop and none of them will load: {}",
-            members.join(", ")
-        ),
-    });
-    for i in stuck {
+    // `in_cycle` is empty only if the sort stalled without a loop, which it cannot: every stuck
+    // package is held by a predecessor chain that ends in one.
+    if let Some(first) = in_cycle.first() {
+        resolution.problems.push(Problem {
+            path: packages[*first].root.clone(),
+            kind: ProblemKind::DependencyCycle,
+            detail: format!(
+                "these packages constrain each other in a loop and none of them will load: {}",
+                members.join(", ")
+            ),
+        });
+    }
+
+    for i in in_cycle {
         resolution.disabled.push(Disabled {
             id: packages[i].manifest.package.id.clone(),
             root: packages[i].root.clone(),
             reason: DisableReason::Cycle {
                 members: members.clone(),
             },
+        });
+    }
+    for i in behind {
+        let id = &packages[i].manifest.package.id;
+        // Only the members that actually hold this one back, so a second unrelated cycle
+        // elsewhere in the scan does not turn up in its reason.
+        let cycle: Vec<String> = members
+            .iter()
+            .filter(|member| resolution.edges.ordered(member, id))
+            .cloned()
+            .collect();
+        resolution.disabled.push(Disabled {
+            id: id.clone(),
+            root: packages[i].root.clone(),
+            reason: DisableReason::BehindCycle { cycle },
         });
     }
 }
