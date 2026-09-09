@@ -35,7 +35,7 @@ fn kinds(scan: &AliasScan) -> Vec<ProblemKind> {
 fn a_folder_rule_names_every_file_it_includes() {
     let assets = discovered(
         &FakeVfs::new()
-            .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
+            .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/airship.glb", "")
             .file("base/core/map.glb", ""),
     );
@@ -54,7 +54,7 @@ fn a_file_the_rule_excludes_is_not_discovered() {
     let assets = discovered(
         &FakeVfs::new()
             .file(
-                "base/core/_rules.toml",
+                "base/core/_alias_rules.toml",
                 "alias = \"core::{stem}\"\ninclude = [\"*.glb\"]\n",
             )
             .file("base/core/airship.glb", "")
@@ -68,7 +68,7 @@ fn a_file_the_rule_excludes_is_not_discovered() {
 fn an_alias_sidecar_overrides_the_derived_name() {
     let assets = discovered(
         &FakeVfs::new()
-            .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
+            .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/ship_final_v2.glb", "")
             .file(
                 "base/core/ship_final_v2.glb.alias",
@@ -89,7 +89,7 @@ fn an_alias_sidecar_overrides_the_derived_name() {
 fn a_sidecar_can_exclude_a_file_the_rule_covers() {
     let assets = discovered(
         &FakeVfs::new()
-            .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
+            .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/airship.glb", "")
             .file("base/core/wip.glb", "")
             .file("base/core/wip.glb.alias", "include = false\n"),
@@ -105,7 +105,7 @@ fn a_sidecar_alias_is_included_even_where_the_rule_does_not_match() {
     let assets = discovered(
         &FakeVfs::new()
             .file(
-                "base/core/_rules.toml",
+                "base/core/_alias_rules.toml",
                 "alias = \"core::{stem}\"\ninclude = [\"*.glb\"]\n",
             )
             .file("base/core/notes.txt", "")
@@ -119,7 +119,7 @@ fn a_sidecar_alias_is_included_even_where_the_rule_does_not_match() {
 fn a_rule_inherits_into_subdirectories() {
     let assets = discovered(
         &FakeVfs::new()
-            .file("base/core/_rules.toml", r#"alias = "core::{path}""#)
+            .file("base/core/_alias_rules.toml", r#"alias = "core::{path}""#)
             .file("base/core/props/barrel.png", ""),
     );
 
@@ -131,9 +131,9 @@ fn a_rule_inherits_into_subdirectories() {
 fn a_deeper_rule_replaces_the_inherited_one() {
     let assets = discovered(
         &FakeVfs::new()
-            .file("base/core/_rules.toml", r#"alias = "core::{path}""#)
+            .file("base/core/_alias_rules.toml", r#"alias = "core::{path}""#)
             .file(
-                "base/core/props/_rules.toml",
+                "base/core/props/_alias_rules.toml",
                 r#"alias = "core::prop_{stem}""#,
             )
             .file("base/core/props/barrel.png", ""),
@@ -155,7 +155,7 @@ fn a_file_no_rule_covers_is_skipped_silently() {
 fn sidecars_are_never_assets_themselves() {
     let assets = discovered(
         &FakeVfs::new()
-            .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
+            .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/airship.glb", "")
             .file(
                 "base/core/airship.glb.alias",
@@ -166,7 +166,7 @@ fn sidecars_are_never_assets_themselves() {
     assert_eq!(
         aliases(&assets),
         ["core::airship"],
-        "_rules.toml and the .alias file must not become assets"
+        "_alias_rules.toml and the .alias file must not become assets"
     );
 }
 
@@ -176,7 +176,7 @@ fn sidecars_are_never_assets_themselves() {
 fn an_orphan_alias_file_is_reported() {
     let scan = scan(
         &FakeVfs::new()
-            .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
+            .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/deleted.glb.alias", r#"alias = "core::deleted""#),
     );
 
@@ -202,7 +202,7 @@ fn a_sidecar_without_a_guid_is_reported_but_still_registers() {
 fn a_duplicate_alias_keeps_the_first_and_reports_the_second() {
     let scan = scan(
         &FakeVfs::new()
-            .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
+            .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
             // Both reduce to the stem `airship`, and the walk sorts, so `.glb` comes first.
             .file("base/core/airship.glb", "")
             .file("base/core/airship.png", ""),
@@ -218,7 +218,7 @@ fn a_duplicate_alias_keeps_the_first_and_reports_the_second() {
 fn an_unparseable_alias_file_is_reported_and_the_rest_still_load() {
     let scan = scan(
         &FakeVfs::new()
-            .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
+            .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/airship.glb", "")
             .file("base/core/map.glb", "")
             .file("base/core/map.glb.alias", "this is not toml [[["),
@@ -238,8 +238,8 @@ fn an_unparseable_alias_file_is_reported_and_the_rest_still_load() {
 fn an_unparseable_rules_file_leaves_the_inherited_rule_in_force() {
     let scan = scan(
         &FakeVfs::new()
-            .file("base/core/_rules.toml", r#"alias = "core::{path}""#)
-            .file("base/core/props/_rules.toml", "alias = [[[")
+            .file("base/core/_alias_rules.toml", r#"alias = "core::{path}""#)
+            .file("base/core/props/_alias_rules.toml", "alias = [[[")
             .file("base/core/props/barrel.png", ""),
     );
 
@@ -251,7 +251,7 @@ fn an_unparseable_rules_file_leaves_the_inherited_rule_in_force() {
 fn an_unreadable_directory_is_reported() {
     let scan = scan(
         &FakeVfs::new()
-            .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
+            .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/airship.glb", "")
             .file("base/core/locked/secret.glb", "")
             .unreadable_dir("base/core/locked"),
@@ -269,7 +269,7 @@ fn an_unreadable_directory_is_reported() {
 #[test]
 fn assets_are_ordered_alphabetically_with_files_before_subdirectories() {
     let vfs = FakeVfs::new()
-        .file("base/core/_rules.toml", r#"alias = "core::{path}""#)
+        .file("base/core/_alias_rules.toml", r#"alias = "core::{path}""#)
         .file("base/core/zebra.glb", "")
         .file("base/core/apple.glb", "")
         .file("base/core/props/barrel.glb", "");
@@ -287,7 +287,7 @@ fn assets_are_ordered_alphabetically_with_files_before_subdirectories() {
 #[test]
 fn a_directory_chain_deeper_than_the_cap_is_reported_and_does_not_cost_the_rest_of_the_package() {
     let mut vfs = FakeVfs::new()
-        .file("base/core/_rules.toml", r#"alias = "core::{path}""#)
+        .file("base/core/_alias_rules.toml", r#"alias = "core::{path}""#)
         .file("base/core/shallow.glb", "");
 
     let mut deep_path = "base/core".to_owned();
@@ -312,13 +312,13 @@ fn a_directory_chain_deeper_than_the_cap_is_reported_and_does_not_cost_the_rest_
     );
 }
 
-/// The walk skips `_rules.toml`, `*.alias` and `*.meta` on its own. Anything else a caller's own
-/// format owns has to be named, or a permissive rule sweeps it up as content --
+/// The walk skips `_alias_rules.toml`, `*.alias` and `*.meta` on its own. Anything else a
+/// caller's own format owns has to be named, or a permissive rule sweeps it up as content --
 /// `ename_asset_package` passes `manifest.toml` for exactly this reason.
 #[test]
 fn a_caller_can_name_files_the_walk_must_not_treat_as_assets() {
     let vfs = FakeVfs::new()
-        .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
+        .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
         .file("base/core/manifest.toml", "")
         .file("base/core/airship.glb", "");
 
@@ -339,7 +339,7 @@ fn a_caller_can_name_files_the_walk_must_not_treat_as_assets() {
 fn an_alias_the_validator_rejects_is_reported_and_costs_only_itself() {
     let scan = scan(
         &FakeVfs::new()
-            .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
+            .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/airship.glb", "")
             .file("base/core/bad.glb", "")
             .file("base/core/bad.glb.alias", r#"alias = "core::bad#Scene0""#),
@@ -350,14 +350,14 @@ fn an_alias_the_validator_rejects_is_reported_and_costs_only_itself() {
     assert_eq!(aliases(&scan.assets), ["core::airship"]);
 }
 
-/// macOS and Windows preserve whatever case a file was saved in, so a rule saved as `_Rules.toml`
-/// has to be read as a rule. Left case-sensitive it was worse than ignored: it became an asset
-/// named after itself, and the folder it was meant to name derived nothing.
+/// macOS and Windows preserve whatever case a file was saved in, so a rule saved as
+/// `_Alias_Rules.toml` has to be read as a rule. Left case-sensitive it was worse than ignored: it
+/// became an asset named after itself, and the folder it was meant to name derived nothing.
 #[test]
 fn a_rules_file_saved_in_another_case_is_still_a_rule() {
     let scan = scan(
         &FakeVfs::new()
-            .file("base/core/_Rules.toml", r#"alias = "core::{stem}""#)
+            .file("base/core/_Alias_Rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/airship.glb", ""),
     );
 
@@ -371,10 +371,10 @@ fn a_rules_file_saved_in_another_case_is_still_a_rule() {
 fn the_canonical_spelling_wins_where_a_filesystem_holds_several() {
     let assets = discovered(
         &FakeVfs::new()
-            // `_Rules.toml` sorts first: uppercase `R` is below lowercase `r`. Picking the first
-            // match rather than the canonical one would take the wrong template here.
-            .file("base/core/_Rules.toml", r#"alias = "wrong::{stem}""#)
-            .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
+            // `_Alias_Rules.toml` sorts first: uppercase `R` is below lowercase `r`. Picking the
+            // first match rather than the canonical one would take the wrong template here.
+            .file("base/core/_Alias_Rules.toml", r#"alias = "wrong::{stem}""#)
+            .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
             .file("base/core/airship.glb", ""),
     );
 
@@ -386,7 +386,7 @@ fn the_canonical_spelling_wins_where_a_filesystem_holds_several() {
 #[test]
 fn an_ignored_file_name_is_matched_case_insensitively() {
     let vfs = FakeVfs::new()
-        .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
+        .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
         .file("base/core/Manifest.toml", "")
         .file("base/core/airship.glb", "");
 

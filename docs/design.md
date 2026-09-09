@@ -77,7 +77,7 @@ still wins, so an author keeps control of loader settings.
 The scan reads the default asset source directly and must never read through `alias://`. It would
 await an index only the scan can fill, and hang.
 
-An asset's alias comes from a file, never from a list. `_rules.toml` names a whole folder with one
+An asset's alias comes from a file, never from a list. `_alias_rules.toml` names a whole folder with one
 template -- `alias = "core::{stem}"` -- and inherits into the folders under it, with the nearest
 rule winning outright rather than merging. An `airship.glb.alias` sidecar beside one asset overrides
 that with a hand-chosen name, carries the guid tooling tracks the file by, and says with
@@ -88,7 +88,7 @@ is no override list anywhere, which is what removed the quoted TOML keys whose t
 Both files, and the walk that reads them, belong to `ename_asset_alias` -- the crate that knows
 what an alias is is the crate that knows how one is named. That is what lets the crate stand alone:
 adding `AliasPlugins` scans the asset root on startup and fills the index the `alias://` source
-waits on, so a project with a `_rules.toml` and no packages at all addresses its assets by alias
+waits on, so a project with a `_alias_rules.toml` and no packages at all addresses its assets by alias
 with no registration code and no other first-party crate. `ename_asset_package` adds the one thing
 the walk has no opinion about -- an order -- by calling it once per package root and folding the
 results in load order. Scanning is a second plugin rather than a flag on the first, so a project
@@ -101,7 +101,7 @@ from `AssetMeta` through its own serializer and drops every field it does not re
 anything of ours in there is one run of somebody else's tool away from being deleted. `.alias` is
 an extension nobody else claims; its contents are TOML.
 
-`.alias` and `_rules.toml` reject unknown keys, because we generate them and a key we do not know
+`.alias` and `_alias_rules.toml` reject unknown keys, because we generate them and a key we do not know
 is a mistake. `manifest.toml` does not: a mod is written by a third party against whatever version
 of the game they had, and one carrying a key from a later version must still load.
 

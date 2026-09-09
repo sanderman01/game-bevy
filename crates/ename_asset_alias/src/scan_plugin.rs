@@ -2,8 +2,8 @@
 //!
 //! [`AliasSourcePlugin`](crate::AliasSourcePlugin) registers the `alias://` source and the cell it
 //! reads through, and deliberately does not fill that cell. This plugin is the default answer to
-//! who fills it: walk the asset root, take every alias a `_rules.toml` or a `.alias` file names,
-//! and hand the result over. Adding it is all a consumer of this crate has to do to load
+//! who fills it: walk the asset root, take every alias a `_alias_rules.toml` or a `.alias` file
+//! names, and hand the result over. Adding it is all a consumer of this crate has to do to load
 //! `alias://core::airship` off a tree they wrote by hand.
 //!
 //! It is a separate plugin rather than a flag so that a project with its own idea of load order
@@ -61,9 +61,9 @@ impl AliasScanPlugin {
         self
     }
 
-    /// Names files the walk must never turn into an asset, on top of `_rules.toml`, `*.alias` and
-    /// `*.meta`, which it always skips. For a project whose asset tree carries a file of its own
-    /// that a permissive folder rule would otherwise sweep up.
+    /// Names files the walk must never turn into an asset, on top of `_alias_rules.toml`, `*.alias`
+    /// and `*.meta`, which it always skips. For a project whose asset tree carries a file of its
+    /// own that a permissive folder rule would otherwise sweep up.
     pub fn with_ignored_file_names<I, S>(mut self, names: I) -> Self
     where
         I: IntoIterator<Item = S>,

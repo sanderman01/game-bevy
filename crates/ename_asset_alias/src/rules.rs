@@ -1,4 +1,4 @@
-//! `_rules.toml` -- naming a whole folder's worth of assets with one line.
+//! `_alias_rules.toml` -- naming a whole folder's worth of assets with one line.
 //!
 //! Problem one with the old system was that every alias was hand-written in a manifest, which does
 //! not scale past a few dozen assets. A folder rule is the answer: an alias template and a set of
@@ -13,18 +13,21 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-/// The file that carries a folder rule, in the spelling everything should be written in. The
-/// leading underscore sorts it to the top of a listing and keeps it clear of anything an artist
-/// would name a file. Neither the underscore nor the extension is load-bearing: the walk matches
-/// the name and parses TOML regardless. A leading dot is the one thing it may not have, because
-/// `Vfs` listings hide dot-files the way Bevy's own file reader does.
-pub const RULES_FILE: &str = "_rules.toml";
+/// The file that carries a folder rule, in the spelling everything should be written in.
+///
+/// The leading underscore sorts it to the top of a listing, and `alias` in the name says what the
+/// rules are about, so a folder full of art does not leave a reader guessing. Neither the
+/// underscore nor the extension is load-bearing -- the walk matches the whole name and parses TOML
+/// regardless -- but the extension buys editor syntax highlighting for free. A leading dot is the
+/// one thing the name may not have: `Vfs` listings hide dot-files, the way Bevy's own file reader
+/// does, so a rule named that way would be invisible to the walk.
+pub const RULES_FILE: &str = "_alias_rules.toml";
 
 /// True for a file name that carries a folder rule.
 ///
 /// Matched case-insensitively, the same way `.alias` and `.meta` are: macOS and Windows preserve
-/// whatever case an author saved a file in, and a `_Rules.toml` treated as content instead of as a
-/// rule is a silent phantom asset with a name nobody asked for. [`RULES_FILE`] is still the
+/// whatever case an author saved a file in, and a `_Alias_Rules.toml` treated as content instead
+/// of as a rule is a silent phantom asset with a name nobody asked for. [`RULES_FILE`] is still the
 /// spelling to write, and it wins where a case-sensitive filesystem carries more than one.
 pub fn is_rules_file(file_name: &str) -> bool {
     file_name.eq_ignore_ascii_case(RULES_FILE)
@@ -47,7 +50,7 @@ pub enum RulesError {
     BadPattern { pattern: String, message: String },
 }
 
-/// The contents of one `_rules.toml`.
+/// The contents of one `_alias_rules.toml`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rules {
@@ -355,17 +358,22 @@ mod tests {
         assert_eq!(rules.alias_for(Path::new("base/core/airship.glb")), None);
     }
 
-    /// macOS and Windows preserve whatever case a file was saved in. A `_Rules.toml` read as
+    /// macOS and Windows preserve whatever case a file was saved in. A `_Alias_Rules.toml` read as
     /// content rather than as a rule would quietly become an asset named after itself.
     #[test]
     fn the_rules_file_is_matched_case_insensitively() {
-        assert!(is_rules_file("_rules.toml"));
-        assert!(is_rules_file("_Rules.toml"));
-        assert!(is_rules_file("_RULES.TOML"));
+        assert!(is_rules_file("_alias_rules.toml"));
+        assert!(is_rules_file("_Alias_Rules.toml"));
+        assert!(is_rules_file("_ALIAS_RULES.TOML"));
         assert!(
-            !is_rules_file("rules.toml"),
-            "the underscore is part of the name"
+            !is_rules_file("alias_rules.toml"),
+            "the leading underscore is part of the name"
         );
-        assert!(!is_rules_file("_rules.tom"));
+        assert!(!is_rules_file("_alias_rules.tom"));
+        assert!(
+            !is_rules_file("_rules.toml"),
+            "the old name is not a rule file, so an unmigrated one shows up as a stray asset \
+             rather than silently half-working"
+        );
     }
 }

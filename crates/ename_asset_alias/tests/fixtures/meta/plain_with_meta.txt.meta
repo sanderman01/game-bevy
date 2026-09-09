@@ -2,7 +2,7 @@
     meta_format_version: "1.0",
     asset: Load(
         // A `.meta` names its loader by Rust type path, which is scoped to the test binary that
-        // defines the type. That is why this file lives outside `files/`, where no `_rules.toml`
+        // defines the type. That is why this file lives outside `files/`, where no `_alias_rules.toml`
         // reaches it: an alias for it would be loadable from `alias_scan.rs` too, and the name
         // below would not resolve there.
         loader: "alias_reader::bevy_support::TextLoader",

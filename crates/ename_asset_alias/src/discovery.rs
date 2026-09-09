@@ -1,9 +1,9 @@
 //! Walking a directory tree and working out which files are addressable, and under what alias.
 //!
-//! This is the whole of alias discovery: `_rules.toml` folder rules, `.alias` sidecars, and the
-//! precedence between them. It knows nothing about packages, manifests or load order -- a caller
-//! that has those concepts calls this once per package root and orders the results itself, and a
-//! caller that does not points it at an asset root and is done.
+//! This is the whole of alias discovery: `_alias_rules.toml` folder rules, `.alias` sidecars, and
+//! the precedence between them. It knows nothing about packages, manifests or load order -- a
+//! caller that has those concepts calls this once per package root and orders the results itself,
+//! and a caller that does not points it at an asset root and is done.
 //!
 //! Nothing here fails the walk. An unreadable directory, a broken sidecar, a rule with a typo in
 //! its template: each is recorded as a [`Problem`] and skipped, so one broken directory costs that
@@ -74,7 +74,7 @@ impl Display for ProblemKind {
         let text = match self {
             Self::UnreadableDirectory => "unreadable directory",
             Self::UnparseableAliasFile => "unparseable .alias",
-            Self::UnparseableRules => "unparseable _rules.toml",
+            Self::UnparseableRules => "unparseable _alias_rules.toml",
             Self::OrphanAliasFile => "orphan .alias",
             Self::MissingGuid => "missing guid",
             Self::DuplicateAlias => "duplicate alias",
@@ -124,9 +124,9 @@ impl AliasScan {
 ///
 /// `root` is relative to the vfs root; pass `""` for the whole tree. `ignored_file_names` names
 /// files the caller's own format owns and discovery must never turn into an asset --
-/// `ename_asset_package` passes `manifest.toml`. `_rules.toml`, `*.alias` and `*.meta` are always
-/// ignored and need not be listed. Every one of those names is matched case-insensitively,
-/// `ignored_file_names` included.
+/// `ename_asset_package` passes `manifest.toml`. `_alias_rules.toml`, `*.alias` and `*.meta` are
+/// always ignored and need not be listed. Every one of those names is matched
+/// case-insensitively, `ignored_file_names` included.
 pub async fn scan_aliases(vfs: &dyn Vfs, root: &Path, ignored_file_names: &[&str]) -> AliasScan {
     let mut walk = Walk::new(vfs, ignored_file_names);
     walk.visit(root.to_path_buf(), None, 0).await;
@@ -202,9 +202,9 @@ impl<'a> Walk<'a> {
                 }
             };
 
-            // A `_rules.toml` here replaces the inherited rule for this directory and everything
-            // below it. A broken one is reported and the inherited rule stays, which is what the
-            // directory had before somebody added the broken file.
+            // A `_alias_rules.toml` here replaces the inherited rule for this directory and
+            // everything below it. A broken one is reported and the inherited rule stays, which is
+            // what the directory had before somebody added the broken file.
             let mut rules = inherited;
             if let Some(rules_path) = find_rules_file(&entries) {
                 match read_rules(vfs, rules_path, &dir).await {
@@ -350,7 +350,8 @@ impl<'a> Walk<'a> {
 /// The folder rule in one directory listing, if it has one.
 ///
 /// [`RULES_FILE`] wins outright where a case-sensitive filesystem carries several spellings, so a
-/// directory holding both `_rules.toml` and `_Rules.toml` behaves the way it does everywhere else.
+/// directory holding both `_alias_rules.toml` and `_Alias_Rules.toml` behaves the way it does
+/// everywhere else.
 fn find_rules_file(entries: &[crate::DirEntry]) -> Option<&Path> {
     let mut found: Option<&Path> = None;
     for entry in entries.iter().filter(|e| !e.is_dir) {

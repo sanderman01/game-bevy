@@ -11,7 +11,8 @@ use std::{fmt::Display, str::FromStr};
 /// A package manifest: the entry point of a base game, mod, DLC or other content package.
 ///
 /// It no longer declares assets. An asset's alias comes from a `.alias` file beside it or from the
-/// `_rules.toml` covering its folder, which is what removed the hand-written list that did not
+/// `_alias_rules.toml` covering its folder, which is what removed the hand-written list that did
+/// not
 /// scale and the quoted TOML keys that made a typo silent.
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "bevy", derive(Reflect))]

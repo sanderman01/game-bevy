@@ -40,7 +40,7 @@ and nothing points up. There is no `core`, `common`, or `shared` crate on the re
 cycle appears, the fix is to move the shared type down a layer or invert the call into an event.
 
 The asset layer is three crates, not one. `ename_asset_alias` is the leaf. It owns the alias
-end to end: what one is, the `.alias` sidecars and `_rules.toml` folder rules that name one, the
+end to end: what one is, the `.alias` sidecars and `_alias_rules.toml` folder rules that name one, the
 walk that finds them, the validation that rejects one `AssetPath` would misread, and the `alias://`
 source that serves it. Adding `AliasPlugins` is the whole setup, which is what lets the crate be
 published and used on its own.

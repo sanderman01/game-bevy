@@ -1,4 +1,4 @@
-# Overrides what `_rules.toml` would have derived (`fixture::replacement`). The file keeps its
+# Overrides what `_alias_rules.toml` would have derived (`fixture::replacement`). The file keeps its
 # name and the address changes, which is the point of a sidecar.
 guid = "018f2c00-0000-7000-8000-00000000a001"
 alias = "fixture::override_me"

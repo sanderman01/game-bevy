@@ -5,9 +5,10 @@
 //! What a consumer of this crate gets for adding `AliasPlugins` and nothing else.
 //!
 //! `alias_reader.rs` fills the index by hand, which is the `ename_asset_content` shape. This file
-//! is the other half: no other crate, no manifests, no registration code -- a `_rules.toml` and a
-//! couple of `.alias` files in the asset tree, and `asset_server.load("alias://fixture::plain")`
-//! works. The fixture tree under `tests/fixtures/files` is the whole configuration.
+//! is the other half: no other crate, no manifests, no registration code -- a `_alias_rules.toml`
+//! and a couple of `.alias` files in the asset tree, and
+//! `asset_server.load("alias://fixture::plain")` works. The fixture tree under
+//! `tests/fixtures/files` is the whole configuration.
 //!
 //! Headless: `TaskPoolPlugin` supplies the pools and `AssetPlugin` the asset system. No window,
 //! no renderer.
@@ -63,8 +64,8 @@ fn aliases(scan: &AliasScan) -> Vec<&str> {
 
 // --- tests ----------------------------------------------------------------------------------
 
-/// The headline claim of the crate: a consumer adds one plugin group, writes a `_rules.toml`, and
-/// addresses the file by alias. Nothing here registers an alias by hand.
+/// The headline claim of the crate: a consumer adds one plugin group, writes a
+/// `_alias_rules.toml`, and addresses the file by alias. Nothing here registers an alias by hand.
 #[test]
 fn adding_the_plugins_is_enough_to_load_an_asset_by_alias() {
     let mut app = test_app();
@@ -113,8 +114,8 @@ fn a_sidecar_alias_replaces_the_one_the_folder_rule_would_derive() {
     );
 }
 
-/// `files/props/_rules.toml` replaces the rule it inherited, so the walk has to descend and to
-/// prefer the deeper file. `fixture::props/barrel`, not `fixture::barrel`.
+/// `files/props/_alias_rules.toml` replaces the rule it inherited, so the walk has to descend and
+/// to prefer the deeper file. `fixture::props/barrel`, not `fixture::barrel`.
 #[test]
 fn a_rule_in_a_subdirectory_replaces_the_inherited_one() {
     let mut app = test_app();

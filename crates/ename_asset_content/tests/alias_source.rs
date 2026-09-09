@@ -185,7 +185,8 @@ fn without_the_overriding_package_the_base_file_wins() {
     assert_eq!(greeting_text(&app, &handle), "hello from core");
 }
 
-/// The base game names its assets with one `_rules.toml` line and no per-asset file at all. That
+/// The base game names its assets with one `_alias_rules.toml` line and no per-asset file at all.
+/// That
 /// is the property that makes the system scale past a few dozen assets.
 #[test]
 fn a_folder_rule_names_an_asset_with_no_sidecar() {
