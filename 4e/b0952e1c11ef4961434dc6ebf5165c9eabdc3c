@@ -1,0 +1,43 @@
+crates/ename_asset_content/tests/alias_source.rs
+  s_c45b82c2f785ea::t_6799510a1bd199 103-117
+  s_c45b82c2f785ea::t_fb2f9325602bc7 238-242
+  s_c45b82c2f785ea::t_250f2dbefba638 19-21
+  s_c45b82c2f785ea::t_5ab47a7437cd17 228-237,243-261
+crates/ename_asset_content/tests/fixtures/mods/loud/gone.txt.alias
+  s_c45b82c2f785ea::t_f0902781dae3b9 1-2
+crates/ename_asset_content/Cargo.toml
+  s_c45b82c2f785ea::t_271c2fa51284a5 10
+crates/ename_asset_content/src/lib.rs
+  s_c45b82c2f785ea::t_4e940418e7b9f2 83-89,93,98-99,108-112,114,122-127,132-150
+  s_c45b82c2f785ea::t_ba1b9e81cdfdd4 13,15,17,19-22,28
+  s_c45b82c2f785ea::t_e1f4bb0edc813b 151
+crates/ename_asset_alias/src/index.rs
+  s_c45b82c2f785ea::t_c46c248c83b0ce 44-48
+  s_c45b82c2f785ea::t_7f66bf38d2b606 6
+Cargo.lock
+  s_c0b43cb8345050::t_a0a7fe5dbb2c65 2963
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "4eb0952e1c11ef4961434dc6ebf5165c9eabdc3c",
+  "prompts": {},
+  "sessions": {
+    "s_c0b43cb8345050": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a42c7a02f4f382a2c",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_c45b82c2f785ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5dd5165d-54f5-457d-9db3-376ee8a2e5cd",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
