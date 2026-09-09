@@ -1,0 +1,26 @@
+crates/ename_asset_package/tests/asset_discovery.rs
+  s_c45b82c2f785ea::t_4f514aa4c92607 303-334
+  s_c45b82c2f785ea::t_776d01d77321d4 335
+crates/ename_asset_package/src/scan.rs
+  s_c45b82c2f785ea::t_2f0b5dd7f75e89 183
+  s_c45b82c2f785ea::t_933cc606f04cff 320-321
+  s_c45b82c2f785ea::t_f49e4ab0fdbaee 30-39
+  s_c45b82c2f785ea::t_f2fb098065f99f 82-84,98
+  s_c45b82c2f785ea::t_8f57437f7a54c3 239-242,247,250-258
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "8a92cd5f584d4faf7505d08ea9e08beba341afce",
+  "prompts": {},
+  "sessions": {
+    "s_c45b82c2f785ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5dd5165d-54f5-457d-9db3-376ee8a2e5cd",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
