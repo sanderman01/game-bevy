@@ -113,9 +113,10 @@ impl CompiledRules {
     pub fn alias_for(&self, path: &Path) -> Option<String> {
         let template = self.alias.as_deref()?;
         let file_name = path.file_name()?.to_str()?;
+        let needs_path = template.contains("{path}");
 
         let mut expanded = template.replace("{stem}", stem(file_name));
-        if expanded.contains("{path}") {
+        if needs_path {
             expanded = expanded.replace("{path}", &self.relative_alias_path(path)?);
         }
         Some(expanded)
@@ -251,6 +252,41 @@ mod tests {
                 .as_deref(),
             Some("core::barrel")
         );
+    }
+
+    /// Whether `{path}` needs expanding is decided from the *template*, before `{stem}` is
+    /// spliced in. A file name that happens to contain the literal text `{path}` must not be
+    /// mistaken for the template using the placeholder.
+    #[test]
+    fn a_stem_containing_literal_braces_is_not_rescanned_for_path() {
+        let rules = compiled(r#"alias = "core::{stem}""#, "base/core");
+        assert_eq!(
+            rules
+                .alias_for(Path::new("base/core/weird{path}rest.png"))
+                .as_deref(),
+            Some("core::weird{path}rest")
+        );
+    }
+
+    /// `{path}` is relative to the rule's own directory, so a path outside it has nothing to be
+    /// relative to.
+    #[test]
+    fn alias_for_is_none_when_the_path_is_outside_the_rules_directory() {
+        let rules = compiled(r#"alias = "core::{path}""#, "base/core");
+        assert_eq!(rules.alias_for(Path::new("base/other/airship.glb")), None);
+    }
+
+    /// A file name that is not valid UTF-8 cannot appear in an alias, which is a `String`.
+    #[cfg(unix)]
+    #[test]
+    fn alias_for_is_none_for_a_path_that_is_not_valid_utf8() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        let rules = compiled(r#"alias = "core::{stem}""#, "base/core");
+        let name = OsStr::from_bytes(b"fo\x80o.png");
+        let path = Path::new("base/core").join(name);
+        assert_eq!(rules.alias_for(&path), None);
     }
 
     /// A silently unexpanded placeholder would produce a few hundred live aliases with a brace in
