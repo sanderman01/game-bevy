@@ -56,7 +56,7 @@ pub fn build_index(scan: &Scan) -> (ContentIndex, ContentReport) {
 
         report.packages.push(PackageSummary {
             id: info.id.clone(),
-            version: info.version,
+            version: info.version.clone(),
             root: package.root.clone(),
             aliases,
         });
