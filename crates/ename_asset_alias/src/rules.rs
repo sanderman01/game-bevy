@@ -13,9 +13,22 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-/// The file that carries a folder rule. The leading underscore sorts it to the top of a listing
-/// and keeps it clear of anything an artist would name a file.
+/// The file that carries a folder rule, in the spelling everything should be written in. The
+/// leading underscore sorts it to the top of a listing and keeps it clear of anything an artist
+/// would name a file. Neither the underscore nor the extension is load-bearing: the walk matches
+/// the name and parses TOML regardless. A leading dot is the one thing it may not have, because
+/// `Vfs` listings hide dot-files the way Bevy's own file reader does.
 pub const RULES_FILE: &str = "_rules.toml";
+
+/// True for a file name that carries a folder rule.
+///
+/// Matched case-insensitively, the same way `.alias` and `.meta` are: macOS and Windows preserve
+/// whatever case an author saved a file in, and a `_Rules.toml` treated as content instead of as a
+/// rule is a silent phantom asset with a name nobody asked for. [`RULES_FILE`] is still the
+/// spelling to write, and it wins where a case-sensitive filesystem carries more than one.
+pub fn is_rules_file(file_name: &str) -> bool {
+    file_name.eq_ignore_ascii_case(RULES_FILE)
+}
 
 /// The two placeholders an alias template may use. Anything else is a compile error on the rule.
 const STEM: &str = "stem";
@@ -167,7 +180,7 @@ fn check_template(template: &str) -> Result<(), RulesError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{CompiledRules, Rules, RulesError};
+    use super::{CompiledRules, Rules, RulesError, is_rules_file};
     use std::path::Path;
 
     fn parse(text: &str) -> Result<Rules, toml::de::Error> {
@@ -340,5 +353,19 @@ mod tests {
     fn a_rule_with_no_template_derives_nothing() {
         let rules = compiled(r#"include = ["*.glb"]"#, "base/core");
         assert_eq!(rules.alias_for(Path::new("base/core/airship.glb")), None);
+    }
+
+    /// macOS and Windows preserve whatever case a file was saved in. A `_Rules.toml` read as
+    /// content rather than as a rule would quietly become an asset named after itself.
+    #[test]
+    fn the_rules_file_is_matched_case_insensitively() {
+        assert!(is_rules_file("_rules.toml"));
+        assert!(is_rules_file("_Rules.toml"));
+        assert!(is_rules_file("_RULES.TOML"));
+        assert!(
+            !is_rules_file("rules.toml"),
+            "the underscore is part of the name"
+        );
+        assert!(!is_rules_file("_rules.tom"));
     }
 }

@@ -12,7 +12,7 @@
 
 use crate::{
     AliasFile, AliasOrigin, CompiledRules, RULES_FILE, Rules, Vfs, VfsError, alias_sidecar_target,
-    validate_alias, vfs::BoxedFuture,
+    is_rules_file, validate_alias, vfs::BoxedFuture,
 };
 use std::{
     collections::BTreeMap,
@@ -125,7 +125,8 @@ impl AliasScan {
 /// `root` is relative to the vfs root; pass `""` for the whole tree. `ignored_file_names` names
 /// files the caller's own format owns and discovery must never turn into an asset --
 /// `ename_asset_package` passes `manifest.toml`. `_rules.toml`, `*.alias` and `*.meta` are always
-/// ignored and need not be listed.
+/// ignored and need not be listed. Every one of those names is matched case-insensitively,
+/// `ignored_file_names` included.
 pub async fn scan_aliases(vfs: &dyn Vfs, root: &Path, ignored_file_names: &[&str]) -> AliasScan {
     let mut walk = Walk::new(vfs, ignored_file_names);
     walk.visit(root.to_path_buf(), None, 0).await;
@@ -205,9 +206,8 @@ impl<'a> Walk<'a> {
             // below it. A broken one is reported and the inherited rule stays, which is what the
             // directory had before somebody added the broken file.
             let mut rules = inherited;
-            let rules_path = dir.join(RULES_FILE);
-            if entries.iter().any(|e| !e.is_dir && e.path == rules_path) {
-                match read_rules(vfs, &rules_path, &dir).await {
+            if let Some(rules_path) = find_rules_file(&entries) {
+                match read_rules(vfs, rules_path, &dir).await {
                     Ok(compiled) => rules = Some(compiled),
                     Err(problem) => self.problems.push(problem),
                 }
@@ -258,10 +258,17 @@ impl<'a> Walk<'a> {
     }
 
     /// True for a file that describes assets rather than being one.
+    ///
+    /// Every comparison here is case-insensitive, because macOS and Windows preserve whatever case
+    /// a file was saved in and a describing file mistaken for an asset becomes a phantom entry in
+    /// the index under a name nobody chose.
     fn is_not_an_asset(&self, file_name: &str) -> bool {
-        file_name == RULES_FILE
+        is_rules_file(file_name)
             || alias_sidecar_target(file_name).is_some()
-            || self.ignored_file_names.contains(&file_name)
+            || self
+                .ignored_file_names
+                .iter()
+                .any(|ignored| ignored.eq_ignore_ascii_case(file_name))
             // `Vfs` implementations already hide `.meta`. Belt and braces: a reader that did not
             // would otherwise turn every import setting into an asset.
             || Path::new(file_name)
@@ -338,6 +345,27 @@ impl<'a> Walk<'a> {
             origin,
         });
     }
+}
+
+/// The folder rule in one directory listing, if it has one.
+///
+/// [`RULES_FILE`] wins outright where a case-sensitive filesystem carries several spellings, so a
+/// directory holding both `_rules.toml` and `_Rules.toml` behaves the way it does everywhere else.
+fn find_rules_file(entries: &[crate::DirEntry]) -> Option<&Path> {
+    let mut found: Option<&Path> = None;
+    for entry in entries.iter().filter(|e| !e.is_dir) {
+        let Some(name) = entry.path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !is_rules_file(name) {
+            continue;
+        }
+        if name == RULES_FILE {
+            return Some(&entry.path);
+        }
+        found.get_or_insert(&entry.path);
+    }
+    found
 }
 
 async fn read_rules(vfs: &dyn Vfs, path: &Path, dir: &Path) -> Result<CompiledRules, Problem> {

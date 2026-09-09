@@ -349,3 +349,47 @@ fn an_alias_the_validator_rejects_is_reported_and_costs_only_itself() {
     assert_eq!(kinds(&scan), [ProblemKind::InvalidAlias]);
     assert_eq!(aliases(&scan.assets), ["core::airship"]);
 }
+
+/// macOS and Windows preserve whatever case a file was saved in, so a rule saved as `_Rules.toml`
+/// has to be read as a rule. Left case-sensitive it was worse than ignored: it became an asset
+/// named after itself, and the folder it was meant to name derived nothing.
+#[test]
+fn a_rules_file_saved_in_another_case_is_still_a_rule() {
+    let scan = scan(
+        &FakeVfs::new()
+            .file("base/core/_Rules.toml", r#"alias = "core::{stem}""#)
+            .file("base/core/airship.glb", ""),
+    );
+
+    assert_eq!(aliases(&scan.assets), ["core::airship"]);
+    assert!(scan.problems.is_empty(), "got {:?}", scan.problems);
+}
+
+/// Only a case-sensitive filesystem can hold both at once, and then the canonical spelling wins,
+/// so the directory behaves the way it does everywhere else.
+#[test]
+fn the_canonical_spelling_wins_where_a_filesystem_holds_several() {
+    let assets = discovered(
+        &FakeVfs::new()
+            // `_Rules.toml` sorts first: uppercase `R` is below lowercase `r`. Picking the first
+            // match rather than the canonical one would take the wrong template here.
+            .file("base/core/_Rules.toml", r#"alias = "wrong::{stem}""#)
+            .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
+            .file("base/core/airship.glb", ""),
+    );
+
+    assert_eq!(aliases(&assets), ["core::airship"]);
+}
+
+/// The same reasoning as the rule file: a caller's own file saved in another case must not become
+/// content just because the disk remembered the shift key.
+#[test]
+fn an_ignored_file_name_is_matched_case_insensitively() {
+    let vfs = FakeVfs::new()
+        .file("base/core/_rules.toml", r#"alias = "core::{stem}""#)
+        .file("base/core/Manifest.toml", "")
+        .file("base/core/airship.glb", "");
+
+    let scan = block_on(scan_aliases(&vfs, Path::new(ROOT), &["manifest.toml"]));
+    assert_eq!(aliases(&scan.assets), ["core::airship"]);
+}

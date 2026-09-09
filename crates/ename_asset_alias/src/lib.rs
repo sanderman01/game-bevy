@@ -28,7 +28,7 @@ mod scan_plugin;
 pub use crate::alias_file::{ALIAS_EXTENSION, AliasFile, AliasOrigin, alias_sidecar_target};
 pub use crate::discovery::{AliasScan, DiscoveredAsset, Problem, ProblemKind, scan_aliases};
 pub use crate::index::{AliasError, ContentIndex, validate_alias};
-pub use crate::rules::{CompiledRules, RULES_FILE, Rules, RulesError};
+pub use crate::rules::{CompiledRules, RULES_FILE, Rules, RulesError, is_rules_file};
 pub use crate::vfs::{BoxedFuture, DirEntry, StdVfs, Vfs, VfsError};
 
 #[cfg(feature = "bevy")]
