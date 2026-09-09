@@ -216,6 +216,7 @@ mod tests {
                 "#,
             ),
             root: "base/core".into(),
+            assets: Vec::new(),
         };
         let loud = Package {
             manifest: manifest(
@@ -232,6 +233,7 @@ mod tests {
                 "#,
             ),
             root: "mods/loud".into(),
+            assets: Vec::new(),
         };
 
         let index = build_index(&[core, loud]);

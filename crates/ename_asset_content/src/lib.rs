@@ -96,8 +96,8 @@ fn start_content_scan(cell: Res<ContentIndexCell>, config: Res<ContentScanConfig
             info!("Scanning for packages in {:?}", config.search_paths);
             let mut make_reader = AssetSource::get_default_reader(config.asset_root);
             let vfs = AssetReaderVfs::new(make_reader());
-            let packages = scan_packages(&vfs, &config.search_paths).await;
-            let _ = cell.set(build_index(&packages)).await;
+            let scan = scan_packages(&vfs, &config.search_paths).await;
+            let _ = cell.set(build_index(&scan.packages)).await;
         })
         .detach();
 }

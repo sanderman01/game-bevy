@@ -16,7 +16,7 @@ const FIXTURE_ROOT: &str = "tests/fixtures";
 fn scan(search_paths: &[&str]) -> Vec<Package> {
     let vfs = StdVfs::new(FIXTURE_ROOT);
     let paths: Vec<String> = search_paths.iter().map(|p| (*p).to_owned()).collect();
-    block_on(scan_packages(&vfs, &paths))
+    block_on(scan_packages(&vfs, &paths)).packages
 }
 
 fn ids(packages: &[Package]) -> Vec<&str> {
@@ -129,7 +129,7 @@ fn a_symlinked_package_directory_is_found_like_a_real_one() {
     std::os::unix::fs::symlink(&real_package, search_dir.join("core")).expect("create the symlink");
 
     let vfs = StdVfs::new(&root);
-    let packages = block_on(scan_packages(&vfs, &["search".to_owned()]));
+    let packages = block_on(scan_packages(&vfs, &["search".to_owned()])).packages;
 
     assert_eq!(ids(&packages), ["core"]);
 }
