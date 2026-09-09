@@ -1,0 +1,34 @@
+crates/ename_asset_package/tests/fixtures/ordered/mods/apple/manifest.toml
+  s_0f4b9c9cb12bff::t_e0f192cc00fe41 1-7
+crates/ename_asset_content/src/index.rs
+  s_0f4b9c9cb12bff::t_9cc2984419be18 121,149,172,197
+crates/ename_asset_package/tests/fixtures/ordered/base/core/manifest.toml
+  s_0f4b9c9cb12bff::t_e0f192cc00fe41 1-6
+crates/ename_asset_package/tests/fixtures/ordered/mods/zebra/manifest.toml
+  s_0f4b9c9cb12bff::t_e0f192cc00fe41 1-7
+crates/ename_asset_package/tests/package_scan.rs
+  s_0f4b9c9cb12bff::t_cd966666da9279 8
+  s_0f4b9c9cb12bff::t_d597c330887f9e 202-207,211-263
+  s_0f4b9c9cb12bff::t_7fa569058172c7 26
+crates/ename_asset_package/src/scan.rs
+  s_0f4b9c9cb12bff::t_d140cdfc95e5b8 15-16,18
+  s_0f4b9c9cb12bff::t_50e60edd9333a9 49-50,52-53,55-56,59-60,65-68,74-82,85,87,90-92
+crates/ename_asset_content/src/lib.rs
+  s_0f4b9c9cb12bff::t_eefd7f739d70c0 27,121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "1510c6af9e81e0bb542f88581194cc2d03c1f3e7",
+  "prompts": {},
+  "sessions": {
+    "s_0f4b9c9cb12bff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "441d9b46-9ba6-4f00-9467-d20ca2e54726",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
