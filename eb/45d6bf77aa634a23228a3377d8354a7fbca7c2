@@ -1,0 +1,20 @@
+crates/ename_asset_package/src/rules.rs
+  s_c45b82c2f785ea::t_0a8b7d3d4a63cc 257-291
+  s_c45b82c2f785ea::t_40a288c1a96fc0 116,119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "eb45d6bf77aa634a23228a3377d8354a7fbca7c2",
+  "prompts": {},
+  "sessions": {
+    "s_c45b82c2f785ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5dd5165d-54f5-457d-9db3-376ee8a2e5cd",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
