@@ -79,7 +79,7 @@ await an index only the scan can fill, and hang.
 
 An asset's alias comes from a file, never from a list. `_rules.toml` names a whole folder with one
 template -- `alias = "core::{stem}"` -- and inherits into the folders under it, with the nearest
-rule winning outright rather than merging. A `airship.glb.alias` sidecar beside one asset overrides
+rule winning outright rather than merging. An `airship.glb.alias` sidecar beside one asset overrides
 that with a hand-chosen name, carries the guid tooling tracks the file by, and says with
 `alias_origin` whether a human chose the name or tooling derived it, which is what decides whether
 tooling may ever rewrite it. Claiming an alias another package already has *is* the override; there
@@ -94,9 +94,11 @@ an extension nobody else claims; its contents are TOML.
 is a mistake. `manifest.toml` does not: a mod is written by a third party against whatever version
 of the game they had, and one carrying a key from a later version must still load.
 
-Nothing fails a scan. A missing search path, an unreadable directory, an unparseable manifest, a
-`.alias` naming a file that is not there: each is recorded as a problem and skipped, so one broken
-mod costs that mod and nothing else. `ename_asset_content` mirrors the finished scan into
+Nothing fails a scan. An unreadable directory, an unparseable manifest, a `.alias` naming a file
+that is not there: each is recorded as a problem and skipped, so one broken mod costs that mod and
+nothing else. A missing search path is not one of those: a target may list a `mods` directory a
+fresh install has not created, so that case is logged and passed over without being anybody's
+fault. `ename_asset_content` mirrors the finished scan into
 `Res<ContentIndex>` and `Res<ContentReport>` for the editor and the log. Those are copies, for
 inspection -- the reader resolves through the `OnceCell` it was built with, because an
 `AssetReader` cannot reach a resource.

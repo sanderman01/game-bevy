@@ -1,10 +1,12 @@
 //! Walking the search paths, reading every manifest found, and discovering the assets inside each
 //! package.
 //!
-//! Nothing here fails the scan. A missing search path, an unreadable directory, an unparseable
-//! manifest, a broken sidecar: each is recorded as a [`Problem`] and skipped, so one broken mod
-//! costs that mod and nothing else. The problem list is the point -- "why is my asset not
-//! showing up" is the question this system exists to answer.
+//! Nothing here fails the scan. An unreadable directory, an unparseable manifest, a broken
+//! sidecar: each is recorded as a [`Problem`] and skipped, so one broken mod costs that mod and
+//! nothing else. The problem list is the point -- "why is my asset not showing up" is the
+//! question this system exists to answer. A missing search path is not a problem at all: a target
+//! may list a `mods` directory a fresh install has not created, so that case is logged and passed
+//! over without touching the list.
 //!
 //! `after`/`before`/`requires` ordering, the user constraint file and cross-package contested
 //! aliases are phase 3. Packages are ordered by search path and then directory name, which is the
