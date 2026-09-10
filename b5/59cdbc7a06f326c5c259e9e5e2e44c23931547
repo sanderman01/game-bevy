@@ -1,0 +1,19 @@
+crates/ename_asset_content/src/lib.rs
+  s_0f4b9c9cb12bff::t_ddb89c282dd1fc 8-12,15-17,32,186-187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b559cdbc7a06f326c5c259e9e5e2e44c23931547",
+  "prompts": {},
+  "sessions": {
+    "s_0f4b9c9cb12bff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "441d9b46-9ba6-4f00-9467-d20ca2e54726",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
