@@ -1,0 +1,24 @@
+ename_asset_package/tests/fixtures/defaulting/bare/manifest.toml
+  s_083821374aefab::t_7a02b4a19f53b0 1-6
+ename_asset_package/tests/package_scan.rs
+  s_083821374aefab::t_3b85115b05be74 264-277
+  s_083821374aefab::t_a377fb1a38daa8 7
+ename_asset_package/src/scan.rs
+  s_083821374aefab::t_d45a4f0b4e3a20 144-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "62d5a13f71f8731108a943bf7ae1a986fa9dc6b4",
+  "prompts": {},
+  "sessions": {
+    "s_083821374aefab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4cfb6d8a-dde9-4872-beb6-ed9bf7238b48",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
