@@ -25,6 +25,19 @@ An alias comes from a file, never a list.
 
 Claiming an alias another package already has is the override. There is no separate override list.
 
+Every file in a package is a candidate asset, whether or not any folder carries a rule. A
+directory with no `_alias_rules.toml` of its own, and none inherited from a parent, falls back to
+`{package_id}::{stem}` -- the package's id standing in for the missing rule. This is a package
+root's baseline, not a special case: it behaves exactly like a rule an ancestor directory could
+have written, so a real `_alias_rules.toml` anywhere in the tree still replaces it outright, and an
+`.alias` sidecar still wins over both. A package needs no `_alias_rules.toml` at all to have every
+one of its files addressable.
+
+The fallback needs a package id, so it applies only where a package supplies one --
+`ename_asset_package`'s scan, and so `ename_fix`. A bare `_alias_rules.toml`-driven tree with no
+packages at all (`AliasScanPlugin` on its own) keeps the old rule: no rule covering a file, no
+alias, same as `ename_asset_alias` has always behaved with nothing else on top of it.
+
 ## Resolving without an extension
 
 An alias carries no file extension. `AssetLoaders::find` normally picks a loader by extension, and
