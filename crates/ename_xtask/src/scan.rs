@@ -10,7 +10,7 @@ use std::path::Path;
 ///
 /// A missing `load_order_path` reads as no user constraints, same as `LoadOrder::read_from_path`
 /// does for a missing file. Every subcommand in this crate starts here, so `ename_check`,
-/// `ename_list` and `ename_fix` all see exactly the load order a running game would.
+/// `ename_content_list` and `ename_fix` all see exactly the load order a running game would.
 pub(crate) fn scan(
     asset_root: &Path,
     search_paths: &[String],

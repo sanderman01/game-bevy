@@ -19,7 +19,7 @@ pub struct FixSummary {
 /// Scans `asset_root`, then walks every discovered asset and repairs whichever guid is missing.
 ///
 /// Operates on `Scan::packages[].assets`, i.e. after package resolution -- an asset belonging to a
-/// disabled package is left alone, the same as `ename_check` and `ename_list` see it.
+/// disabled package is left alone, the same as `ename_check` and `ename_content_list` see it.
 pub fn fix(
     asset_root: &Path,
     search_paths: &[String],

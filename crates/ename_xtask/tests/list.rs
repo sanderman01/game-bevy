@@ -1,4 +1,4 @@
-//! `ename_list` over real fixture trees.
+//! `ename_content_list` over real fixture trees.
 
 use ename_asset_alias::StdVfs;
 use ename_asset_package::{LoadOrder, build_index, scan_packages};
@@ -42,7 +42,7 @@ fn listing_a_clean_tree_resolves_correct_aliases() {
 #[test]
 fn listing_a_tree_with_problems_includes_those_assets_in_the_index() {
     // `basic` has a MissingGuid problem on crate.png.alias but the asset is still in the index --
-    // `ename_check` fails it, `ename_list` still shows it, and that difference is the whole reason
+    // `ename_check` fails it, `ename_content_list` still shows it, and that difference is the whole reason
     // the two are separate commands.
     let root = fixture("basic");
     let search_paths = vec!["basegame".to_owned()];

@@ -1,4 +1,4 @@
-//! `ename_list` -- dumps the resolved alias index.
+//! `ename_content_list` -- dumps the resolved alias index.
 
 use ename_asset_package::build_index;
 use std::path::Path;

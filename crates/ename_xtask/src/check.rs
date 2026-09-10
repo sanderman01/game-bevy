@@ -9,7 +9,7 @@ use std::path::Path;
 /// working -- but this is the CI gate, not the game's own tolerant scan: every problem
 /// `build_index` found and every alias two packages both claimed fail it, because "does this
 /// repo's content check out clean" is a question CI should never answer with a guess about which
-/// contest was deliberate. Confirming an intentional override is what `ename_list` is for.
+/// contest was deliberate. Confirming an intentional override is what `ename_content_list` is for.
 pub fn check(asset_root: &Path, search_paths: &[String], load_order_path: Option<&Path>) -> bool {
     let scan = crate::scan::scan(asset_root, search_paths, load_order_path);
     let (_, report) = build_index(&scan);

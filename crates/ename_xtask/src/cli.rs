@@ -16,7 +16,7 @@ pub enum Command {
     Fix,
     /// `ename_content_build` -- stub. Will bake `content-index.ron` for a shipping build.
     ContentBuild,
-    /// `ename_list` -- dumps the resolved alias index.
+    /// `ename_content_list` -- dumps the resolved alias index.
     List,
     /// `ename_mv <from> <to>` -- moves an asset and its `.meta`/`.alias` sidecars.
     Mv { from: PathBuf, to: PathBuf },
@@ -35,7 +35,7 @@ impl Display for CliError {
         match self {
             Self::NoCommand => write!(
                 f,
-                "usage: cargo xtask <ename_check|ename_fix|ename_content_build|ename_list|ename_mv <from> <to>>"
+                "usage: cargo xtask <ename_check|ename_fix|ename_content_build|ename_content_list|ename_mv <from> <to>>"
             ),
             Self::Unknown(name) => write!(f, "unknown subcommand `{name}`"),
             Self::MvNeedsTwoPaths => write!(f, "ename_mv needs a <from> and a <to> path"),
@@ -50,7 +50,7 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Command, CliError
         "ename_check" => Ok(Command::Check),
         "ename_fix" => Ok(Command::Fix),
         "ename_content_build" => Ok(Command::ContentBuild),
-        "ename_list" => Ok(Command::List),
+        "ename_content_list" => Ok(Command::List),
         "ename_mv" => {
             let from = args.next().ok_or(CliError::MvNeedsTwoPaths)?;
             let to = args.next().ok_or(CliError::MvNeedsTwoPaths)?;
@@ -83,7 +83,7 @@ mod tests {
             parse(args(&["ename_content_build"])),
             Ok(Command::ContentBuild)
         );
-        assert_eq!(parse(args(&["ename_list"])), Ok(Command::List));
+        assert_eq!(parse(args(&["ename_content_list"])), Ok(Command::List));
     }
 
     #[test]

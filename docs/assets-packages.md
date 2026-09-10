@@ -93,7 +93,7 @@ reports matches what the game would load. Run it via the `xtask` cargo alias:
 - `cargo xtask ename_check` -- exits non-zero if the content tree has a problem or a contested
   alias; the thing to run in CI.
 - `cargo xtask ename_fix` -- writes missing `.alias` files and assigns missing guids.
-- `cargo xtask ename_list` -- dumps the resolved alias index.
+- `cargo xtask ename_content_list` -- dumps the resolved alias index.
 - `cargo xtask ename_mv <from> <to>` -- moves an asset and its `.meta`/`.alias` sidecars together,
   using `git mv` where possible so history follows the rename.
 - `cargo xtask ename_content_build` -- stub; will bake `content-index.ron` for a shipping build.
