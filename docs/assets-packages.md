@@ -43,8 +43,7 @@ A cycle in `after`/`before` disables every package in it and reports each one by
 would let one broken mod take down the whole session; breaking the cycle with a tiebreaker would
 pick an order nobody asked for. A package that only depends on something in a cycle is disabled
 too, under its own reason, so its author isn't sent looking at a cycle their package isn't part of.
-`ename_check` (phase 4) turns the same problem into a non-zero exit, the hard error the spec asks
-for.
+`ename_check` scans for these problems.
 
 ## User overrides
 
@@ -63,7 +62,7 @@ one isn't a problem.
 
 ## Load order
 
-Load order is Kahn's algorithm over those edges. The ready-set tiebreaker is the phase 2 order:
+Load order is Kahn's algorithm over those edges. The ready-set tiebreaker is the baseline order:
 search path as the target listed it, then directory name. An unconstrained set comes out exactly as
 it went in; the baseline settles every tie the constraints leave open.
 
@@ -98,9 +97,3 @@ reports matches what the game would load. Run it via the `xtask` cargo alias:
 - `cargo xtask ename_mv <from> <to>` -- moves an asset and its `.meta`/`.alias` sidecars together,
   using `git mv` where possible so history follows the rename.
 - `cargo xtask ename_content_build` -- stub; will bake `content-index.ron` for a shipping build.
-
-## Further reading
-
-The full design, including the `ename_xtask` tooling phase 4 adds -- `ename_check`, `ename_fix`,
-`ename_list`, `ename_mv`, and the stubbed `ename_content_build` -- is in
-`scratch/content-addressing-design.md`.
