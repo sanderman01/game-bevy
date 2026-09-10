@@ -38,7 +38,9 @@ egui_dock = "0.19"
 # consumer that wants the `alias://` source and the scan plugin asks for `features = ["bevy"]`.
 ename_asset_alias = { path = "crates/ename_asset_alias", version = "0.0.0", default-features = false }
 ename_asset_content = { path = "crates/ename_asset_content", version = "0.0.0" }
-ename_asset_package = { path = "crates/ename_asset_package", version = "0.0.0" }
+# `default-features = false` here for the same reason as `ename_asset_alias` above:
+# `ename_xtask` needs it without Bevy. `ename_asset_content` asks for `features = ["bevy"]`.
+ename_asset_package = { path = "crates/ename_asset_package", version = "0.0.0", default-features = false }
 ename_editor = { path = "crates/ename_editor", version = "0.0.0" }
 ename_engine = { path = "crates/ename_engine", version = "0.0.0" }
 ename_game = { path = "crates/ename_game", version = "0.0.0" }

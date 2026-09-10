@@ -7,8 +7,11 @@ authors.workspace = true
 license.workspace = true
 description = "Command line tooling for the content pipeline: check, fix, list, move."
 
-# No [dependencies] yet -- `cargo machete` fails a commit that declares one nothing uses. Task 2
-# adds dirs, the two asset crates and futures-lite; Task 5 adds toml and uuid.
+[dependencies]
+dirs = { workspace = true }
+ename_asset_alias = { workspace = true, default-features = false }
+ename_asset_package = { workspace = true, default-features = false }
+futures-lite = { workspace = true }
 
 [lints]
 workspace = true

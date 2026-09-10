@@ -1,0 +1,8 @@
+[package]
+id = "bigships"
+version = "1.0.0"
+authors = ["Test"]
+title = "Bigger Ships"
+description = "Overrides core::airship to create a contest."
+after = ["core"]
+overrides = ["core"]

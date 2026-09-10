@@ -3076,6 +3076,12 @@ dependencies = [
 [[package]]
 name = "ename_xtask"
 version = "0.0.0"
+dependencies = [
+ "dirs",
+ "ename_asset_alias",
+ "ename_asset_package",
+ "futures-lite",
+]
 
 [[package]]
 name = "encase"

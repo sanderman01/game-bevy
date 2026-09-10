@@ -1,0 +1,6 @@
+[package]
+id = "core"
+version = "1.0.0"
+authors = ["Test"]
+title = "Core"
+description = "Fixture package for ename_xtask tests."

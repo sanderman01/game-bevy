@@ -1,19 +1,33 @@
 //! `ename_xtask` -- the command line tool for this workspace's content pipeline.
 //! Run through the `xtask` cargo alias: `cargo xtask <subcommand>` (see `.cargo/config.toml`).
 
-use ename_xtask::cli;
+use ename_xtask::{check, cli, policy};
+use std::path::Path;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    match cli::parse(std::env::args().skip(1)) {
-        Ok(command) => {
-            // Each subcommand below replaces one arm of this match, one task at a time.
-            println!("{command:?} (not wired up yet)");
-            ExitCode::SUCCESS
-        }
+    let command = match cli::parse(std::env::args().skip(1)) {
+        Ok(command) => command,
         Err(err) => {
             eprintln!("{err}");
-            ExitCode::FAILURE
+            return ExitCode::FAILURE;
+        }
+    };
+
+    match command {
+        cli::Command::Check => {
+            let asset_root = Path::new(policy::ASSET_ROOT);
+            let search_paths = policy::search_paths();
+            let load_order_path = policy::load_order_path();
+            if check::check(asset_root, &search_paths, load_order_path.as_deref()) {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+        other => {
+            println!("{other:?} (not wired up yet)");
+            ExitCode::SUCCESS
         }
     }
 }

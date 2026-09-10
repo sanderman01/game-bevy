@@ -10,7 +10,7 @@ license.workspace = true
 async-lock.workspace = true
 bevy.workspace = true
 ename_asset_alias = { workspace = true, features = ["bevy"] }
-ename_asset_package.workspace = true
+ename_asset_package = { workspace = true, features = ["bevy"] }
 
 [lints]
 workspace = true
