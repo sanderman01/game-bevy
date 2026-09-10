@@ -1,0 +1,26 @@
+docs/design.md
+  s_87940b45e321e7::t_e92872eae29b1f 61-65
+  s_87940b45e321e7::t_3b0386811f42ff 60
+  s_87940b45e321e7::t_3ac788097a1648 13-15
+docs/assets-packages.md
+  s_87940b45e321e7::t_965c87e8f5b99a 1-92
+docs/assets-aliases.md
+  s_87940b45e321e7::t_2b22bd1f8dc38e 1-25,27-77
+  s_87940b45e321e7::t_8cef606b979f1d 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dfe634b40e941ec9d46d3f3cb378d9f9ecb9bea9",
+  "prompts": {},
+  "sessions": {
+    "s_87940b45e321e7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfcb655f-6937-45e5-90c1-c4c39332f5b0",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
