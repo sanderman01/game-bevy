@@ -65,6 +65,11 @@ pub fn build_index(scan: &Scan) -> (ContentIndex, ContentReport) {
     // it beat. `ContentIndex` remembers the path but not the package, and the package is the half
     // a report line is about.
     let mut holders: BTreeMap<String, usize> = BTreeMap::new();
+    // Everyone who has ever held each alias, kept beside `holders` rather than folded into it
+    // because the two answer different questions. Who holds it *now* is who a contest names as the
+    // loser; who has held it is what an `overrides` declaration is judged against. A `removes`
+    // clears the first and leaves the second alone: the override still happened.
+    let mut claimants: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
 
     for (i, package) in scan.packages.iter().enumerate() {
         let info = &package.manifest.package;
@@ -78,7 +83,10 @@ pub fn build_index(scan: &Scan) -> (ContentIndex, ContentReport) {
                 holders.remove(alias);
                 info!("  -- {alias:24} removed by {}", info.id);
             } else {
-                let detail = format!("{} removes `{alias}`, which no package provides", info.id);
+                let detail = format!(
+                    "{} removes `{alias}`, which no package before it provides",
+                    info.id
+                );
                 warn!("  !! {detail}");
                 report.problems.push(Problem {
                     path: package.root.clone(),
@@ -89,21 +97,39 @@ pub fn build_index(scan: &Scan) -> (ContentIndex, ContentReport) {
         }
 
         let mut aliases = 0;
-        // A set, so overriding six of one package's aliases is one statement about that package
-        // rather than six copies of the same warning.
+        // Sets, so overriding six of one package's aliases is one statement about that package
+        // rather than six copies of the same warning. `overridden` is every package this one took
+        // an alias from; `undeclared` is the subset it took one from without saying so.
         let mut overridden: BTreeSet<String> = BTreeSet::new();
+        let mut undeclared: BTreeSet<String> = BTreeSet::new();
         for asset in &package.assets {
             match index.insert(&asset.alias, &asset.path) {
-                Ok(previous) => {
+                Ok(_) => {
                     aliases += 1;
-                    if previous.is_some()
-                        && let Some(&holder) = holders.get(&asset.alias)
+                    if let Some(&holder) = holders.get(&asset.alias)
                         && holder != i
                     {
-                        let loser = &scan.packages[holder];
-                        overridden.insert(loser.manifest.package.id.clone());
                         report.contests.push(contest(scan, &asset.alias, i, holder));
                     }
+
+                    let claimed = claimants.entry(asset.alias.clone()).or_default();
+                    let previous: Vec<&str> = claimed
+                        .iter()
+                        .filter(|held| **held != i)
+                        .map(|held| scan.packages[*held].manifest.package.id.as_str())
+                        .collect();
+                    // Intent is judged per alias. Naming any of an alias's previous holders says
+                    // this package meant to take that alias; a third mod that happened to touch it
+                    // first does not make the declaration dishonest, and warning about it would
+                    // fire on correctly written manifests as soon as two mods change one thing.
+                    if !previous
+                        .iter()
+                        .any(|id| info.overrides.iter().any(|declared| declared == id))
+                    {
+                        undeclared.extend(previous.iter().map(|id| (*id).to_owned()));
+                    }
+                    overridden.extend(previous.iter().map(|id| (*id).to_owned()));
+                    claimed.insert(i);
                     holders.insert(asset.alias.clone(), i);
                 }
                 Err(err) => {
@@ -120,19 +146,17 @@ pub fn build_index(scan: &Scan) -> (ContentIndex, ContentReport) {
         // Intent, both ways round: a collision this package never declared, and a declaration that
         // collided with nothing. The second is what catches a misspelled alias, which is otherwise
         // completely silent -- the alias is valid, it simply names nobody.
-        for id in &overridden {
-            if !info.overrides.contains(id) {
-                let detail = format!(
-                    "{} overrides an alias of `{id}` without naming it in `overrides`",
-                    info.id
-                );
-                warn!("  !! {detail}");
-                report.problems.push(Problem {
-                    path: package.root.clone(),
-                    kind: ProblemKind::UndeclaredOverride,
-                    detail,
-                });
-            }
+        for id in &undeclared {
+            let detail = format!(
+                "{} overrides an alias of `{id}` without naming it in `overrides`",
+                info.id
+            );
+            warn!("  !! {detail}");
+            report.problems.push(Problem {
+                path: package.root.clone(),
+                kind: ProblemKind::UndeclaredOverride,
+                detail,
+            });
         }
         for id in &info.overrides {
             if !overridden.contains(id) {

@@ -10,7 +10,7 @@ use ename_asset_package::{
     ContestReason, DisableReason, DiscoveredAsset, LoadOrder, Manifest, Package, ProblemKind, Scan,
     Tiebreak, Version, build_index, resolve,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Builds a package with the given id and constraint fields. `extra` is TOML appended to the
 /// `[package]` table, so a test reads like the manifest an author would write.
@@ -580,5 +580,90 @@ fn a_cycle_the_user_closed_names_their_load_order() {
         cycle.detail.contains("a after core [a's manifest]"),
         "the manifest edges are named with their source too: {}",
         cycle.detail
+    );
+}
+
+/// A third mod touching the same alias must not turn an honest `overrides` into two warnings. The
+/// declaration is about `core`, `bigships` really does take one of core's aliases, and `apple`
+/// getting in between is the user's install rather than anything bigships wrote.
+#[test]
+fn a_third_claimant_does_not_make_a_declared_override_dishonest() {
+    let scan = scan_of(
+        vec![
+            claiming(package("base", "core", ""), &["core::airship"]),
+            claiming(package("mods", "apple", ""), &["core::airship"]),
+            claiming(
+                package(
+                    "mods",
+                    "bigships",
+                    r#"after = ["core"]
+                    overrides = ["core"]"#,
+                ),
+                &["core::airship"],
+            ),
+        ],
+        &LoadOrder::default(),
+    );
+    let (_, report) = build_index(&scan);
+
+    assert!(
+        report
+            .problems
+            .iter()
+            .all(|p| p.path != Path::new("mods/bigships")),
+        "bigships wrote a correct manifest: {:?}",
+        report.problems
+    );
+    // apple is the one that took an alias without saying so, and it still hears about it.
+    assert!(
+        report
+            .problems
+            .iter()
+            .any(|p| p.kind == ProblemKind::UndeclaredOverride
+                && p.path == Path::new("mods/apple")),
+        "{:?}",
+        report.problems
+    );
+
+    let contests: Vec<(&str, &str)> = report
+        .contests
+        .iter()
+        .map(|c| (c.winner.id.as_str(), c.loser.id.as_str()))
+        .collect();
+    assert_eq!(contests, [("apple", "core"), ("bigships", "apple")]);
+}
+
+/// Removing an alias and claiming it back is one package replacing another's asset, so
+/// `overrides` naming that other package is honest and must not be called dead.
+#[test]
+fn removing_an_alias_and_claiming_it_back_is_a_declared_override() {
+    let scan = scan_of(
+        vec![
+            claiming(package("base", "core", ""), &["core::hull"]),
+            claiming(
+                package(
+                    "mods",
+                    "bigships",
+                    r#"after = ["core"]
+                    overrides = ["core"]
+                    removes = ["core::hull"]"#,
+                ),
+                &["core::hull"],
+            ),
+        ],
+        &LoadOrder::default(),
+    );
+    let (index, report) = build_index(&scan);
+
+    assert!(
+        index
+            .resolve("core::hull")
+            .unwrap()
+            .starts_with("mods/bigships")
+    );
+    assert!(
+        report.problems.is_empty(),
+        "the override is declared and the removal hit something: {:?}",
+        report.problems
     );
 }
