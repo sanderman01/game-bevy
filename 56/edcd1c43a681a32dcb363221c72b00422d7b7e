@@ -1,0 +1,75 @@
+crates/ename_xtask/tests/fixtures/clean/basegame/core/ships/airship.glb
+  s_4e07d3b1571b5a::t_d6fac4f53b7326 1
+crates/ename_xtask/tests/check.rs
+  s_4e07d3b1571b5a::t_b10f162a6079c4 1-32
+crates/ename_asset_content/Cargo.toml
+  s_4e07d3b1571b5a::t_35f60b8fae840d 13
+crates/ename_xtask/tests/fixtures/clean/basegame/core/manifest.toml
+  s_4e07d3b1571b5a::t_8ec7d11844dd9a 1-6
+crates/ename_xtask/tests/fixtures/contest/basegame/core/ships/airship.glb
+  s_4e07d3b1571b5a::t_98716eb4fb1fe7 1
+crates/ename_xtask/Cargo.toml
+  s_4e07d3b1571b5a::t_9caf060bd4c7bf 10-14
+crates/ename_xtask/src/policy.rs
+  s_4e07d3b1571b5a::t_c767267d1a84e6 1-33
+Cargo.toml
+  s_4e07d3b1571b5a::t_5c8fdf8dca929f 41-43
+crates/ename_xtask/tests/fixtures/basic/basegame/core/props/barrel.png
+  s_4e07d3b1571b5a::t_ff8a98727cdaa7 1
+crates/ename_xtask/tests/fixtures/basic/basegame/core/ships/airship.glb
+  s_4e07d3b1571b5a::t_defb12e2add741 1
+crates/ename_xtask/src/scan.rs
+  s_4e07d3b1571b5a::t_a22bd1c501ca58 1-41
+crates/ename_xtask/tests/fixtures/basic/basegame/core/props/crate.png
+  s_4e07d3b1571b5a::t_7647f0cfb7b6c6 1
+crates/ename_xtask/tests/fixtures/contest/mods/bigships/manifest.toml
+  s_4e07d3b1571b5a::t_8c51a12f226ad6 1-8
+crates/ename_xtask/tests/fixtures/contest/mods/bigships/airship.glb.alias
+  s_4e07d3b1571b5a::t_d84920a65a6210 1-3
+crates/ename_xtask/tests/fixtures/basic/basegame/core/props/_alias_rules.toml
+  s_4e07d3b1571b5a::t_281da0a5a06c84 1
+crates/ename_xtask/tests/fixtures/contest/basegame/core/ships/airship.glb.alias
+  s_4e07d3b1571b5a::t_628daf1237d932 1-3
+crates/ename_xtask/tests/fixtures/basic/basegame/core/ships/airship.glb.alias
+  s_4e07d3b1571b5a::t_a485659f275921 1-3
+crates/ename_xtask/tests/fixtures/clean/basegame/core/ships/airship.glb.alias
+  s_4e07d3b1571b5a::t_42dff402006c70 1-3
+crates/ename_xtask/tests/fixtures/contest/basegame/core/manifest.toml
+  s_4e07d3b1571b5a::t_80e0acc5053ee9 1-6
+crates/ename_xtask/tests/fixtures/contest/mods/bigships/airship.glb
+  s_4e07d3b1571b5a::t_e486a2515e832d 1
+crates/ename_xtask/src/main.rs
+  s_4e07d3b1571b5a::t_1b5b61ae82d3c1 4-5,9-10,13-30
+crates/ename_xtask/tests/fixtures/basic/basegame/core/props/crate.png.alias
+  s_4e07d3b1571b5a::t_9c0eaf16f5da38 1-2
+crates/ename_xtask/tests/fixtures/basic/basegame/core/manifest.toml
+  s_4e07d3b1571b5a::t_c03063ea2a6d01 1-6
+crates/ename_xtask/src/check.rs
+  s_4e07d3b1571b5a::t_38e20ea9e6f759 1-42
+Cargo.lock
+  s_5db8d6d8d8aae7::t_ed4db2e7f2d3e8 3079-3084
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "56edcd1c43a681a32dcb363221c72b00422d7b7e",
+  "prompts": {},
+  "sessions": {
+    "s_4e07d3b1571b5a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21e8f394-8f46-4c88-acd7-91ef4aed2296",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_5db8d6d8d8aae7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-af4c345a06709fc36",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
