@@ -1,0 +1,28 @@
+ename_asset_alias/tests/asset_discovery.rs
+  s_083821374aefab::t_e3eabffde42dad 19-22,35-39
+  s_083821374aefab::t_30212385543162 40,422-470,475-480
+  s_083821374aefab::t_f4f6b2c27cf017 23-28,347-352,414-419,471-474
+  s_083821374aefab::t_b0ded629a8b0d9 41
+ename_asset_alias/src/discovery.rs
+  s_083821374aefab::t_5f3821f4668f97 163-176,178-188,195-202
+  s_083821374aefab::t_f4f6b2c27cf017 203-204
+  s_083821374aefab::t_0650570544c3d5 205-206
+ename_asset_alias/src/scan_plugin.rs
+  s_083821374aefab::t_54ed41a1b0c858 137-139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "19b8c12e6e2e2411793f396870d816d0bb123aac",
+  "prompts": {},
+  "sessions": {
+    "s_083821374aefab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4cfb6d8a-dde9-4872-beb6-ed9bf7238b48",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
