@@ -1,0 +1,33 @@
+docs/design/crate-layout.md
+  s_4e07d3b1571b5a::t_14f60cd0b720ba 37-41
+crates/ename_xtask/tests/fix.rs
+  s_4e07d3b1571b5a::t_892fd8d6c10e76 54-98
+crates/ename_xtask/src/main.rs
+  s_4e07d3b1571b5a::t_07812de72083e6 45-46,48-52
+crates/ename_xtask/src/mv.rs
+  s_4e07d3b1571b5a::t_05e62c8339717a 119-122,128-129
+  s_4e07d3b1571b5a::t_f9cfc01b55124e 58-73,81,83-84
+docs/assets-packages.md
+  s_4e07d3b1571b5a::t_e9471f4173b7a3 89-101
+crates/ename_xtask/src/fix.rs
+  s_4e07d3b1571b5a::t_45bf6c3be81104 64-70,82-88,92,97,102
+  s_4e07d3b1571b5a::t_b22952a3fd87a3 14-16
+crates/ename_xtask/tests/mv.rs
+  s_4e07d3b1571b5a::t_cba324e0af3262 125-211
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "35d4d7a23b129c291c841b5ec36e84ae64c9f7d1",
+  "prompts": {},
+  "sessions": {
+    "s_4e07d3b1571b5a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21e8f394-8f46-4c88-acd7-91ef4aed2296",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
