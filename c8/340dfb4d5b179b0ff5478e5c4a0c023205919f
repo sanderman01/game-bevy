@@ -1,0 +1,31 @@
+crates/ename_xtask/src/check.rs
+  s_32c273459e975c::t_885485f508c17b 12
+crates/ename_xtask/src/cli.rs
+  s_32c273459e975c::t_885485f508c17b 19,38,53,86
+docs/assets-packages.md
+  s_32c273459e975c::t_885485f508c17b 96
+crates/ename_xtask/tests/list.rs
+  s_32c273459e975c::t_885485f508c17b 1,45
+crates/ename_xtask/src/fix.rs
+  s_32c273459e975c::t_885485f508c17b 22
+crates/ename_xtask/src/list.rs
+  s_32c273459e975c::t_885485f508c17b 1
+crates/ename_xtask/src/scan.rs
+  s_32c273459e975c::t_885485f508c17b 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c8340dfb4d5b179b0ff5478e5c4a0c023205919f",
+  "prompts": {},
+  "sessions": {
+    "s_32c273459e975c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5bff54da-cf9d-48bf-9058-1f07a0e5f297",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
