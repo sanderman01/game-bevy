@@ -1,0 +1,19 @@
+Cargo.toml
+  s_daba3de052c927::t_274db4c3c71a27 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "887d285ea7a0ef6abcb50e7394fa06305fb31bbe",
+  "prompts": {},
+  "sessions": {
+    "s_daba3de052c927": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ec27c77-7ff9-4d02-a818-0fc1e82051c5",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
