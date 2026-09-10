@@ -1,0 +1,25 @@
+docs/assets-packages.md
+  s_4e07d3b1571b5a::t_eb296a82e337b5 46-47
+  s_4e07d3b1571b5a::t_ba8cbc6b45a01f 91-92
+docs/design/crate-layout.md
+  s_4e07d3b1571b5a::t_70bb6d6c81afa3 11
+  s_4e07d3b1571b5a::t_f7a1cec5ca6064 33
+  s_4e07d3b1571b5a::t_3adb3b91151cae 34
+  s_4e07d3b1571b5a::t_244762f01595b1 37-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1f523909b7fae99909378d002bcfcdd466327413",
+  "prompts": {},
+  "sessions": {
+    "s_4e07d3b1571b5a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21e8f394-8f46-4c88-acd7-91ef4aed2296",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": null
+    }
+  }
+}
