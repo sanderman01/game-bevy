@@ -1,0 +1,21 @@
+ename_xtask/tests/fix.rs
+  s_083821374aefab::t_45ba74a6a026b2 114-140
+ename_xtask/tests/fixtures/no_rules/basegame/core/manifest.toml
+  s_083821374aefab::t_9277746ba12743 1-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c3e57e0bf8d974b4d0a963bfc03bcdae77c819c2",
+  "prompts": {},
+  "sessions": {
+    "s_083821374aefab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4cfb6d8a-dde9-4872-beb6-ed9bf7238b48",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
