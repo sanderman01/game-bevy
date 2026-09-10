@@ -1,0 +1,14 @@
+docs/conventions.md
+  h_72decab43bbb75 1-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dd77ad8cb6a6a091b87daac932d255d90da0767c",
+  "prompts": {},
+  "humans": {
+    "h_72decab43bbb75": {
+      "author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
