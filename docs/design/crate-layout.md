@@ -8,7 +8,7 @@ The long-form analysis behind this is in `scratch/crate-structure-review.md`.
 
 Project codename is `ename`. Every crate is prefixed with it: `ename_engine`, `ename_asset_alias`,
 `ename_asset_package`, `ename_asset_content`, `ename_editor`, `ename_game`, `ename_game_editor`,
-and the binary crate `ename`. Bare names like
+`ename_xtask`, and the binary crate `ename`. Bare names like
 `engine` and `editor` collide with anything and resolve independently once there is more than one
 workspace.
 
@@ -30,10 +30,16 @@ ename_asset_alias    -> async-lock, serde, toml, glob, uuid, thiserror   (no fir
                         + bevy, behind the default `bevy` feature
 
 ename_mcp (bin)      -> rmcp, reqwest, tokio, serde_json  (no first-party deps, no bevy)
+ename_xtask (bin)    -> ename_asset_alias, ename_asset_package, dirs, futures-lite, toml, uuid
+                        (no bevy; no other first-party crate)
 ```
 
-`ename_mcp` hangs off the bottom with no arrow to anything because it is not a layer. It is a
-separate process that talks to the game over a socket. See [agent tooling](agent-tooling.md).
+`ename_mcp` and `ename_xtask` hang off the bottom with no arrow to anything because
+they are not layers. `ename_mcp` is a separate process that talks to the game over a
+socket. See [agent tooling](agent-tooling.md). `ename_xtask` sits beside it as a
+second standalone tool, not a layer: it reads the two bottom asset crates with
+`StdVfs` the same way the running game's scan does, and `scripts/check-layers.sh`
+enforces that it names nothing above them.
 
 Dependencies point down only. Nothing points sideways between the asset crates and `ename_editor`,
 and nothing points up. There is no `core`, `common`, or `shared` crate on the release path. If a

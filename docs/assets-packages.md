@@ -43,8 +43,8 @@ A cycle in `after`/`before` disables every package in it and reports each one by
 would let one broken mod take down the whole session; breaking the cycle with a tiebreaker would
 pick an order nobody asked for. A package that only depends on something in a cycle is disabled
 too, under its own reason, so its author isn't sent looking at a cycle their package isn't part of.
-`xtask content check` in phase 4 turns the same problem into a non-zero exit, the hard error the
-spec asks for.
+`ename_check` (phase 4) turns the same problem into a non-zero exit, the hard error the spec asks
+for.
 
 ## User overrides
 
@@ -88,5 +88,6 @@ with, because an `AssetReader` can't reach a resource.
 
 ## Further reading
 
-The full design, including the `xtask` tooling phase 4 adds, is in
+The full design, including the `ename_xtask` tooling phase 4 adds -- `ename_check`, `ename_fix`,
+`ename_list`, `ename_mv`, and the stubbed `ename_content_build` -- is in
 `scratch/content-addressing-design.md`.
