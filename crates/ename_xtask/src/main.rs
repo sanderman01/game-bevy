@@ -1,7 +1,7 @@
 //! `ename_xtask` -- the command line tool for this workspace's content pipeline.
 //! Run through the `xtask` cargo alias: `cargo xtask <subcommand>` (see `.cargo/config.toml`).
 
-use ename_xtask::{check, cli, content_build, fix, list, policy};
+use ename_xtask::{check, cli, content_build, fix, list, mv, policy};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -47,9 +47,22 @@ fn main() -> ExitCode {
             );
             ExitCode::SUCCESS
         }
-        other => {
-            println!("{other:?} (not wired up yet)");
-            ExitCode::SUCCESS
-        }
+        cli::Command::Mv { from, to } => match mv::mv(&from, &to) {
+            Ok(moved) => {
+                for m in &moved {
+                    println!(
+                        "{} {} -> {}",
+                        if m.via_git { "git mv" } else { "mv" },
+                        m.from.display(),
+                        m.to.display()
+                    );
+                }
+                ExitCode::SUCCESS
+            }
+            Err(err) => {
+                eprintln!("ename_mv: {err}");
+                ExitCode::FAILURE
+            }
+        },
     }
 }
