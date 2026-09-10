@@ -134,7 +134,9 @@ fn start_alias_scan(
                 .iter()
                 .map(String::as_str)
                 .collect();
-            let scan = scan_aliases(&vfs, Path::new(&config.root), &ignored).await;
+            // No package id to fall back to here -- a bare, package-less scan keeps its old
+            // rule: no `_alias_rules.toml` covering a file, no alias.
+            let scan = scan_aliases(&vfs, Path::new(&config.root), &ignored, None).await;
 
             info!(
                 "Found {} aliases, {} problems",

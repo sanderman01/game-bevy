@@ -160,13 +160,48 @@ impl AliasScan {
 /// `ename_asset_package` passes `manifest.toml`. `_alias_rules.toml`, `*.alias` and `*.meta` are
 /// always ignored and need not be listed. Every one of those names is matched
 /// case-insensitively, `ignored_file_names` included.
-pub async fn scan_aliases(vfs: &dyn Vfs, root: &Path, ignored_file_names: &[&str]) -> AliasScan {
+///
+/// `default_alias_template` is the alias template a directory falls back to when it has no
+/// `_alias_rules.toml` of its own and inherited none from a parent -- `root` itself, most of the
+/// time. It behaves exactly like a rule written at `root`: a real `_alias_rules.toml` anywhere in
+/// the tree still replaces it outright, and an `.alias` sidecar still wins over both. `None`
+/// means what it always has: a file with no rule and no sidecar is skipped silently. Only a
+/// caller with a package id to fall back to should pass one -- `ename_asset_package` is the one
+/// that does.
+pub async fn scan_aliases(
+    vfs: &dyn Vfs,
+    root: &Path,
+    ignored_file_names: &[&str],
+    default_alias_template: Option<&str>,
+) -> AliasScan {
     let mut walk = Walk::new(vfs, ignored_file_names);
-    walk.visit(root.to_path_buf(), None, 0).await;
+    let default_rules = match default_alias_template {
+        Some(template) => match compile_default_rules(template, root) {
+            Ok(compiled) => Some(compiled),
+            Err(err) => {
+                walk.problems.push(err);
+                None
+            }
+        },
+        None => None,
+    };
+    walk.visit(root.to_path_buf(), default_rules, 0).await;
     AliasScan {
         assets: walk.assets,
         problems: walk.problems,
     }
+}
+
+/// Compiles the synthetic rule [`scan_aliases`] falls back to when nothing else covers `root`. A
+/// bad template is reported the same way a bad `_alias_rules.toml` would be, at `root` since
+/// there is no rule file to point at.
+fn compile_default_rules(template: &str, root: &Path) -> Result<CompiledRules, Problem> {
+    let rules = Rules {
+        alias: Some(template.to_owned()),
+        ..Rules::default()
+    };
+    CompiledRules::compile(rules, root)
+        .map_err(|err| problem(root, ProblemKind::UnparseableRules, err))
 }
 
 fn problem(path: &Path, kind: ProblemKind, detail: impl Display) -> Problem {

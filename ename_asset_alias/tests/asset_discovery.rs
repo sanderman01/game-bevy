@@ -16,11 +16,27 @@ use support::FakeVfs;
 const ROOT: &str = "base/core";
 
 fn scan(vfs: &FakeVfs) -> AliasScan {
-    block_on(scan_aliases(vfs, Path::new(ROOT), &[]))
+    scan_with_default(vfs, None)
+}
+
+fn scan_with_default(vfs: &FakeVfs, default_alias_template: Option<&str>) -> AliasScan {
+    block_on(scan_aliases(
+        vfs,
+        Path::new(ROOT),
+        &[],
+        default_alias_template,
+    ))
 }
 
 fn discovered(vfs: &FakeVfs) -> Vec<DiscoveredAsset> {
     scan(vfs).assets
+}
+
+fn discovered_with_default(
+    vfs: &FakeVfs,
+    default_alias_template: Option<&str>,
+) -> Vec<DiscoveredAsset> {
+    scan_with_default(vfs, default_alias_template).assets
 }
 
 fn aliases(assets: &[DiscoveredAsset]) -> Vec<&str> {
@@ -328,7 +344,12 @@ fn a_caller_can_name_files_the_walk_must_not_treat_as_assets() {
         "nothing is ignored by default beyond the alias layer's own files"
     );
 
-    let scan = block_on(scan_aliases(&vfs, Path::new(ROOT), &["manifest.toml"]));
+    let scan = block_on(scan_aliases(
+        &vfs,
+        Path::new(ROOT),
+        &["manifest.toml"],
+        None,
+    ));
     assert_eq!(aliases(&scan.assets), ["core::airship"]);
 }
 
@@ -390,6 +411,70 @@ fn an_ignored_file_name_is_matched_case_insensitively() {
         .file("base/core/Manifest.toml", "")
         .file("base/core/airship.glb", "");
 
-    let scan = block_on(scan_aliases(&vfs, Path::new(ROOT), &["manifest.toml"]));
+    let scan = block_on(scan_aliases(
+        &vfs,
+        Path::new(ROOT),
+        &["manifest.toml"],
+        None,
+    ));
     assert_eq!(aliases(&scan.assets), ["core::airship"]);
+}
+
+/// A directory with no rule at all still gets every file named, when the caller supplies a
+/// default template -- the package id standing in for the rule nobody wrote.
+#[test]
+fn a_default_template_covers_a_file_with_no_rule_and_no_sidecar() {
+    let assets = discovered_with_default(
+        &FakeVfs::new()
+            .file("base/core/airship.glb", "")
+            .file("base/core/map.glb", ""),
+        Some("core::{stem}"),
+    );
+
+    assert_eq!(aliases(&assets), ["core::airship", "core::map"]);
+    assert_eq!(
+        assets[0].origin,
+        AliasOrigin::Derived,
+        "the default derived it, so tooling may rewrite it"
+    );
+}
+
+/// The default behaves exactly like a rule written at the root: a real `_alias_rules.toml`
+/// anywhere in the tree still replaces it outright.
+#[test]
+fn an_explicit_rule_still_replaces_the_default() {
+    let assets = discovered_with_default(
+        &FakeVfs::new()
+            .file("base/core/_alias_rules.toml", r#"alias = "other::{stem}""#)
+            .file("base/core/airship.glb", ""),
+        Some("core::{stem}"),
+    );
+
+    assert_eq!(aliases(&assets), ["other::airship"]);
+}
+
+/// The default is the fallback for a subdirectory too, not only the walk's own root.
+#[test]
+fn the_default_inherits_into_a_subdirectory_with_no_rule_of_its_own() {
+    let assets = discovered_with_default(
+        &FakeVfs::new().file("base/core/props/barrel.glb", ""),
+        Some("core::{stem}"),
+    );
+
+    assert_eq!(aliases(&assets), ["core::barrel"]);
+}
+
+/// An `.alias` sidecar still wins over the default, the same as it wins over a real rule.
+#[test]
+fn a_sidecar_alias_still_wins_over_the_default() {
+    let assets = discovered_with_default(
+        &FakeVfs::new().file("base/core/ship_final_v2.glb", "").file(
+            "base/core/ship_final_v2.glb.alias",
+            "guid = \"018f2c00-0000-7000-8000-000000000000\"\nalias = \"core::airship\"\n",
+        ),
+        Some("core::{stem}"),
+    );
+
+    assert_eq!(aliases(&assets), ["core::airship"]);
+    assert_eq!(assets[0].origin, AliasOrigin::Authored);
 }
