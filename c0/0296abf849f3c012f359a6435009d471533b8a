@@ -1,0 +1,23 @@
+ename_asset_alias/tests/asset_discovery.rs
+  s_083821374aefab::t_a904e7c3f4d844 104-105
+ename_asset_alias/src/alias_file.rs
+  s_083821374aefab::t_1ceaa304f70331 34-35
+ename_asset_alias/src/discovery.rs
+  s_083821374aefab::t_5d682d1b881789 357-359
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c00296abf849f3c012f359a6435009d471533b8a",
+  "prompts": {},
+  "sessions": {
+    "s_083821374aefab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4cfb6d8a-dde9-4872-beb6-ed9bf7238b48",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
