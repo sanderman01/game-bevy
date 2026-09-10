@@ -8,13 +8,13 @@ license.workspace = true
 
 [features]
 default = ["bevy"]
-# Bevy's `AssetReader` as a `Vfs`, through `ename_asset_alias`. Off for a command line tool:
-# `ename_xtask` scans the same tree with `StdVfs` and must not link a renderer to do it.
-# This crate has no direct Bevy dependency right now; Task 6 adds one back when `ContentReport`
-# arrives and needs a `Resource` derive.
-bevy = ["ename_asset_alias/bevy"]
+# `Resource` on `ContentReport`, and Bevy's `AssetReader` as a `Vfs` through `ename_asset_alias`.
+# Off for a command line tool: `ename_xtask` scans the same tree with `StdVfs` and must not link a
+# renderer to do it.
+bevy = ["dep:bevy", "ename_asset_alias/bevy"]
 
 [dependencies]
+bevy = { workspace = true, optional = true }
 ename_asset_alias = { workspace = true }
 semver.workspace = true
 serde = { workspace = true, features = ["derive"] }

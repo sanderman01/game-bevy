@@ -80,6 +80,15 @@ pub enum ProblemKind {
     /// rather than logged, because "why did my mod load in that order" is the question the report
     /// exists to answer. Produced by `ename_asset_package`.
     OverruledConstraint,
+    /// A package claimed an alias another package already had, without naming that package in its
+    /// `overrides`. Produced by `ename_asset_package`.
+    UndeclaredOverride,
+    /// An `overrides` entry that never collided with anything. Usually a typo in an alias, which
+    /// is otherwise silent: nothing is wrong with the alias, it just names nobody. Produced by
+    /// `ename_asset_package`.
+    DeadOverride,
+    /// A `removes` entry naming an alias no package provides. Produced by `ename_asset_package`.
+    DeadRemoval,
 }
 
 impl Display for ProblemKind {
@@ -98,6 +107,9 @@ impl Display for ProblemKind {
             Self::UnsatisfiedRequirement => "unsatisfied requirement",
             Self::DependencyCycle => "dependency cycle",
             Self::OverruledConstraint => "constraint overruled by the user",
+            Self::UndeclaredOverride => "undeclared override",
+            Self::DeadOverride => "dead overrides entry",
+            Self::DeadRemoval => "dead removes entry",
         };
         f.write_str(text)
     }

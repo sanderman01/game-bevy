@@ -9,11 +9,15 @@
 //! Its one first-party dependency is `ename_asset_alias`, taken with `default-features = false`,
 //! so a command line tool can link both without a renderer.
 
+mod contest;
+mod index;
 mod load_order;
 mod manifest;
 mod resolve;
 mod scan;
 
+pub use crate::contest::{ContestReason, ContestedAlias, PackageRef, Tiebreak};
+pub use crate::index::{ContentReport, PackageSummary, build_index};
 pub use crate::load_order::{LOAD_ORDER_FILE, LoadOrder, LoadOrderError, UserConstraint};
 pub use crate::manifest::{
     Manifest, PackageIdError, PackageInfo, Requirement, RequirementError, Version, VersionReq,

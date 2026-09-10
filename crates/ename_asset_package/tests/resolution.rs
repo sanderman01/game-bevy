@@ -5,7 +5,11 @@
 //! value out. The tests that prove the same rules survive a real directory tree are in
 //! `package_scan.rs`.
 
-use ename_asset_package::{DisableReason, LoadOrder, Manifest, Package, Version, resolve};
+use ename_asset_alias::AliasOrigin;
+use ename_asset_package::{
+    ContestReason, DisableReason, DiscoveredAsset, LoadOrder, Manifest, Package, ProblemKind, Scan,
+    Tiebreak, Version, build_index, resolve,
+};
 use std::path::PathBuf;
 
 /// Builds a package with the given id and constraint fields. `extra` is TOML appended to the
@@ -304,4 +308,201 @@ fn ordering_is_transitive() {
     let resolution = resolve(&packages, &LoadOrder::default());
     assert!(resolution.edges.ordered("a", "c"));
     assert!(resolution.edges.direct("a", "c").is_none());
+}
+
+/// Attaches assets to a package, so a test can say what it claims.
+fn claiming(mut package: Package, aliases: &[&str]) -> Package {
+    let root = package.root.clone();
+    package.assets = aliases
+        .iter()
+        .map(|alias| DiscoveredAsset {
+            alias: (*alias).to_owned(),
+            path: root.join(format!("{}.txt", alias.replace("::", "_"))),
+            guid: None,
+            origin: AliasOrigin::Derived,
+        })
+        .collect();
+    package
+}
+
+/// Runs the resolver and the fold together, the way `scan_packages` does.
+fn scan_of(packages: Vec<Package>, load_order: &LoadOrder) -> Scan {
+    let resolution = resolve(&packages, load_order);
+    Scan {
+        packages: resolution
+            .order
+            .iter()
+            .map(|i| packages[*i].clone())
+            .collect(),
+        disabled: resolution.disabled,
+        problems: resolution.problems,
+        edges: resolution.edges,
+    }
+}
+
+/// The line worth acting on: nothing relates these two, so the winner came from a tiebreaker
+/// neither author chose.
+#[test]
+fn two_packages_claiming_one_alias_with_nothing_ordering_them_is_unordered() {
+    let scan = scan_of(
+        vec![
+            claiming(package("mods", "apple", ""), &["core::hull"]),
+            claiming(package("mods", "zebra", ""), &["core::hull"]),
+        ],
+        &LoadOrder::default(),
+    );
+    let (index, report) = build_index(&scan);
+
+    assert_eq!(report.contests.len(), 1);
+    let contest = &report.contests[0];
+    assert_eq!(contest.alias, "core::hull");
+    assert_eq!(contest.winner.id, "zebra");
+    assert_eq!(contest.loser.id, "apple");
+    assert!(matches!(
+        contest.reason,
+        ContestReason::Unordered {
+            tiebreak: Tiebreak::DirectoryName { .. }
+        }
+    ));
+    assert!(
+        index
+            .resolve("core::hull")
+            .unwrap()
+            .starts_with("mods/zebra")
+    );
+}
+
+/// When a constraint ordered them, the report says so and names it, because that contest is
+/// working as intended and needs no action.
+#[test]
+fn a_constraint_explains_why_the_winner_won() {
+    let scan = scan_of(
+        vec![
+            claiming(package("base", "core", ""), &["core::hull"]),
+            claiming(
+                package(
+                    "mods",
+                    "bigships",
+                    r#"after = ["core"]
+                    overrides = ["core"]"#,
+                ),
+                &["core::hull"],
+            ),
+        ],
+        &LoadOrder::default(),
+    );
+    let (_, report) = build_index(&scan);
+
+    assert_eq!(report.contests.len(), 1);
+    assert!(matches!(
+        report.contests[0].reason,
+        ContestReason::Ordered { direct: true, .. }
+    ));
+    assert!(
+        report.problems.is_empty(),
+        "a declared override warns about nothing: {:?}",
+        report.problems
+    );
+}
+
+/// Colliding with a package the manifest never named is the surprise the warning exists for.
+#[test]
+fn an_undeclared_override_warns() {
+    let scan = scan_of(
+        vec![
+            claiming(package("base", "core", ""), &["core::hull"]),
+            claiming(package("mods", "bigships", ""), &["core::hull"]),
+        ],
+        &LoadOrder::default(),
+    );
+    let (_, report) = build_index(&scan);
+
+    assert!(
+        report
+            .problems
+            .iter()
+            .any(|p| p.kind == ProblemKind::UndeclaredOverride),
+        "{:?}",
+        report.problems
+    );
+}
+
+/// The typo catcher: `overrides = ["core"]` with an alias that matches nothing collides with
+/// nothing, and the dead entry is the only visible sign the alias was misspelled.
+#[test]
+fn an_overrides_entry_that_never_collides_warns() {
+    let scan = scan_of(
+        vec![
+            claiming(package("base", "core", ""), &["core::airship"]),
+            claiming(
+                package("mods", "bigships", r#"overrides = ["core"]"#),
+                &["core::airschip"],
+            ),
+        ],
+        &LoadOrder::default(),
+    );
+    let (_, report) = build_index(&scan);
+
+    assert!(
+        report
+            .problems
+            .iter()
+            .any(|p| p.kind == ProblemKind::DeadOverride),
+        "{:?}",
+        report.problems
+    );
+}
+
+#[test]
+fn removes_takes_an_alias_out_of_the_index() {
+    let scan = scan_of(
+        vec![
+            claiming(package("base", "core", ""), &["core::banana"]),
+            package("mods", "nobanana", r#"removes = ["core::banana"]"#),
+        ],
+        &LoadOrder::default(),
+    );
+    let (index, report) = build_index(&scan);
+
+    assert_eq!(index.resolve("core::banana"), None);
+    assert!(report.problems.is_empty(), "{:?}", report.problems);
+}
+
+/// A later package may claim an alias an earlier one removed. Removal is a step in load order, not
+/// a ban.
+#[test]
+fn a_later_package_may_reclaim_a_removed_alias() {
+    let scan = scan_of(
+        vec![
+            claiming(package("base", "core", ""), &["core::banana"]),
+            package("mods", "a_nobanana", r#"removes = ["core::banana"]"#),
+            claiming(package("mods", "b_newbanana", ""), &["core::banana"]),
+        ],
+        &LoadOrder::default(),
+    );
+    let (index, _) = build_index(&scan);
+    assert!(
+        index
+            .resolve("core::banana")
+            .unwrap()
+            .starts_with("mods/b_newbanana")
+    );
+}
+
+#[test]
+fn a_removes_entry_matching_nothing_warns() {
+    let scan = scan_of(
+        vec![package("mods", "nobanana", r#"removes = ["core::banana"]"#)],
+        &LoadOrder::default(),
+    );
+    let (_, report) = build_index(&scan);
+
+    assert!(
+        report
+            .problems
+            .iter()
+            .any(|p| p.kind == ProblemKind::DeadRemoval),
+        "{:?}",
+        report.problems
+    );
 }

@@ -47,10 +47,13 @@ published and used on its own.
 
 `ename_asset_package` sits on top and adds the one thing the walk has no opinion about: an order.
 It finds packages on disk, parses their manifests, calls `scan_aliases` once per package root, and
-puts the results in load order. It is the only first-party crate the alias leaf's consumers gain,
-and the arrow points down, so the two never grow a second walk between them. `ename_asset_content`
-is above both. It folds an ordered scan into one index and owns the `App` wiring, because deciding
-what goes in an `App` is composition rather than asset logic.
+puts the results in load order. It also folds that ordered scan into one index, because the index,
+the contested aliases and the `removes` are three views of one walk over the ordered packages and
+splitting them would be two implementations of load order that drift. `ename_xtask` needs all
+three with no Bevy in its graph, which is the other reason the fold sits here. It is the only
+first-party crate the alias leaf's consumers gain, and the arrow points down, so the two never grow
+a second walk between them. `ename_asset_content` is above both and owns the `App` wiring, because
+deciding what goes in an `App` is composition rather than asset logic.
 
 Scanning is `AliasScanPlugin`, separate from `AliasSourcePlugin`, rather than a flag on one plugin.
 `ename_asset_content` needs the source but supplies its own package-ordered index, and with two

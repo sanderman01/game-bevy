@@ -2969,13 +2969,13 @@ dependencies = [
  "bevy",
  "ename_asset_alias",
  "ename_asset_package",
- "toml",
 ]
 
 [[package]]
 name = "ename_asset_package"
 version = "0.0.0"
 dependencies = [
+ "bevy",
  "ename_asset_alias",
  "futures-lite",
  "semver",

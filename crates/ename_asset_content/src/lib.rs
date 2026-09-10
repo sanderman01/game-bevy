@@ -5,12 +5,11 @@
 //! where they meet. It is also where the plugin lives, because deciding what goes in an `App` is
 //! composition, not asset logic. See `docs/design/crate-layout.md`.
 
-mod index;
-mod report;
-
-pub use crate::index::build_index;
-pub use crate::report::{ContentReport, PackageSummary};
-pub use ename_asset_alias::{Problem, ProblemKind};
+pub use ename_asset_alias::{ContentIndex, Problem, ProblemKind};
+pub use ename_asset_package::{
+    ContentReport, ContestReason, ContestedAlias, Disabled, LOAD_ORDER_FILE, LoadOrder,
+    PackageSummary, build_index,
+};
 
 use async_lock::OnceCell;
 use bevy::{
@@ -24,7 +23,7 @@ use bevy::{
     tasks::IoTaskPool,
 };
 use ename_asset_alias::{AliasSourcePlugin, AssetReaderVfs, ContentIndexCell};
-use ename_asset_package::{LoadOrder, scan_packages};
+use ename_asset_package::scan_packages;
 use std::sync::Arc;
 
 /// Relative path to the asset root. Mirrors `AssetPlugin::file_path`'s default.
