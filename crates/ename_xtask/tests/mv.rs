@@ -52,6 +52,21 @@ fn a_missing_source_asset_is_an_error() {
     assert!(mv(&from, &to).is_err());
 }
 
+/// `std::fs::rename` fails on all platforms this project targets when the destination's parent
+/// directory does not exist. `ename_mv` must report that as an error rather than claiming success
+/// while the asset is still sitting at `from`.
+#[test]
+fn a_failed_rename_is_an_error_and_leaves_the_source_in_place() {
+    let dir = support::copy_fixture("mv_source");
+    let root = dir.path();
+    let from = root.join("basegame/core/ships/airship.glb");
+    let to = root.join("basegame/core/ships/no/such/dir/warship.glb");
+
+    assert!(mv(&from, &to).is_err());
+    assert!(from.exists(), "nothing should be silently half-moved");
+    assert!(!to.exists());
+}
+
 /// Inside a git work tree, a tracked file is moved with `git mv`, which stages the rename; an
 /// untracked one -- a `.alias` nobody has run `git add` on yet, the common case right after
 /// `ename_fix` creates one -- falls back to a plain rename instead of failing the whole command.

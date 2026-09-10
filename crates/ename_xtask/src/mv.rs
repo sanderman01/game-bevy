@@ -25,15 +25,26 @@ pub struct Moved {
 }
 
 /// Why `ename_mv` refused to run at all.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum MvError {
     SourceMissing(PathBuf),
+    RenameFailed {
+        from: PathBuf,
+        to: PathBuf,
+        source: std::io::Error,
+    },
 }
 
 impl Display for MvError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::SourceMissing(path) => write!(f, "{} does not exist", path.display()),
+            Self::RenameFailed { from, to, source } => write!(
+                f,
+                "could not move {} to {}: {source}",
+                from.display(),
+                to.display()
+            ),
         }
     }
 }
@@ -51,12 +62,12 @@ pub fn mv(from: &Path, to: &Path) -> Result<Vec<Moved>, MvError> {
     let git_dir = from.parent().unwrap_or(Path::new("."));
     let in_git = is_inside_git_work_tree(git_dir);
 
-    let mut moved = vec![move_one(git_dir, from, to, in_git)];
+    let mut moved = vec![move_one(git_dir, from, to, in_git)?];
     for suffix in [".meta", ".alias"] {
         let sidecar_from = append(from, suffix);
         let sidecar_to = append(to, suffix);
         if sidecar_from.exists() {
-            moved.push(move_one(git_dir, &sidecar_from, &sidecar_to, in_git));
+            moved.push(move_one(git_dir, &sidecar_from, &sidecar_to, in_git)?);
         }
     }
     Ok(moved)
@@ -68,26 +79,24 @@ fn append(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(out)
 }
 
-fn move_one(git_dir: &Path, from: &Path, to: &Path, in_git: bool) -> Moved {
+fn move_one(git_dir: &Path, from: &Path, to: &Path, in_git: bool) -> Result<Moved, MvError> {
     if in_git && git_mv(git_dir, from, to) {
-        return Moved {
+        return Ok(Moved {
             from: from.to_path_buf(),
             to: to.to_path_buf(),
             via_git: true,
-        };
+        });
     }
-    if let Err(err) = std::fs::rename(from, to) {
-        eprintln!(
-            "ename_mv: could not move {} to {}: {err}",
-            from.display(),
-            to.display()
-        );
-    }
-    Moved {
+    std::fs::rename(from, to).map_err(|source| MvError::RenameFailed {
+        from: from.to_path_buf(),
+        to: to.to_path_buf(),
+        source,
+    })?;
+    Ok(Moved {
         from: from.to_path_buf(),
         to: to.to_path_buf(),
         via_git: false,
-    }
+    })
 }
 
 fn git_mv(dir: &Path, from: &Path, to: &Path) -> bool {
