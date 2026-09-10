@@ -20,3 +20,7 @@ db = "build --workspace --features ename/dev"
 dr = "run -p ename --features dev"
 dc = "clippy --workspace --all-targets --features ename/dev"
 dt = "test --workspace --features ename/dev"
+
+# `ename_xtask` links no Bevy, so this does not need the shared `dev`-feature build the aliases
+# above do.
+xtask = "run -p ename_xtask --"

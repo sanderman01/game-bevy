@@ -1,0 +1,14 @@
+[package]
+name = "ename_xtask"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Command line tooling for the content pipeline: check, fix, list, move."
+
+# No [dependencies] yet -- `cargo machete` fails a commit that declares one nothing uses. Task 2
+# adds dirs, the two asset crates and futures-lite; Task 5 adds toml and uuid.
+
+[lints]
+workspace = true
