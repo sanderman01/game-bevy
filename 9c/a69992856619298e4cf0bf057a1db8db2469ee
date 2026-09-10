@@ -1,0 +1,45 @@
+crates/ename_xtask/src/cli.rs
+  s_4e07d3b1571b5a::t_609aaf40ec098a 1-121
+crates/ename_xtask/src/scan.rs
+  s_4e07d3b1571b5a::t_c377bec56eed8a 1
+crates/ename_xtask/src/main.rs
+  s_4e07d3b1571b5a::t_1e250c51e4398a 1-19
+.cargo/config.toml
+  s_4e07d3b1571b5a::t_89d9d5f7b42e04 23-26
+crates/ename_xtask/src/mv.rs
+  s_4e07d3b1571b5a::t_d06018f58046db 1
+crates/ename_xtask/src/content_build.rs
+  s_4e07d3b1571b5a::t_f3e7e33355e485 1
+crates/ename_xtask/src/list.rs
+  s_4e07d3b1571b5a::t_e3b0a2bbff1ed0 1
+crates/ename_xtask/src/check.rs
+  s_4e07d3b1571b5a::t_ff6b448e4ef25d 1
+crates/ename_xtask/src/lib.rs
+  s_4e07d3b1571b5a::t_5e3b7cba747613 1-19
+crates/ename_xtask/src/fix.rs
+  s_4e07d3b1571b5a::t_3a8015d1369ba8 1
+scripts/check-layers.sh
+  s_4e07d3b1571b5a::t_8e17b66f0d6b7d 43-46
+crates/ename_xtask/src/policy.rs
+  s_4e07d3b1571b5a::t_5e9c8ff5c9ef70 1
+crates/ename_xtask/Cargo.toml
+  s_4e07d3b1571b5a::t_aff7f5b50f9079 1-14
+Cargo.lock
+  s_4e07d3b1571b5a::t_fb85ba8fe457b8 3076-3079
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9ca69992856619298e4cf0bf057a1db8db2469ee",
+  "prompts": {},
+  "sessions": {
+    "s_4e07d3b1571b5a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21e8f394-8f46-4c88-acd7-91ef4aed2296",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
