@@ -1,0 +1,61 @@
+crates/ename_asset_content/src/lib.rs
+  s_0f4b9c9cb12bff::t_06c844ac055835 22,27
+  s_0f4b9c9cb12bff::t_6a7776a0d03a95 113
+  s_0f4b9c9cb12bff::t_8763376f395971 78-88,96
+  s_0f4b9c9cb12bff::t_d9ab5307458c14 138-169
+  s_0f4b9c9cb12bff::t_5c6d412638717e 10-11
+  s_0f4b9c9cb12bff::t_414301c4b00423 43-46,57
+crates/ename_asset_content/tests/fixtures/extra/quiet/manifest.toml
+  s_0f4b9c9cb12bff::t_53ce76f5e42736 1-7
+crates/ename_asset_content/tests/fixtures/load_order.toml
+  s_0f4b9c9cb12bff::t_53ce76f5e42736 1-5
+Cargo.toml
+  s_0f4b9c9cb12bff::t_d5d466d233d00d 34
+crates/ename_asset_content/tests/alias_source.rs
+  s_0f4b9c9cb12bff::t_31382a2d600b18 20-22,29-38
+  s_0f4b9c9cb12bff::t_3d199f6374fc65 97-115
+  s_0f4b9c9cb12bff::t_cf31dcfc61a0f8 295-357
+  s_0f4b9c9cb12bff::t_20656e5d74b0b2 39
+crates/ename/Cargo.toml
+  s_0f4b9c9cb12bff::t_c02baed1f1b36a 24
+crates/ename/src/main.rs
+  s_0f4b9c9cb12bff::t_c02baed1f1b36a 11,18-20,33-44
+  s_0f4b9c9cb12bff::t_dc358de84ec56f 45
+crates/ename_asset_content/tests/fixtures/extra/quiet/farewell.txt.alias
+  s_0f4b9c9cb12bff::t_53ce76f5e42736 1-3
+crates/ename_asset_alias/src/discovery.rs
+  s_0f4b9c9cb12bff::t_d4edde8b1a5ec9 116
+  s_0f4b9c9cb12bff::t_81d11d0e05a38b 92-94
+crates/ename_asset_content/tests/fixtures/extra/quiet/farewell.txt
+  s_0f4b9c9cb12bff::t_53ce76f5e42736 1
+crates/ename_asset_package/src/index.rs
+  s_0f4b9c9cb12bff::t_72503dda681e73 160-162
+crates/ename_engine/src/lib.rs
+  s_0f4b9c9cb12bff::t_2cd64b71639892 23-27,45,54,83-89,113-120
+Cargo.lock
+  s_969daa2e768935::t_ae69a034c3ce80 2786-2806,2964,5255-5260,5942-5952
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8f63da42e809db2a67a85206e26b5ba30704ac7e",
+  "prompts": {},
+  "sessions": {
+    "s_0f4b9c9cb12bff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "441d9b46-9ba6-4f00-9467-d20ca2e54726",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_969daa2e768935": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a00b41426fb17a59b",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
