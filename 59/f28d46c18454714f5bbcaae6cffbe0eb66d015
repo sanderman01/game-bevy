@@ -1,0 +1,33 @@
+docs/code-style.md
+  s_daba3de052c927::t_568426ed522f73 19-20
+  s_daba3de052c927::t_be51c86facb872 37
+docs/design.md
+  s_daba3de052c927::t_6ddbd67147aeec 99-101
+ename_game/tests/scene_addressing.rs
+  s_daba3de052c927::t_2ca36be75e605b 1-86
+ename_asset_alias/tests/alias_scan.rs
+  s_daba3de052c927::t_2ca36be75e605b 1-178
+ename_asset_content/tests/alias_source.rs
+  s_daba3de052c927::t_2ca36be75e605b 1-363
+Cargo.toml
+  s_daba3de052c927::t_5aad69568689a8 51-52,55-60
+  s_daba3de052c927::t_91b16a899e70b4 3-15
+ename_asset_alias/tests/alias_reader.rs
+  s_daba3de052c927::t_2ca36be75e605b 1-201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "59f28d46c18454714f5bbcaae6cffbe0eb66d015",
+  "prompts": {},
+  "sessions": {
+    "s_daba3de052c927": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ec27c77-7ff9-4d02-a818-0fc1e82051c5",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
