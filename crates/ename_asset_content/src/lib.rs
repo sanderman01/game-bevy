@@ -5,10 +5,16 @@
 //! where they meet. It is also where the plugin lives, because deciding what goes in an `App` is
 //! composition, not asset logic. See `docs/design/crate-layout.md`.
 
+// The door a consumer opens by depending on this crate alone: enough to read a `ContentReport`
+// -- every type its fields name, down to the version requirement inside a `Requirement` -- and to
+// write or hand in a `LoadOrder`. The fold that produces the report is deliberately not here: a
+// caller that wants `build_index` is building content rather than an `App`, and that caller
+// belongs on `ename_asset_package`, which owns it.
 pub use ename_asset_alias::{ContentIndex, Problem, ProblemKind};
 pub use ename_asset_package::{
-    ConstraintSource, ContentReport, ContestReason, ContestedAlias, Disabled, LOAD_ORDER_FILE,
-    LoadOrder, PackageRef, PackageSummary, Tiebreak, Version, build_index,
+    ConstraintSource, ContentReport, ContestReason, ContestedAlias, DisableReason, Disabled,
+    LOAD_ORDER_FILE, LoadOrder, LoadOrderError, PackageRef, PackageSummary, Requirement, Tiebreak,
+    UserConstraint, Version, VersionReq,
 };
 
 use async_lock::OnceCell;
@@ -23,7 +29,7 @@ use bevy::{
     tasks::IoTaskPool,
 };
 use ename_asset_alias::{AliasSourcePlugin, AssetReaderVfs, ContentIndexCell};
-use ename_asset_package::scan_packages;
+use ename_asset_package::{build_index, scan_packages};
 use std::{path::PathBuf, sync::Arc};
 
 /// Relative path to the asset root. Mirrors `AssetPlugin::file_path`'s default.
@@ -177,7 +183,8 @@ fn start_content_scan(
         .detach();
 }
 
-/// Copies the finished scan into the `World` for the editor and the log.
+/// Copies the finished scan out of the task's cells and into the `World`, as `ContentIndex` and
+/// `ContentReport` resources.
 ///
 /// `OnceCell::get` is a non-blocking read, so this is one cheap poll per frame until the scan
 /// lands, and none after: the resource's own presence is the "already done" flag.
