@@ -57,12 +57,19 @@ no shipping build yet.
 
 ## Assets
 
+Content assets should be referred to through aliases. An alias is a unique human readable identifier
+and  pointer to an asset. Multiple packages can define the same alias. This allows content packages
+to override and replace assets originally defined elsewhere.
+
 See [asset aliases](assets-aliases.md) and [asset packages](assets-packages.md).
 
-`assets/` is a symlink outside the repository. `.cargo/config.toml` points `BEVY_ASSET_ROOT` at
-the workspace root, but Cargo only applies `[env]` to `cargo run` and `cargo test`. A binary
-launched straight from `target/` falls back to Bevy's executable-directory heuristic and gets a
-different asset root. That's a live bug: it will hit on the first real build.
+Depending on local development environment, `assets/` may be a dir or symlink outside the repository.
+This is where all content assets live. Only test fixtures assets live in crates.
+
+`.cargo/config.toml` points `BEVY_ASSET_ROOT` at the workspace root containing `assets/`,
+but Cargo only applies `[env]` to `cargo run` and `cargo test`.
+A binary aunched straight from `target/` falls back to Bevy's executable-directory heuristic and gets
+ a different asset root. That is not a bug. That is by-design on the side of Bevy.
 
 ## Open questions
 
