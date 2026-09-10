@@ -1,0 +1,20 @@
+docs/assets-packages.md
+  s_4e07d3b1571b5a::t_4a5aa1b1096761 65
+  s_4e07d3b1571b5a::t_4ae4e842c0a07e 46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "176fb540680ec7d6e3eb6eb1718ad1cd0fc901f9",
+  "prompts": {},
+  "sessions": {
+    "s_4e07d3b1571b5a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21e8f394-8f46-4c88-acd7-91ef4aed2296",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
