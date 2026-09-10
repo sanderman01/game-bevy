@@ -1,0 +1,30 @@
+crates/ename_xtask/src/main.rs
+  s_4e07d3b1571b5a::t_16ec66b497570a 4
+  s_4e07d3b1571b5a::t_5f452327f9c53e 50-66
+crates/ename_xtask/tests/fixtures/mv_source/basegame/core/ships/airship.glb.alias
+  s_4e07d3b1571b5a::t_f928f73afb5524 1-3
+crates/ename_xtask/tests/mv.rs
+  s_4e07d3b1571b5a::t_b5d4c593fc2511 1-126
+crates/ename_xtask/tests/fixtures/mv_source/basegame/core/ships/airship.glb
+  s_4e07d3b1571b5a::t_966b3da0679cbe 1
+crates/ename_xtask/tests/fixtures/mv_source/basegame/core/ships/airship.glb.meta
+  s_4e07d3b1571b5a::t_5f3dace23e7239 1-7
+crates/ename_xtask/src/mv.rs
+  s_4e07d3b1571b5a::t_cc8617aa60a250 1-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a82a70e8e1d5f8c85381c696059665a394043e06",
+  "prompts": {},
+  "sessions": {
+    "s_4e07d3b1571b5a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21e8f394-8f46-4c88-acd7-91ef4aed2296",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
