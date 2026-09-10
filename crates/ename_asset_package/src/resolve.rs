@@ -75,6 +75,27 @@ impl OrderEdges {
             .is_some_and(|set| set.contains(later))
     }
 
+    /// The constraints running between the members of one loop, each with whoever wrote it.
+    ///
+    /// Naming the packages is not enough to fix a loop: a user constraint can close one over
+    /// manifests that are all individually correct, and then a list of package ids sends the
+    /// reader to three files none of which is at fault. The source is the half that points at the
+    /// file to edit.
+    fn describe_loop(&self, members: &[String]) -> String {
+        let members: BTreeSet<&str> = members.iter().map(String::as_str).collect();
+        self.edges
+            .iter()
+            .filter(|(earlier, _)| members.contains(earlier.as_str()))
+            .flat_map(|(earlier, laters)| {
+                laters
+                    .iter()
+                    .filter(|(later, _)| members.contains(later.as_str()))
+                    .map(move |(later, source)| format!("{later} after {earlier} [{source}]"))
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
     fn insert(&mut self, earlier: &str, later: &str, source: ConstraintSource) {
         self.edges
             .entry(earlier.to_owned())
@@ -130,6 +151,10 @@ pub enum DisableReason {
     RequirementDisabled { id: String },
     /// Part of an `after`/`before` loop. Every member is disabled, because any order the resolver
     /// picked would be one nobody asked for.
+    ///
+    /// `members` is this package's own loop. A second, unrelated loop elsewhere in the scan is a
+    /// separate problem with a separate fix, and listing its packages here would send this
+    /// author reading manifests that have nothing to do with them.
     Cycle { members: Vec<String> },
     /// Ordered after a cycle without being in one. It cannot be placed either -- nothing can go
     /// after a package that never loads -- but the constraints to edit are inside the cycle.
@@ -154,7 +179,7 @@ impl Display for DisableReason {
             Self::RequirementDisabled { id } => write!(f, "requires {id}, which is disabled"),
             Self::Cycle { members } => write!(f, "in a load order cycle: {}", members.join(" -> ")),
             Self::BehindCycle { cycle } => {
-                write!(f, "depends on a load order cycle: {}", cycle.join(" -> "))
+                write!(f, "loads after a load order cycle: {}", cycle.join(" -> "))
             }
         }
     }
@@ -400,41 +425,61 @@ fn sort_and_report_cycles(
             let id = &packages[*i].manifest.package.id;
             resolution.edges.ordered(id, id)
         });
-    let members: Vec<String> = in_cycle
-        .iter()
-        .map(|i| packages[*i].manifest.package.id.clone())
-        .collect();
 
-    // `in_cycle` is empty only if the sort stalled without a loop, which it cannot: every stuck
-    // package is held by a predecessor chain that ends in one.
-    if let Some(first) = in_cycle.first() {
+    // Two loops in one scan are two problems with two separate fixes, so each stuck package is
+    // sorted into the one it is actually on. Reaching each other both ways is an equivalence
+    // relation, which is why comparing against a single member of each group is enough.
+    let mut loops: Vec<Vec<usize>> = Vec::new();
+    for i in in_cycle {
+        let id = &packages[i].manifest.package.id;
+        let same_loop = loops.iter_mut().find(|members| {
+            let other = &packages[members[0]].manifest.package.id;
+            resolution.edges.ordered(other, id) && resolution.edges.ordered(id, other)
+        });
+        match same_loop {
+            Some(members) => members.push(i),
+            None => loops.push(vec![i]),
+        }
+    }
+
+    for members in &loops {
+        let ids: Vec<String> = members
+            .iter()
+            .map(|i| packages[*i].manifest.package.id.clone())
+            .collect();
         resolution.problems.push(Problem {
-            path: packages[*first].root.clone(),
+            path: packages[members[0]].root.clone(),
             kind: ProblemKind::DependencyCycle,
             detail: format!(
-                "these packages constrain each other in a loop and none of them will load: {}",
-                members.join(", ")
+                "these constraints form a loop: {}; none of these packages will load: {}",
+                resolution.edges.describe_loop(&ids),
+                ids.join(", ")
             ),
         });
+        for i in members {
+            resolution.disabled.push(Disabled {
+                id: packages[*i].manifest.package.id.clone(),
+                root: packages[*i].root.clone(),
+                reason: DisableReason::Cycle {
+                    members: ids.clone(),
+                },
+            });
+        }
     }
 
-    for i in in_cycle {
-        resolution.disabled.push(Disabled {
-            id: packages[i].manifest.package.id.clone(),
-            root: packages[i].root.clone(),
-            reason: DisableReason::Cycle {
-                members: members.clone(),
-            },
-        });
-    }
+    let cycle_members: Vec<&str> = loops
+        .iter()
+        .flatten()
+        .map(|i| packages[*i].manifest.package.id.as_str())
+        .collect();
     for i in behind {
         let id = &packages[i].manifest.package.id;
         // Only the members that actually hold this one back, so a second unrelated cycle
         // elsewhere in the scan does not turn up in its reason.
-        let cycle: Vec<String> = members
+        let cycle: Vec<String> = cycle_members
             .iter()
             .filter(|member| resolution.edges.ordered(member, id))
-            .cloned()
+            .map(|member| (*member).to_owned())
             .collect();
         resolution.disabled.push(Disabled {
             id: id.clone(),

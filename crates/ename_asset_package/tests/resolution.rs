@@ -506,3 +506,79 @@ fn a_removes_entry_matching_nothing_warns() {
         report.problems
     );
 }
+
+/// Two loops in one scan are two problems. Telling a member of one that its loop also contains
+/// packages it has never heard of sends its author reading manifests that cannot be at fault.
+#[test]
+fn two_disjoint_cycles_are_reported_separately() {
+    let packages = [
+        package("mods", "a", r#"after = ["b"]"#),
+        package("mods", "b", r#"after = ["a"]"#),
+        package("mods", "d", r#"after = ["e"]"#),
+        package("mods", "e", r#"after = ["d"]"#),
+    ];
+    let resolution = resolve(&packages, &LoadOrder::default());
+
+    assert!(resolution.order.is_empty());
+    let members = |id: &str| match &resolution
+        .disabled
+        .iter()
+        .find(|d| d.id == id)
+        .unwrap_or_else(|| panic!("{id} is disabled, got {:?}", resolution.disabled))
+        .reason
+    {
+        DisableReason::Cycle { members } => members.clone(),
+        other => panic!("expected {id} to be a cycle member, got {other:?}"),
+    };
+    assert_eq!(members("a"), ["a", "b"]);
+    assert_eq!(members("b"), ["a", "b"]);
+    assert_eq!(members("d"), ["d", "e"]);
+    assert_eq!(members("e"), ["d", "e"]);
+
+    let cycles: Vec<&ename_asset_package::Problem> = resolution
+        .problems
+        .iter()
+        .filter(|p| p.kind == ProblemKind::DependencyCycle)
+        .collect();
+    assert_eq!(cycles.len(), 2, "{:?}", resolution.problems);
+}
+
+/// A user constraint can close a loop over manifests that are each individually correct, so the
+/// report has to name the constraints rather than the packages: without the source, this reader is
+/// sent to three manifests and their own file is the one to edit.
+#[test]
+fn a_cycle_the_user_closed_names_their_load_order() {
+    let packages = [
+        package("base", "core", ""),
+        package("mods", "a", r#"after = ["core"]"#),
+        package("mods", "b", r#"after = ["a"]"#),
+    ];
+    let load_order = LoadOrder::parse(
+        r#"
+        [[constraint]]
+        package = "core"
+        after = ["b"]
+        "#,
+    )
+    .expect("parses");
+
+    let resolution = resolve(&packages, &load_order);
+    let cycle = resolution
+        .problems
+        .iter()
+        .find(|p| p.kind == ProblemKind::DependencyCycle)
+        .unwrap_or_else(|| panic!("a cycle is reported, got {:?}", resolution.problems));
+
+    assert!(
+        cycle
+            .detail
+            .contains("core after b [the user's load order]"),
+        "the constraint that closed the loop is the user's: {}",
+        cycle.detail
+    );
+    assert!(
+        cycle.detail.contains("a after core [a's manifest]"),
+        "the manifest edges are named with their source too: {}",
+        cycle.detail
+    );
+}
