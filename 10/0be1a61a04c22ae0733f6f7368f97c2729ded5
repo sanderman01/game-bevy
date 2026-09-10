@@ -1,0 +1,24 @@
+scripts/check-layers.sh
+  s_0f4b9c9cb12bff::t_ad069e51bc974a 29,31-33
+docs/design.md
+  s_0f4b9c9cb12bff::t_a7e5bc0c02833c 148,150-153,156,159,161-162
+  s_0f4b9c9cb12bff::t_709f6e8aca76a4 135-147,149,154-155,157-158,160,163-174
+docs/design/crate-layout.md
+  s_0f4b9c9cb12bff::t_e1929cc59b801f 18,27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "100be1a61a04c22ae0733f6f7368f97c2729ded5",
+  "prompts": {},
+  "sessions": {
+    "s_0f4b9c9cb12bff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "441d9b46-9ba6-4f00-9467-d20ca2e54726",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
