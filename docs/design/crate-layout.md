@@ -15,7 +15,7 @@ workspace.
 ## Layer graph
 
 ```
-ename (bin)          -> ename_engine, ename_game
+ename (bin)          -> ename_engine, ename_game, dirs
                         + ename_editor, ename_game_editor   (feature `editor`)
                         + ename_remote                      (feature `agent`)
 ename_game_editor    -> ename_editor, ename_game          (allowed; empty today, so bevy only)
@@ -24,7 +24,7 @@ ename_game           -> ename_engine, ename_asset_alias
 ename_editor         -> ename_engine
 ename_engine         -> ename_asset_content, bevy, avian3d, big_space
 ename_asset_content  -> ename_asset_alias, ename_asset_package, async-lock, bevy
-ename_asset_package  -> ename_asset_alias, serde, toml, tracing
+ename_asset_package  -> ename_asset_alias, semver, serde, toml, thiserror, tracing
                         + bevy, behind the default `bevy` feature
 ename_asset_alias    -> async-lock, serde, toml, glob, uuid, thiserror   (no first-party deps)
                         + bevy, behind the default `bevy` feature

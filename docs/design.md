@@ -132,8 +132,46 @@ builds; registering afterwards logs an error and leaves the source dead. `Engine
 `add_before::<AssetPlugin>` and the ordering is structural rather than a rule a target has to
 remember. `AliasSourcePlugin::build` asserts on it as well, for anyone adding it by hand.
 
-The full design, including the package ordering constraints and the `xtask` tooling that phases 3
-and 4 add, is in `scratch/content-addressing-design.md`.
+A package version is a `semver` version and a `requires` entry is a `semver` requirement, written
+as one string: `requires = ["core >= 2.0"]`. That is Cargo's dialect, which every author already
+knows, and a syntax of our own would look exactly like it while behaving subtly differently. The id
+ends at the first whitespace, so a package id containing whitespace has no single reading and is
+rejected at the manifest.
+
+`requires` is a dependency; `after` and `before` are not. An unsatisfied `requires` disables the
+package, says which requirement failed and what version it found instead, and cascades to whatever
+required it, because loading a package whose dependency is absent is the situation `requires`
+exists to prevent. An `after` or `before` naming a package that is not installed is ignored in
+silence: it is an ordering hint about something that is not there, and warning would fire on every
+machine that lacks the popular optional package a mod happened to mention.
+
+A cycle in `after`/`before` disables its members and reports every id in it. Panicking would let
+one broken mod cost the whole session, and breaking the cycle with a tiebreaker would pick an order
+nobody asked for. A package that only depends on a cycle is disabled too, under a reason of its own
+rather than as a member. Telling an author their package sits in a loop it is not in sends them to
+the wrong file. `xtask content check` in phase 4 is where the same problem becomes a non-zero exit,
+which is the hard error the spec asked for.
+
+The user's `load_order.toml` overrules a manifest that contradicts it, and the overrule is recorded
+as a problem. "Why did my mod load in that order" is the question the report exists to answer, so
+the manifest's edge cannot lose silently. The file holds `[[constraint]]` entries carrying the same
+`after` and `before` an author writes, and no sequence, because a total order over the installed
+set goes stale the moment a package is added. It lives outside the asset tree, so
+`ename_asset_package` reads whatever path it is handed and `ename`'s `main` computes the default
+from `dirs::config_dir()`. Platform config policy belongs to the target that owns platform policy.
+Most players never write the file at all, so a missing one is not a problem.
+
+Load order is Kahn's algorithm over those edges, with the phase 2 order -- search path as the
+target listed them, then directory name -- as the ready-set tiebreaker. An unconstrained set comes
+out exactly as it went in, and the baseline settles every tie the constraints leave open.
+
+Every alias two packages both claim produces a record saying why the winner won: which constraint
+ordered them and whether it did so directly, or `UNORDERED` and the tiebreak that settled it.
+`UNORDERED` is the line worth acting on. Nothing relates those two packages, so the winner came
+from an order neither author chose, and a `[[constraint]]` in the user's file is how to pin it.
+
+The full design, including the `xtask` tooling that phase 4 adds, is in
+`scratch/content-addressing-design.md`.
 
 ## Open questions
 
