@@ -157,9 +157,9 @@ pub fn build_index(scan: &Scan) -> (ContentIndex, ContentReport) {
         scan.packages.len(),
         report.contests.len()
     );
-    for contest in &report.contests {
-        info!("  ~~ {contest}");
-    }
+    // The contests themselves are not listed here. They are in the returned report, and the
+    // caller lists them once it has the whole of it -- the fold is not the last thing that can
+    // add to a report, so a listing from inside it is a listing of something not yet finished.
     (index, report)
 }
 

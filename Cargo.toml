@@ -31,6 +31,7 @@ bevy = { version = "0.19.1", default-features = true }
 bevy-inspector-egui = { version = "0.37.0", features = ["highlight_changes"] }
 bevy_egui = "0.40"
 big_space = { git = "https://github.com/aevyrie/big_space", rev = "5f25522", features = ["debug", "camera"] }
+dirs = "7.0.0"
 egui = "0.34"
 egui_dock = "0.19"
 # `default-features = false` here so `ename_asset_package` can take it without Bevy. Every

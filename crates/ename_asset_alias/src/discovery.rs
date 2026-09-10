@@ -89,6 +89,9 @@ pub enum ProblemKind {
     DeadOverride,
     /// A `removes` entry naming an alias no package provides. Produced by `ename_asset_package`.
     DeadRemoval,
+    /// The user's load order file could not be read. The scan carries on with no user
+    /// constraints. Produced by `ename_asset_content`.
+    UnparseableLoadOrder,
 }
 
 impl Display for ProblemKind {
@@ -110,6 +113,7 @@ impl Display for ProblemKind {
             Self::UndeclaredOverride => "undeclared override",
             Self::DeadOverride => "dead overrides entry",
             Self::DeadRemoval => "dead removes entry",
+            Self::UnparseableLoadOrder => "unparseable load order",
         };
         f.write_str(text)
     }

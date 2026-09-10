@@ -1,0 +1,5 @@
+# The user putting `core` last, against nothing either package said. Without this file `quiet`
+# wins `core::farewell` because `extra` comes after `base` in the search path list.
+[[constraint]]
+package = "core"
+after = ["quiet"]

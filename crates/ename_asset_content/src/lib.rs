@@ -7,8 +7,8 @@
 
 pub use ename_asset_alias::{ContentIndex, Problem, ProblemKind};
 pub use ename_asset_package::{
-    ContentReport, ContestReason, ContestedAlias, Disabled, LOAD_ORDER_FILE, LoadOrder,
-    PackageSummary, build_index,
+    ContentReport, ContestReason, ContestedAlias, Disabled, LOAD_ORDER_FILE, LoadOrder, PackageRef,
+    PackageSummary, Tiebreak, build_index,
 };
 
 use async_lock::OnceCell;
@@ -19,12 +19,12 @@ use bevy::{
         resource::Resource,
         system::{Commands, Res},
     },
-    log::info,
+    log::{info, warn},
     tasks::IoTaskPool,
 };
 use ename_asset_alias::{AliasSourcePlugin, AssetReaderVfs, ContentIndexCell};
 use ename_asset_package::scan_packages;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 /// Relative path to the asset root. Mirrors `AssetPlugin::file_path`'s default.
 const DEFAULT_ASSET_ROOT: &str = "assets";
@@ -40,6 +40,10 @@ const DEFAULT_SEARCH_PATHS: &[&str] = &[];
 pub struct AssetContentPlugin {
     search_paths: Vec<String>,
     asset_root: String,
+    /// Where the user's load order file is, if the target has one. `None` means no user
+    /// constraints, which is the normal case on a fresh install and the only case in a test that
+    /// does not care.
+    load_order_file: Option<PathBuf>,
 }
 
 impl Default for AssetContentPlugin {
@@ -50,6 +54,7 @@ impl Default for AssetContentPlugin {
                 .map(|s| (*s).to_owned())
                 .collect(),
             asset_root: DEFAULT_ASSET_ROOT.to_owned(),
+            load_order_file: None,
         }
     }
 }
@@ -70,6 +75,17 @@ impl AssetContentPlugin {
         self.asset_root = path.into();
         self
     }
+
+    /// Sets the user's load order file. Outside the asset tree by design: it is the player's
+    /// file, not the game's content, so it is read with `std::fs` through a path the target
+    /// supplies rather than through the asset reader.
+    ///
+    /// Which directory that path lives in is platform policy and belongs to the binary. `ename`
+    /// computes it from `dirs::config_dir()`; a test passes a fixture path.
+    pub fn with_load_order_file(mut self, path: impl Into<PathBuf>) -> Self {
+        self.load_order_file = Some(path.into());
+        self
+    }
 }
 
 /// What [`start_content_scan`] needs, kept out of the plugin so the system can read it.
@@ -77,6 +93,7 @@ impl AssetContentPlugin {
 struct ContentScanConfig {
     search_paths: Vec<String>,
     asset_root: String,
+    load_order_file: Option<PathBuf>,
 }
 
 /// Where [`start_content_scan`] leaves the report for [`mirror_content_scan`] to pick up.
@@ -93,6 +110,7 @@ impl Plugin for AssetContentPlugin {
             .insert_resource(ContentScanConfig {
                 search_paths: self.search_paths.clone(),
                 asset_root: self.asset_root.clone(),
+                load_order_file: self.load_order_file.clone(),
             })
             .add_systems(Startup, start_content_scan)
             .add_systems(Update, mirror_content_scan);
@@ -117,8 +135,38 @@ fn start_content_scan(
             info!("Scanning for packages in {:?}", config.search_paths);
             let mut make_reader = AssetSource::get_default_reader(config.asset_root);
             let vfs = AssetReaderVfs::new(make_reader());
-            let scan = scan_packages(&vfs, &config.search_paths, &LoadOrder::default()).await;
-            let (index, report) = build_index(&scan);
+            // Reading the file happens here rather than in `Startup` because it is blocking io,
+            // and the io pool is where blocking io belongs.
+            let mut problems = Vec::new();
+            let load_order = match &config.load_order_file {
+                Some(path) => match LoadOrder::read_from_path(path) {
+                    Ok(order) => order,
+                    Err(err) => {
+                        warn!("Ignoring the user load order file: {err}");
+                        problems.push(Problem {
+                            path: path.clone(),
+                            kind: ProblemKind::UnparseableLoadOrder,
+                            detail: err.to_string(),
+                        });
+                        LoadOrder::default()
+                    }
+                },
+                None => LoadOrder::default(),
+            };
+
+            let scan = scan_packages(&vfs, &config.search_paths, &load_order).await;
+            let (index, mut report) = build_index(&scan);
+            report.problems.extend(problems);
+
+            // The one place the finished report is listed. `build_index` narrates the fold as it
+            // happens, interleaved with a line per package; this is the block at the end of the
+            // log that answers "which mod won what, and did anyone choose that".
+            if !report.contests.is_empty() {
+                info!("{} contested aliases:", report.contests.len());
+                for contest in &report.contests {
+                    info!("  {contest}");
+                }
+            }
 
             // The report goes first. Filling the index cell is what releases every `alias://`
             // read waiting on it, so anything that observes the index must already be able to

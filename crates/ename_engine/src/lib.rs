@@ -20,6 +20,11 @@ use bevy::{
 };
 use big_space::plugin::{BigSpaceDebugPlugins, BigSpaceDefaultPlugins};
 use ename_asset_content::AssetContentPlugin;
+use std::path::PathBuf;
+
+/// Re-exported so a target can name the user's load order file without depending on the asset
+/// crates itself. Where that file lives is the binary's decision; what it is called is not.
+pub use ename_asset_content::LOAD_ORDER_FILE;
 
 /// Everything a target needs to run on this engine, `DefaultPlugins` included.
 ///
@@ -37,6 +42,7 @@ pub struct EnginePlugins {
     window: Window,
     log_capacity: usize,
     content_search_paths: Vec<String>,
+    load_order_file: Option<PathBuf>,
 }
 
 impl Default for EnginePlugins {
@@ -45,6 +51,7 @@ impl Default for EnginePlugins {
             window: Window::default(),
             log_capacity: log::DEFAULT_CAPACITY,
             content_search_paths: Vec::new(),
+            load_order_file: None,
         }
     }
 }
@@ -73,6 +80,13 @@ impl EnginePlugins {
         self.content_search_paths = paths.into_iter().map(Into::into).collect();
         self
     }
+
+    /// Sets the user's load order file, the one place a player rather than an author orders
+    /// packages. `None` by default: where a config file lives is the binary's decision.
+    pub fn with_load_order_file(mut self, path: impl Into<PathBuf>) -> Self {
+        self.load_order_file = Some(path.into());
+        self
+    }
 }
 
 impl PluginGroup for EnginePlugins {
@@ -96,9 +110,14 @@ impl PluginGroup for EnginePlugins {
             // afterwards logs an error and leaves `alias://` dead. `add_before` panics if
             // `AssetPlugin` is not in the group, so a future `.disable::<AssetPlugin>()` fails
             // loudly here instead of silently at the first load.
-            .add_before::<AssetPlugin>(
-                AssetContentPlugin::default().with_search_paths(self.content_search_paths),
-            )
+            .add_before::<AssetPlugin>({
+                let mut plugin =
+                    AssetContentPlugin::default().with_search_paths(self.content_search_paths);
+                if let Some(path) = self.load_order_file {
+                    plugin = plugin.with_load_order_file(path);
+                }
+                plugin
+            })
             .disable::<TransformPlugin>()
             .add_group(BigSpaceDefaultPlugins)
             // No longer bundled with BigSpaceDefaultPlugins as of big_space 0.13.

@@ -1,0 +1,7 @@
+[package]
+id = "quiet"
+version = "1.0.0"
+authors = ["Test"]
+title = "Quiet test package"
+description = "Claims core::farewell, from a search path nothing orders against base."
+overrides = ["core"]

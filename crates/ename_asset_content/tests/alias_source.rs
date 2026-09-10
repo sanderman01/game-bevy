@@ -17,12 +17,25 @@ use bevy::{
     tasks::futures_lite::AsyncReadExt,
 };
 use ename_asset_alias::ContentIndex;
-use ename_asset_content::{AssetContentPlugin, ContentReport, ProblemKind};
+use ename_asset_content::{
+    AssetContentPlugin, ContentReport, ContestReason, ProblemKind, Tiebreak,
+};
 use std::path::Path;
 use std::time::Duration;
 
 /// Relative to the workspace root, which `BEVY_ASSET_ROOT` pins in `.cargo/config.toml`.
 const FIXTURE_ROOT: &str = "crates/ename_asset_content/tests/fixtures";
+
+/// Where the user's load order file lives, as an absolute path.
+///
+/// `CARGO_MANIFEST_DIR` rather than `FIXTURE_ROOT`: the asset root is resolved by Bevy through
+/// `BEVY_ASSET_ROOT`, which `.cargo/config.toml` pins to the workspace root, but `std::fs` reads
+/// relative to the process working directory, which Cargo sets to the *package* directory. The two
+/// are different, and only one of them is what `LoadOrder::read_from_path` sees.
+const LOAD_ORDER_FIXTURE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/tests/fixtures/load_order.toml"
+);
 
 /// Frames to run before giving up on a load. Generous: the scan and the read are both async, and
 /// a loaded CI machine can take a while to get round to them.
@@ -70,6 +83,25 @@ fn test_app(search_paths: &[&str]) -> App {
         AssetContentPlugin::default()
             .with_asset_root(FIXTURE_ROOT)
             .with_search_paths(search_paths.iter().copied()),
+    )
+    .add_plugins(TaskPoolPlugin::default())
+    .add_plugins(AssetPlugin {
+        file_path: FIXTURE_ROOT.to_owned(),
+        ..Default::default()
+    })
+    .init_asset::<Greeting>()
+    .init_asset_loader::<GreetingLoader>();
+    app
+}
+
+/// Like [`test_app`], with the user's load order file in play.
+fn test_app_with_load_order(search_paths: &[&str], load_order_file: &str) -> App {
+    let mut app = App::new();
+    app.add_plugins(
+        AssetContentPlugin::default()
+            .with_asset_root(FIXTURE_ROOT)
+            .with_search_paths(search_paths.iter().copied())
+            .with_load_order_file(load_order_file),
     )
     .add_plugins(TaskPoolPlugin::default())
     .add_plugins(AssetPlugin {
@@ -258,5 +290,68 @@ fn the_finished_scan_is_mirrored_into_resources() {
         index.resolve("core::greeting"),
         Some(Path::new("mods/loud/greeting.txt")),
         "the mirrored index shows the winner, not the base game's file"
+    );
+}
+
+/// Two packages claim `core::farewell` and nothing relates them, so the winner came from a
+/// tiebreaker neither author chose. That is the line in the report worth acting on.
+#[test]
+fn an_unordered_contest_is_reported_as_unordered() {
+    let mut app = test_app(&["base", "mods", "extra"]);
+    run_until_mirrored(&mut app);
+
+    let report = app.world().resource::<ContentReport>();
+    let contest = report
+        .contests
+        .iter()
+        .find(|c| c.alias == "core::farewell")
+        .unwrap_or_else(|| panic!("expected a contest, got {:?}", report.contests));
+
+    assert_eq!(contest.winner.id, "quiet");
+    assert_eq!(contest.loser.id, "core");
+    assert!(
+        matches!(
+            contest.reason,
+            ContestReason::Unordered {
+                tiebreak: Tiebreak::SearchPath { .. }
+            }
+        ),
+        "nothing orders base against extra, so the target's search path list decided, got {:?}",
+        contest.reason
+    );
+
+    let index = app.world().resource::<ContentIndex>();
+    assert_eq!(
+        index.resolve("core::farewell"),
+        Some(Path::new("extra/quiet/farewell.txt"))
+    );
+}
+
+/// And the user's file turns it round. This is the end-to-end proof that a file outside the asset
+/// tree decides what the game loads.
+#[test]
+fn the_users_load_order_file_decides_a_contest() {
+    let mut app = test_app_with_load_order(&["base", "mods", "extra"], LOAD_ORDER_FIXTURE);
+    run_until_mirrored(&mut app);
+
+    let report = app.world().resource::<ContentReport>();
+    let contest = report
+        .contests
+        .iter()
+        .find(|c| c.alias == "core::farewell")
+        .expect("still contested, the other way round");
+
+    assert_eq!(contest.winner.id, "core");
+    assert_eq!(contest.loser.id, "quiet");
+    assert!(
+        matches!(contest.reason, ContestReason::Ordered { .. }),
+        "the user's constraint ordered them, got {:?}",
+        contest.reason
+    );
+
+    let index = app.world().resource::<ContentIndex>();
+    assert_eq!(
+        index.resolve("core::farewell"),
+        Some(Path::new("base/core/farewell.txt"))
     );
 }
