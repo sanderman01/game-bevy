@@ -96,9 +96,9 @@ A binary aunched straight from `target/` falls back to Bevy's executable-directo
   pinned to that git revision. Accepted deliberately; newtype it if the engine is ever consumed
   outside this workspace.
 - The asset crates and `ename_game` have integration tests that run a headless `App`
-  (`crates/ename_asset_alias/tests/alias_reader.rs` and `alias_scan.rs`,
-  `crates/ename_asset_content/tests/alias_source.rs`,
-  `crates/ename_game/tests/scene_addressing.rs`), using `TaskPoolPlugin` plus `AssetPlugin` over
+  (`ename_asset_alias/tests/alias_reader.rs` and `alias_scan.rs`,
+  `ename_asset_content/tests/alias_source.rs`,
+  `ename_game/tests/scene_addressing.rs`), using `TaskPoolPlugin` plus `AssetPlugin` over
   committed fixture trees in each crate's own `tests/fixtures`, never the `assets/` symlink, which
   is not present on a fresh clone. The walk itself needs none of that, because it runs through a
   `Vfs` trait: `ename_asset_alias/tests/asset_discovery.rs` drives it over an in-memory `FakeVfs`

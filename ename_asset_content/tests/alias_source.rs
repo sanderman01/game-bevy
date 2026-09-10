@@ -24,7 +24,7 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Relative to the workspace root, which `BEVY_ASSET_ROOT` pins in `.cargo/config.toml`.
-const FIXTURE_ROOT: &str = "crates/ename_asset_content/tests/fixtures";
+const FIXTURE_ROOT: &str = "ename_asset_content/tests/fixtures";
 
 /// Where the user's load order file lives, as an absolute path.
 ///

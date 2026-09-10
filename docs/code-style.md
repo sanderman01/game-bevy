@@ -16,7 +16,8 @@ here no longer exists after an upgrade, fix this document in the same commit as 
 
 ## Crate layers
 
-`crates/` holds layers, not features. Dependencies point one direction and there are no cycles.
+Each crate at the project root is a layer, not a feature. Dependencies point one direction and
+there are no cycles.
 
 The graph itself is in [design/crate-layout.md](design/crate-layout.md#layer-graph). Keep one copy;
 this file only states the rules that follow from it.
@@ -33,7 +34,7 @@ shared type down into `ename_engine` or invert the call into an event the higher
 ## Features are modules until they earn a crate
 
 A feature starts as a module inside the layer crate that owns it. For example
-`crates/ename_engine/src/physics/`.
+`ename_engine/src/physics/`.
 
 Promote it to its own crate only when one of these is true:
 

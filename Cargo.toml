@@ -1,6 +1,18 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = [
+    "ename",
+    "ename_asset_alias",
+    "ename_asset_content",
+    "ename_asset_package",
+    "ename_editor",
+    "ename_engine",
+    "ename_game",
+    "ename_game_editor",
+    "ename_mcp",
+    "ename_remote",
+    "ename_xtask",
+]
 
 [workspace.package]
 version = "0.0.0"
@@ -36,16 +48,16 @@ egui = "0.34"
 egui_dock = "0.19"
 # `default-features = false` here so `ename_asset_package` can take it without Bevy. Every
 # consumer that wants the `alias://` source and the scan plugin asks for `features = ["bevy"]`.
-ename_asset_alias = { path = "crates/ename_asset_alias", version = "0.0.0", default-features = false }
-ename_asset_content = { path = "crates/ename_asset_content", version = "0.0.0" }
+ename_asset_alias = { path = "ename_asset_alias", version = "0.0.0", default-features = false }
+ename_asset_content = { path = "ename_asset_content", version = "0.0.0" }
 # `default-features = false` here for the same reason as `ename_asset_alias` above:
 # `ename_xtask` needs it without Bevy. `ename_asset_content` asks for `features = ["bevy"]`.
-ename_asset_package = { path = "crates/ename_asset_package", version = "0.0.0", default-features = false }
-ename_editor = { path = "crates/ename_editor", version = "0.0.0" }
-ename_engine = { path = "crates/ename_engine", version = "0.0.0" }
-ename_game = { path = "crates/ename_game", version = "0.0.0" }
-ename_game_editor = { path = "crates/ename_game_editor", version = "0.0.0" }
-ename_remote = { path = "crates/ename_remote", version = "0.0.0" }
+ename_asset_package = { path = "ename_asset_package", version = "0.0.0", default-features = false }
+ename_editor = { path = "ename_editor", version = "0.0.0" }
+ename_engine = { path = "ename_engine", version = "0.0.0" }
+ename_game = { path = "ename_game", version = "0.0.0" }
+ename_game_editor = { path = "ename_game_editor", version = "0.0.0" }
+ename_remote = { path = "ename_remote", version = "0.0.0" }
 futures-lite = "2.6.1"
 glob = "0.3.4"
 reqwest = { version = "0.12.24", default-features = false, features = ["json", "rustls-tls"] }

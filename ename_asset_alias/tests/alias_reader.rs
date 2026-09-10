@@ -28,7 +28,7 @@ use std::time::Duration;
 /// Where the fixtures live, relative to the workspace root. `BEVY_ASSET_ROOT` is pinned to the
 /// workspace root in `.cargo/config.toml`, and Cargo applies `[env]` to `cargo test`, so this
 /// resolves the same way from any working directory.
-const FIXTURE_ROOT: &str = "crates/ename_asset_alias/tests/fixtures";
+const FIXTURE_ROOT: &str = "ename_asset_alias/tests/fixtures";
 
 /// Builds a headless `App` over the fixture tree.
 ///

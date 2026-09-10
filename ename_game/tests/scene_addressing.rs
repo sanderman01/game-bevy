@@ -19,7 +19,7 @@ use ename_asset_content::AssetContentPlugin;
 use ename_game::{GameState, GameStatePlugin};
 
 /// Relative to the workspace root, which `BEVY_ASSET_ROOT` pins in `.cargo/config.toml`.
-const FIXTURE_ROOT: &str = "crates/ename_game/tests/fixtures";
+const FIXTURE_ROOT: &str = "ename_game/tests/fixtures";
 
 /// `GameState` used to wait for `LoaderState::AssetsRegistered`, which meant the content layer's
 /// internal bookkeeping was part of the game's lifecycle. It should now advance on its own, with
