@@ -1,0 +1,46 @@
+crates/ename_asset_package/Cargo.toml
+  s_0f4b9c9cb12bff::t_c334549404e3f9 11-14,17
+crates/ename_asset_package/src/lib.rs
+  s_0f4b9c9cb12bff::t_3e0b876cdc3aef 12-13,19-20
+crates/ename_asset_package/src/index.rs
+  s_0f4b9c9cb12bff::t_d7c2c424f169c7 1-9,13-343
+  s_0f4b9c9cb12bff::t_d1c24afd49a86e 10-12
+crates/ename_asset_alias/src/discovery.rs
+  s_0f4b9c9cb12bff::t_aafe16f8e44aaf 83-91,110-112
+crates/ename_asset_content/src/lib.rs
+  s_0f4b9c9cb12bff::t_20db4d746f0e86 8-9,11-12,26
+  s_0f4b9c9cb12bff::t_d1c24afd49a86e 10
+crates/ename_asset_package/src/contest.rs
+  s_0f4b9c9cb12bff::t_93c399ae0e5900 1-91
+crates/ename_asset_package/tests/resolution.rs
+  s_0f4b9c9cb12bff::t_54f25f199994e1 8-9,11-12,312-331,337-366,373-508
+  s_0f4b9c9cb12bff::t_d1c24afd49a86e 10,332-336,367-372
+docs/design/crate-layout.md
+  s_0f4b9c9cb12bff::t_0b3c8dd78889e9 50-56
+Cargo.lock
+  s_1b3cbbf48c4926::t_24de4d4d89172c 2978
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0a577819e36fce28498b09e56ef609b7a8ca4fd5",
+  "prompts": {},
+  "sessions": {
+    "s_0f4b9c9cb12bff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "441d9b46-9ba6-4f00-9467-d20ca2e54726",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_1b3cbbf48c4926": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa0e3e801c125b7ee",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
