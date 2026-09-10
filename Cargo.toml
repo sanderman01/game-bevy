@@ -1,18 +1,6 @@
 [workspace]
 resolver = "3"
-members = [
-    "ename",
-    "ename_asset_alias",
-    "ename_asset_content",
-    "ename_asset_package",
-    "ename_editor",
-    "ename_engine",
-    "ename_game",
-    "ename_game_editor",
-    "ename_mcp",
-    "ename_remote",
-    "ename_xtask",
-]
+members = ["ename*"]
 
 [workspace.package]
 version = "0.0.0"
