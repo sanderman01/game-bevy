@@ -1,0 +1,23 @@
+crates/ename_xtask/src/mv.rs
+  s_4e07d3b1571b5a::t_45400a92376bcf 82,84,88,90-95,99
+  s_4e07d3b1571b5a::t_d344d7b2209e27 65,70
+  s_4e07d3b1571b5a::t_5188b1133cce40 28,31-35,42-47
+crates/ename_xtask/tests/mv.rs
+  s_4e07d3b1571b5a::t_df54b99f9b1fc1 55-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "572b434efbefc5afa1c137c68d86d8858051f721",
+  "prompts": {},
+  "sessions": {
+    "s_4e07d3b1571b5a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21e8f394-8f46-4c88-acd7-91ef4aed2296",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
