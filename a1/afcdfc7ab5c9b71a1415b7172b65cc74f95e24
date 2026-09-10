@@ -1,0 +1,43 @@
+crates/ename_xtask/src/fix.rs
+  s_4e07d3b1571b5a::t_8cc9c07ec02762 1-91
+crates/ename_xtask/tests/fix.rs
+  s_4e07d3b1571b5a::t_e53cbed92f2534 48-51
+  s_4e07d3b1571b5a::t_866105f33175f1 1-47,52-68
+crates/ename_xtask/Cargo.toml
+  s_4e07d3b1571b5a::t_a5573a6f818dff 15-16,19
+  s_4e07d3b1571b5a::t_e00e47524c2d68 18
+  s_4e07d3b1571b5a::t_ffdc20ce7a69e3 17
+Cargo.toml
+  s_4e07d3b1571b5a::t_462fadc44fa1bd 57
+crates/ename_xtask/tests/support/mod.rs
+  s_4e07d3b1571b5a::t_be29b58237c73f 1-29
+crates/ename_xtask/src/main.rs
+  s_4e07d3b1571b5a::t_c158802b425371 4
+  s_4e07d3b1571b5a::t_2a1f5ce2ebe2cc 39-49
+Cargo.lock
+  s_f211ab6aca80a8::t_f30261ece09b23 3084-3086,6784-6796
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a1afcdfc7ab5c9b71a1415b7172b65cc74f95e24",
+  "prompts": {},
+  "sessions": {
+    "s_4e07d3b1571b5a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21e8f394-8f46-4c88-acd7-91ef4aed2296",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_f211ab6aca80a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a93dfebdecca3850e",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
