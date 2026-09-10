@@ -1,7 +1,7 @@
 //! `ename_xtask` -- the command line tool for this workspace's content pipeline.
 //! Run through the `xtask` cargo alias: `cargo xtask <subcommand>` (see `.cargo/config.toml`).
 
-use ename_xtask::{check, cli, policy};
+use ename_xtask::{check, cli, list, policy};
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -24,6 +24,13 @@ fn main() -> ExitCode {
             } else {
                 ExitCode::FAILURE
             }
+        }
+        cli::Command::List => {
+            let asset_root = Path::new(policy::ASSET_ROOT);
+            let search_paths = policy::search_paths();
+            let load_order_path = policy::load_order_path();
+            list::list(asset_root, &search_paths, load_order_path.as_deref());
+            ExitCode::SUCCESS
         }
         other => {
             println!("{other:?} (not wired up yet)");
