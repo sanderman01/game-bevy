@@ -51,6 +51,51 @@ fn it_never_rewrites_a_sidecar_that_already_has_a_guid() {
     );
 }
 
+/// `std::fs::set_permissions` with a read-only mode is the standard, portable-enough-for-this way
+/// to force a write to fail on purpose; there is no clean cross-platform equivalent (Windows
+/// read-only directories don't block file creation the same way), so this test is Unix-only.
+#[test]
+#[cfg(unix)]
+fn a_write_failure_is_counted_and_does_not_claim_success() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = support::copy_fixture("basic");
+    let root = dir.path();
+    let crate_alias = root.join("basegame/core/props/crate.png.alias");
+
+    // `crate.png.alias` already exists and is missing only its guid, so `fix` takes the
+    // rewrite-in-place path for it; stripping the owner's write bit makes that specific write
+    // fail without touching the directory permissions `barrel.png`'s from-scratch write needs.
+    let mut perms = std::fs::metadata(&crate_alias).unwrap().permissions();
+    perms.set_mode(0o444);
+    std::fs::set_permissions(&crate_alias, perms.clone()).unwrap();
+
+    let summary = fix(root, &["basegame".to_owned()], None);
+
+    // Restore write permission so the `TempDir` can clean itself up without complaint.
+    perms.set_mode(0o644);
+    std::fs::set_permissions(&crate_alias, perms).unwrap();
+
+    assert_eq!(
+        summary.failed, 1,
+        "the unwritable sidecar must be counted as a failure"
+    );
+    assert_eq!(
+        summary.guids_assigned, 0,
+        "a failed write must not be counted as if it had succeeded"
+    );
+    assert_eq!(
+        summary.created, 1,
+        "the unrelated barrel.png sidecar is unaffected and still gets created"
+    );
+
+    let after = std::fs::read_to_string(&crate_alias).unwrap();
+    assert!(
+        !after.contains("guid"),
+        "the write that failed must not have partially landed"
+    );
+}
+
 #[test]
 fn running_fix_twice_is_a_no_op_the_second_time() {
     let dir = support::copy_fixture("basic");

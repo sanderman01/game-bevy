@@ -86,6 +86,19 @@ own package-ordered version into `Res<ContentIndex>` and `Res<ContentReport>`, f
 the log. Both are copies, for inspection; the reader resolves through the `OnceCell` it was built
 with, because an `AssetReader` can't reach a resource.
 
+## Tooling
+
+`ename_xtask` reads the same two asset crates the running game does, through `StdVfs`, so what it
+reports matches what the game would load. Run it via the `xtask` cargo alias:
+
+- `cargo xtask ename_check` -- exits non-zero if the content tree has a problem or a contested
+  alias; the thing to run in CI.
+- `cargo xtask ename_fix` -- writes missing `.alias` files and assigns missing guids.
+- `cargo xtask ename_list` -- dumps the resolved alias index.
+- `cargo xtask ename_mv <from> <to>` -- moves an asset and its `.meta`/`.alias` sidecars together,
+  using `git mv` where possible so history follows the rename.
+- `cargo xtask ename_content_build` -- stub; will bake `content-index.ron` for a shipping build.
+
 ## Further reading
 
 The full design, including the `ename_xtask` tooling phase 4 adds -- `ename_check`, `ename_fix`,

@@ -55,6 +55,22 @@ pub fn mv(from: &Path, to: &Path) -> Result<Vec<Moved>, MvError> {
     if !from.exists() {
         return Err(MvError::SourceMissing(from.to_path_buf()));
     }
+    // `git mv` resolves its pathspec arguments relative to *its own* cwd, which we are about to
+    // set to a directory derived from `from`. A relative `from` handed to it unchanged would get
+    // that directory prefixed onto it twice. `std::path::absolute` only joins with the process's
+    // current directory -- it does not touch the filesystem -- so this is safe even though
+    // `from`/`to` need not exist yet (`to` never does). Absolute paths also always have a real
+    // parent, which sidesteps the bare-filename case where `Path::parent` returns `Some("")`.
+    let from = std::path::absolute(from).map_err(|source| MvError::RenameFailed {
+        from: from.to_path_buf(),
+        to: to.to_path_buf(),
+        source,
+    })?;
+    let to = std::path::absolute(to).map_err(|source| MvError::RenameFailed {
+        from: from.clone(),
+        to: to.to_path_buf(),
+        source,
+    })?;
     // Git commands are run with this as their working directory rather than the process's own,
     // so a caller passing an absolute path into an unrelated repository (as the tests do, against
     // a scratch directory) is detected and moved correctly rather than against whatever repo the
@@ -62,10 +78,10 @@ pub fn mv(from: &Path, to: &Path) -> Result<Vec<Moved>, MvError> {
     let git_dir = from.parent().unwrap_or(Path::new("."));
     let in_git = is_inside_git_work_tree(git_dir);
 
-    let mut moved = vec![move_one(git_dir, from, to, in_git)?];
+    let mut moved = vec![move_one(git_dir, &from, &to, in_git)?];
     for suffix in [".meta", ".alias"] {
-        let sidecar_from = append(from, suffix);
-        let sidecar_to = append(to, suffix);
+        let sidecar_from = append(&from, suffix);
+        let sidecar_to = append(&to, suffix);
         if sidecar_from.exists() {
             moved.push(move_one(git_dir, &sidecar_from, &sidecar_to, in_git)?);
         }
@@ -100,13 +116,17 @@ fn move_one(git_dir: &Path, from: &Path, to: &Path, in_git: bool) -> Result<Move
 }
 
 fn git_mv(dir: &Path, from: &Path, to: &Path) -> bool {
+    // `.output()`, not `.status()`: the expected fallback path -- an untracked `.alias` that
+    // `git mv` refuses -- prints a `fatal:` line on stderr even though the caller is about to
+    // recover with a plain rename. Capturing (and discarding) it keeps that non-error off the
+    // user's terminal, the same reason `is_inside_git_work_tree` below already uses `.output()`.
     Command::new("git")
         .current_dir(dir)
         .args(["mv", "--"])
         .arg(from)
         .arg(to)
-        .status()
-        .is_ok_and(|status| status.success())
+        .output()
+        .is_ok_and(|out| out.status.success())
 }
 
 fn is_inside_git_work_tree(dir: &Path) -> bool {

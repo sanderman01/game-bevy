@@ -42,10 +42,14 @@ fn main() -> ExitCode {
             let load_order_path = policy::load_order_path();
             let summary = fix::fix(asset_root, &search_paths, load_order_path.as_deref());
             println!(
-                "wrote {} new .alias files, assigned {} guids",
-                summary.created, summary.guids_assigned
+                "wrote {} new .alias files, assigned {} guids, {} failed",
+                summary.created, summary.guids_assigned, summary.failed
             );
-            ExitCode::SUCCESS
+            if summary.failed > 0 {
+                ExitCode::FAILURE
+            } else {
+                ExitCode::SUCCESS
+            }
         }
         cli::Command::Mv { from, to } => match mv::mv(&from, &to) {
             Ok(moved) => {

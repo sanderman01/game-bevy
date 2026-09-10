@@ -122,6 +122,93 @@ fn a_tracked_file_uses_git_mv_and_an_untracked_one_falls_back() {
     assert!(root.join("basegame/core/ships/warship.glb.alias").exists());
 }
 
+/// Regression test for a bug where `ename_mv` handed `git mv` a *relative* `from`/`to` while also
+/// pointing the child process's `current_dir` at a directory derived from `from`: git resolved the
+/// relative pathspec against that directory a second time, so `git mv` always failed and only the
+/// `std::fs::rename` fallback ever ran -- silently, since the fallback still moves the file. This
+/// only shows up with a relative path, which is exactly how `cargo xtask ename_mv <from> <to>` is
+/// invoked from a repo checkout, so the absolute `TempDir`-rooted paths every other test in this
+/// file uses can't catch it.
+///
+/// This is the one test in this file that changes the test process's current directory.
+/// `std::env::set_current_dir` is process-global and Rust tests in one binary run in parallel by
+/// default, so no other test here may ever do the same; `CwdGuard` restores the original cwd on
+/// drop, including on panic, so a failing assertion can't leave it changed for whatever runs next.
+/// The other tests are safe to run alongside this one because none of them reads the process cwd:
+/// every path they use is either already absolute (`TempDir`-rooted) or handed to a spawned `git`
+/// via an explicit `current_dir(root)`.
+#[test]
+fn a_relative_path_argument_from_the_repo_root_still_uses_git_mv() {
+    let dir = support::copy_fixture("mv_source");
+    let root = dir.path();
+    git(root, &["init", "-q"]);
+    git(
+        root,
+        &[
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test",
+            "add",
+            "basegame/core/ships/airship.glb",
+            "basegame/core/ships/airship.glb.meta",
+        ],
+    );
+    git(
+        root,
+        &[
+            "-c",
+            "user.email=test@example.com",
+            "-c",
+            "user.name=Test",
+            "commit",
+            "-q",
+            "-m",
+            "initial",
+        ],
+    );
+
+    let _cwd_guard = CwdGuard::change_to(root);
+
+    let from = Path::new("basegame/core/ships/airship.glb");
+    let to = Path::new("basegame/core/ships/warship.glb");
+    let moved = mv(from, to).expect("the asset exists");
+
+    let via_git: Vec<bool> = moved.iter().map(|m| m.via_git).collect();
+    assert_eq!(
+        via_git,
+        [true, true, false],
+        "git mv must actually run for the tracked files, not silently fall back to rename"
+    );
+
+    let status = git_output(root, &["status", "--porcelain"]);
+    assert!(
+        status.contains("R  "),
+        "the tracked files must show as a staged rename:\n{status}"
+    );
+}
+
+/// Restores the process's current directory on drop, so a test that must change it (process-global
+/// state, unsafe to share with parallel tests) can't leave it changed for another test -- including
+/// when the guarded test panics.
+struct CwdGuard {
+    original: std::path::PathBuf,
+}
+
+impl CwdGuard {
+    fn change_to(dir: &Path) -> Self {
+        let original = std::env::current_dir().expect("the process has a current directory");
+        std::env::set_current_dir(dir).expect("change into the scratch repo");
+        Self { original }
+    }
+}
+
+impl Drop for CwdGuard {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.original);
+    }
+}
+
 fn git(root: &Path, args: &[&str]) {
     let status = Command::new("git")
         .current_dir(root)

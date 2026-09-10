@@ -11,6 +11,9 @@ pub struct FixSummary {
     pub created: usize,
     /// An existing `.alias` that had no `guid`, rewritten with a freshly generated one.
     pub guids_assigned: usize,
+    /// A sidecar `ename_fix` could not read or could not write. Counted separately from
+    /// `created`/`guids_assigned`, neither of which is incremented for the same asset.
+    pub failed: usize,
 }
 
 /// Scans `asset_root`, then walks every discovered asset and repairs whichever guid is missing.
@@ -58,8 +61,13 @@ fn fix_one(asset_root: &Path, asset: &DiscoveredAsset, summary: &mut FixSummary)
                 return;
             };
             file.guid = Some(guid);
-            write_alias_file(&full, &file);
-            summary.guids_assigned += 1;
+            match write_alias_file(&full, &file) {
+                Ok(()) => summary.guids_assigned += 1,
+                Err(err) => {
+                    eprintln!("ename_fix: could not write {}: {err}", full.display());
+                    summary.failed += 1;
+                }
+            }
         }
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
             // No sidecar at all: the asset is covered purely by a folder rule. Writing the alias
@@ -71,21 +79,25 @@ fn fix_one(asset_root: &Path, asset: &DiscoveredAsset, summary: &mut FixSummary)
                 alias_origin: AliasOrigin::Derived,
                 ..AliasFile::default()
             };
-            write_alias_file(&full, &file);
-            summary.created += 1;
+            match write_alias_file(&full, &file) {
+                Ok(()) => summary.created += 1,
+                Err(err) => {
+                    eprintln!("ename_fix: could not write {}: {err}", full.display());
+                    summary.failed += 1;
+                }
+            }
         }
         Err(err) => {
             eprintln!("ename_fix: could not read {}: {err}", full.display());
+            summary.failed += 1;
         }
     }
 }
 
-fn write_alias_file(path: &Path, file: &AliasFile) {
+fn write_alias_file(path: &Path, file: &AliasFile) -> std::io::Result<()> {
     let text = toml::to_string_pretty(file).expect("an AliasFile always serializes");
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    if let Err(err) = std::fs::write(path, text) {
-        eprintln!("ename_fix: could not write {}: {err}", path.display());
-    }
+    std::fs::write(path, text)
 }
