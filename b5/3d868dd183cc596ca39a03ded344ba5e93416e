@@ -1,0 +1,14 @@
+docs/design.md
+  h_72decab43bbb75 60-63,66-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b53d868dd183cc596ca39a03ded344ba5e93416e",
+  "prompts": {},
+  "humans": {
+    "h_72decab43bbb75": {
+      "author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
