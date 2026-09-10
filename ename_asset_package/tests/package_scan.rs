@@ -4,7 +4,7 @@
 //! implementation a command line tool would use. `futures_lite::future::block_on` drives it,
 //! because `StdVfs`'s io is blocking and there is nothing to schedule.
 
-use ename_asset_alias::{ProblemKind, StdVfs};
+use ename_asset_alias::{AliasOrigin, ProblemKind, StdVfs};
 use ename_asset_package::{LoadOrder, Package, Scan, Version, scan_packages};
 use futures_lite::future::block_on;
 
@@ -260,4 +260,18 @@ fn an_unsatisfiable_requirement_keeps_a_package_out_of_the_scan() {
     assert_eq!(ids(&scan.packages), ["apple"]);
     assert_eq!(scan.disabled.len(), 1);
     assert_eq!(scan.disabled[0].id, "zebra");
+}
+
+/// A package with no `_alias_rules.toml` anywhere in it still gets every file named, under its
+/// own package id -- the bug this fallback exists to fix: a package that never wrote a rule file
+/// used to have every one of its assets silently invisible to the scan.
+#[test]
+fn a_package_with_no_rules_file_falls_back_to_its_own_id() {
+    let packages = scan(&["defaulting"]);
+    assert_eq!(ids(&packages), ["bare"]);
+
+    let assets = &packages[0].assets;
+    assert_eq!(assets.len(), 1);
+    assert_eq!(assets[0].alias, "bare::thing");
+    assert_eq!(assets[0].origin, AliasOrigin::Derived);
 }

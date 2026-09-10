@@ -141,7 +141,16 @@ async fn read_packages_in(vfs: &dyn Vfs, search_path: &Path, scan: &mut Scan) {
             continue;
         }
 
-        let mut found = scan_aliases(vfs, &entry.path, &[MANIFEST_FILE]).await;
+        // A package with no `_alias_rules.toml` anywhere in its tree still gets every file
+        // named, under its own package id -- the same as a rule written at its root would.
+        let default_alias_template = format!("{}::{{stem}}", manifest.package.id);
+        let mut found = scan_aliases(
+            vfs,
+            &entry.path,
+            &[MANIFEST_FILE],
+            Some(&default_alias_template),
+        )
+        .await;
         scan.problems.append(&mut found.problems);
         scan.packages.push(Package {
             manifest,

@@ -1,0 +1,6 @@
+[package]
+id = "bare"
+version = "1.0.0"
+authors = ["Test"]
+title = "Bare test package"
+description = "A package with no _alias_rules.toml anywhere in it."
