@@ -7,8 +7,8 @@
 
 pub use ename_asset_alias::{ContentIndex, Problem, ProblemKind};
 pub use ename_asset_package::{
-    ContentReport, ContestReason, ContestedAlias, Disabled, LOAD_ORDER_FILE, LoadOrder, PackageRef,
-    PackageSummary, Tiebreak, build_index,
+    ConstraintSource, ContentReport, ContestReason, ContestedAlias, Disabled, LOAD_ORDER_FILE,
+    LoadOrder, PackageRef, PackageSummary, Tiebreak, Version, build_index,
 };
 
 use async_lock::OnceCell;

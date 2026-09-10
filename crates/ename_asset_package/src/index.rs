@@ -78,10 +78,12 @@ pub fn build_index(scan: &Scan) -> (ContentIndex, ContentReport) {
                 holders.remove(alias);
                 info!("  -- {alias:24} removed by {}", info.id);
             } else {
+                let detail = format!("{} removes `{alias}`, which no package provides", info.id);
+                warn!("  !! {detail}");
                 report.problems.push(Problem {
                     path: package.root.clone(),
                     kind: ProblemKind::DeadRemoval,
-                    detail: format!("{} removes `{alias}`, which no package provides", info.id),
+                    detail,
                 });
             }
         }
@@ -120,25 +122,29 @@ pub fn build_index(scan: &Scan) -> (ContentIndex, ContentReport) {
         // completely silent -- the alias is valid, it simply names nobody.
         for id in &overridden {
             if !info.overrides.contains(id) {
+                let detail = format!(
+                    "{} overrides an alias of `{id}` without naming it in `overrides`",
+                    info.id
+                );
+                warn!("  !! {detail}");
                 report.problems.push(Problem {
                     path: package.root.clone(),
                     kind: ProblemKind::UndeclaredOverride,
-                    detail: format!(
-                        "{} overrides an alias of `{id}` without naming it in `overrides`",
-                        info.id
-                    ),
+                    detail,
                 });
             }
         }
         for id in &info.overrides {
             if !overridden.contains(id) {
+                let detail = format!(
+                    "{} declares `overrides = [\"{id}\"]` but claims none of its aliases",
+                    info.id
+                );
+                warn!("  !! {detail}");
                 report.problems.push(Problem {
                     path: package.root.clone(),
                     kind: ProblemKind::DeadOverride,
-                    detail: format!(
-                        "{} declares `overrides = [\"{id}\"]` but claims none of its aliases",
-                        info.id
-                    ),
+                    detail,
                 });
             }
         }

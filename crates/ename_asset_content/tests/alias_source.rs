@@ -18,7 +18,7 @@ use bevy::{
 };
 use ename_asset_alias::ContentIndex;
 use ename_asset_content::{
-    AssetContentPlugin, ContentReport, ContestReason, ProblemKind, Tiebreak,
+    AssetContentPlugin, ConstraintSource, ContentReport, ContestReason, ProblemKind, Tiebreak,
 };
 use std::path::Path;
 use std::time::Duration;
@@ -344,7 +344,13 @@ fn the_users_load_order_file_decides_a_contest() {
     assert_eq!(contest.winner.id, "core");
     assert_eq!(contest.loser.id, "quiet");
     assert!(
-        matches!(contest.reason, ContestReason::Ordered { .. }),
+        matches!(
+            contest.reason,
+            ContestReason::Ordered {
+                source: ConstraintSource::User,
+                ..
+            }
+        ),
         "the user's constraint ordered them, got {:?}",
         contest.reason
     );
