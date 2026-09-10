@@ -6,7 +6,6 @@
 //! Neither side ever writes the other's. See `scratch/content-addressing-design.md`.
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use uuid::Uuid;
 
 /// The extension of the sidecar, without the dot. Claimed by nobody else, unlike `.toml`.
@@ -32,9 +31,8 @@ pub enum AliasOrigin {
 /// The contents of one `.alias` file.
 ///
 /// Every field is optional because the file is written incrementally: tooling assigns the guid,
-/// a folder rule usually supplies the alias, and `include` appears only where it disagrees with
-/// that rule. `deny_unknown_fields` is load-bearing -- a misspelt key that silently took the
-/// default is precisely the failure the manifest format had.
+/// and a folder rule usually supplies the alias. `deny_unknown_fields` is load-bearing -- a
+/// misspelt key that silently took the default is precisely the failure the manifest format had.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AliasFile {
@@ -46,14 +44,6 @@ pub struct AliasFile {
     pub alias: Option<String>,
     #[serde(default)]
     pub alias_origin: AliasOrigin,
-    /// Overrides the folder rule's `include` patterns for this one file. `None` means "whatever
-    /// the rule says".
-    pub include: Option<bool>,
-    /// Reserved for per-platform and per-build-profile import settings, unused until a second
-    /// target exists. Typed rather than skipped so the shape is validated today and adding the
-    /// machinery later is not a format break.
-    #[serde(default)]
-    pub profiles: BTreeMap<String, toml::Table>,
 }
 
 /// The asset a `.alias` sidecar belongs to, given the sidecar's file name.
@@ -85,9 +75,6 @@ mod tests {
             guid = "018f2c00-0000-7000-8000-000000000000"
             alias = "core::airship"
             alias_origin = "authored"
-            include = true
-
-            [profiles]
             "#,
         )
         .expect("parses");
@@ -98,8 +85,6 @@ mod tests {
         );
         assert_eq!(file.alias.as_deref(), Some("core::airship"));
         assert_eq!(file.alias_origin, AliasOrigin::Authored);
-        assert_eq!(file.include, Some(true));
-        assert!(file.profiles.is_empty());
     }
 
     /// The bulk case: a file written by tooling for an asset a folder rule already names.
@@ -115,10 +100,6 @@ mod tests {
         .expect("parses");
 
         assert_eq!(file.alias_origin, AliasOrigin::Derived);
-        assert_eq!(
-            file.include, None,
-            "inclusion falls back to the folder rule"
-        );
     }
 
     /// A file with no flag was written by a human. Tooling must never rewrite that alias, so the
@@ -148,26 +129,6 @@ mod tests {
     #[test]
     fn a_malformed_guid_is_rejected() {
         assert!(parse(r#"guid = "not-a-uuid""#).is_err());
-    }
-
-    /// `profiles` carries no machinery yet, but it is typed rather than skipped, so a file whose
-    /// shape could never work fails now instead of on the day profiles are implemented.
-    #[test]
-    fn profiles_must_be_a_table_of_tables() {
-        let file = parse(
-            r#"
-            [profiles.web]
-            include = false
-            "#,
-        )
-        .expect("a table of tables parses");
-        assert_eq!(file.profiles.len(), 1);
-        assert!(file.profiles.contains_key("web"));
-
-        assert!(
-            parse("profiles = 3").is_err(),
-            "a scalar `profiles` must not parse"
-        );
     }
 
     #[test]

@@ -354,14 +354,9 @@ impl<'a> Walk<'a> {
     ) {
         let authored = sidecar.as_ref().and_then(|s| s.alias.clone());
 
-        // A sidecar's `include` beats the rule's patterns. With no explicit `include`, a sidecar
-        // that names an alias is included anyway: somebody wrote that file on purpose, and making
-        // them add `include = true` as well would be a rule nobody could guess.
-        let included = match sidecar.as_ref().and_then(|s| s.include) {
-            Some(explicit) => explicit,
-            None if authored.is_some() => true,
-            None => rules.is_some_and(|r| r.includes(file_name)),
-        };
+        // A sidecar that names an alias is included regardless of the rule's patterns: somebody
+        // wrote that file on purpose. Otherwise inclusion is entirely the rule's call.
+        let included = authored.is_some() || rules.is_some_and(|r| r.includes(file_name));
         if !included {
             return;
         }

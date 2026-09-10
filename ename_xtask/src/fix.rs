@@ -77,7 +77,6 @@ fn fix_one(asset_root: &Path, asset: &DiscoveredAsset, summary: &mut FixSummary)
                 guid: Some(guid),
                 alias: Some(asset.alias.clone()),
                 alias_origin: AliasOrigin::Derived,
-                ..AliasFile::default()
             };
             match write_alias_file(&full, &file) {
                 Ok(()) => summary.created += 1,

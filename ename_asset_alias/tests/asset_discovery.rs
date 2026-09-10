@@ -101,21 +101,8 @@ fn an_alias_sidecar_overrides_the_derived_name() {
     assert!(assets[0].guid.is_some());
 }
 
-#[test]
-fn a_sidecar_can_exclude_a_file_the_rule_covers() {
-    let assets = discovered(
-        &FakeVfs::new()
-            .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
-            .file("base/core/airship.glb", "")
-            .file("base/core/wip.glb", "")
-            .file("base/core/wip.glb.alias", "include = false\n"),
-    );
-
-    assert_eq!(aliases(&assets), ["core::airship"]);
-}
-
-/// Somebody wrote that file on purpose. Making them also add `include = true` to a folder whose
-/// patterns happen not to match would be a rule nobody could guess.
+/// Somebody wrote that file on purpose. Requiring the rule's own patterns to match as well would
+/// be a rule nobody could guess.
 #[test]
 fn a_sidecar_alias_is_included_even_where_the_rule_does_not_match() {
     let assets = discovered(
