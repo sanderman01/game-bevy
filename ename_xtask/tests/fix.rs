@@ -111,3 +111,30 @@ fn running_fix_twice_is_a_no_op_the_second_time() {
         "everything already has a guid, so the second run does nothing"
     );
 }
+
+/// Regression test for the reported bug: a package with no `_alias_rules.toml` anywhere in it
+/// made every one of its assets invisible to the scan, so `ename_fix` wrote nothing for them.
+/// The package id now stands in for the missing rule.
+#[test]
+fn it_creates_sidecars_under_the_package_id_when_no_rules_file_covers_the_package() {
+    let dir = support::copy_fixture("no_rules");
+    let root = dir.path();
+
+    let summary = fix(root, &["basegame".to_owned()], None);
+    assert_eq!(
+        summary.created, 2,
+        "both airship.glb and map.glb had no sidecar and no rule at all"
+    );
+
+    let airship = root.join("basegame/core/airship.glb.alias");
+    let text = std::fs::read_to_string(&airship).unwrap();
+    let file: ename_asset_alias::AliasFile = toml::from_str(&text).unwrap();
+    assert_eq!(file.alias.as_deref(), Some("core::airship"));
+    assert_eq!(file.alias_origin, ename_asset_alias::AliasOrigin::Derived);
+    assert!(file.guid.is_some());
+
+    let map = root.join("basegame/core/map.glb.alias");
+    let text = std::fs::read_to_string(&map).unwrap();
+    let file: ename_asset_alias::AliasFile = toml::from_str(&text).unwrap();
+    assert_eq!(file.alias.as_deref(), Some("core::map"));
+}

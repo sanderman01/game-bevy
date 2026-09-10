@@ -1,0 +1,6 @@
+[package]
+id = "core"
+version = "1.0.0"
+authors = ["Test"]
+title = "Core"
+description = "Reproduces the bug report: no _alias_rules.toml anywhere, assets with no sidecars."
