@@ -1,0 +1,38 @@
+docs/design/crate-layout.md
+  s_4e07d3b1571b5a::t_70bb6d6c81afa3 11
+  s_4e07d3b1571b5a::t_3adb3b91151cae 33-34,37-40
+docs/assets-packages.md
+  s_4e07d3b1571b5a::t_ba8cbc6b45a01f 91-92
+  s_4e07d3b1571b5a::t_eb296a82e337b5 46-47
+scratch/content-addressing-design.md
+  s_4e07d3b1571b5a::t_c715114e80ffe6 423-425
+  s_4e07d3b1571b5a::t_7f61d1a0bbf251 318-326
+  s_4e07d3b1571b5a::t_a3f27444ff7fa4 315-317
+  s_4e07d3b1571b5a::t_bfbec176692628 327-329,420-422
+  s_4e07d3b1571b5a::t_c95ff17924286a 426
+  s_57bb82a7b2b84c::t_17a3fc20a054dd 1-314,330-419
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fbc30b304046e7a6e6a436c271d3867dfe3d1aa9",
+  "prompts": {},
+  "sessions": {
+    "s_4e07d3b1571b5a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21e8f394-8f46-4c88-acd7-91ef4aed2296",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_57bb82a7b2b84c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aeb900c9f56cf699c",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
