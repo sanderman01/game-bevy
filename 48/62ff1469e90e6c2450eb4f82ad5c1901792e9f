@@ -1,0 +1,31 @@
+ename/Cargo.toml
+  s_337c62a3840b45::t_8b067da5d2951a 15
+docs/design/crate-layout.md
+  s_337c62a3840b45::t_b25dd8cef7c554 19
+  s_337c62a3840b45::t_35f9a722722443 83,86-87
+  s_337c62a3840b45::t_a76b46094e934b 10
+scripts/check-layers.sh
+  s_337c62a3840b45::t_353536362edb43 27,34,36-39,46,49
+README.md
+  s_337c62a3840b45::t_401b24bfc57b27 35
+ename/src/main.rs
+  s_337c62a3840b45::t_4040672595827e 25
+ename_editor/src/lib.rs
+  s_337c62a3840b45::t_b6986fcd294651 5-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4862ff1469e90e6c2450eb4f82ad5c1901792e9f",
+  "prompts": {},
+  "sessions": {
+    "s_337c62a3840b45": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8eae72df-81dc-4bd3-9868-3695b2a3f735",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
