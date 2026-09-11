@@ -111,8 +111,5 @@ A binary aunched straight from `target/` falls back to Bevy's executable-directo
   project disables Bevy's `TransformPlugin`.
 - `GameState::{Loading, Scene, Play}` all live in one `App` with the editor resident. The moment
   `Play` mutates the world, entering and leaving play will destroy authored state.
-- `ename_editor` exposes no ordering point or selection access to the layer above it.
-  `EditorSystems` and `UiState` are both `pub(crate)`, so `ename_game_editor` cannot order against
-  selection or read what is selected until `ename_editor` widens one or both.
 - Frame pacing for input lag (`bevy_framepace`) was a commented-out plugin line before the refactor
   and did not survive it. Evaluated, not adopted.

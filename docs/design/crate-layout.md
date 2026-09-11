@@ -7,7 +7,7 @@ The long-form analysis behind this is in `scratch/crate-structure-review.md`.
 ## Naming
 
 Project codename is `ename`. Every crate is prefixed with it: `ename_engine`, `ename_asset_alias`,
-`ename_asset_package`, `ename_asset_content`, `ename_editor`, `ename_game`, `ename_game_editor`,
+`ename_asset_package`, `ename_asset_content`, `ename_editor`, `ename_game`,
 `ename_xtask`, and the binary crate `ename`. Bare names like
 `engine` and `editor` collide with anything and resolve independently once there is more than one
 workspace.
@@ -16,9 +16,8 @@ workspace.
 
 ```
 ename (bin)          -> ename_engine, ename_game, dirs
-                        + ename_editor, ename_game_editor   (feature `editor`)
+                        + ename_editor                      (feature `editor`)
                         + ename_remote                      (feature `agent`)
-ename_game_editor    -> ename_editor, ename_game          (allowed; empty today, so bevy only)
 ename_remote         -> ename_engine
 ename_game           -> ename_engine, ename_asset_alias
 ename_editor         -> ename_engine
@@ -80,16 +79,12 @@ before then. `EnginePlugins` already owns `DefaultPlugins` for the same class of
 `.disable::<TransformPlugin>()`, so it owns this too, and `add_before::<AssetPlugin>` makes the
 ordering structural rather than a rule in `main.rs` that every future target has to remember.
 
-`ename_game_editor` is reserved and empty. Game features grow editor tooling, and an
-`ename_editor -> ename_engine` graph has no slot for tooling that knows the game. The slot costs a
-manifest; discovering it is missing costs a duplicated concept, which is how `EditorCamera` came
-to exist.
-
 `scripts/check-layers.sh` enforces this in CI. It is a build failure, not a habit. It reads
-`cargo tree --no-default-features`, so it also proves that the editor crates and `ename_remote`
+`cargo tree --no-default-features`, so it also proves that the editor crate and `ename_remote`
 are absent from a shipping build.
 
-`EditorCamera` existed because `engine` depended on `editor` and the editor could not name
+`EditorCamera` is a historical example of the cost of getting a layer wrong. It existed because
+`engine` depended on `editor` and the editor could not name
 `engine::camera::MainCamera`. It is deleted. The editor now keys off `MainCamera` and attaches
 `TransformGizmoCamera` itself, which keeps the gizmo requirement in the crate that has the gizmo.
 

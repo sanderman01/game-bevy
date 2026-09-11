@@ -44,7 +44,6 @@ ename_asset_package = { path = "ename_asset_package", version = "0.0.0", default
 ename_editor = { path = "ename_editor", version = "0.0.0" }
 ename_engine = { path = "ename_engine", version = "0.0.0" }
 ename_game = { path = "ename_game", version = "0.0.0" }
-ename_game_editor = { path = "ename_game_editor", version = "0.0.0" }
 ename_remote = { path = "ename_remote", version = "0.0.0" }
 futures-lite = "2.6.1"
 glob = "0.3.4"

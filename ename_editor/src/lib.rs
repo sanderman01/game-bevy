@@ -2,8 +2,8 @@
 //! integration.
 //!
 //! Sits above `ename_engine` and links into a target only when that target asks for it. A
-//! shipping build does not contain this crate, and it must never depend on `ename_game`: game
-//! specific tooling belongs in `ename_game_editor`. See `docs/design/crate-layout.md`.
+//! shipping build does not contain this crate, and it must never depend on `ename_game`. See
+//! `docs/design/crate-layout.md`.
 //!
 //! Based on the example at:
 //! <https://github.com/jakobhellermann/bevy-inspector-egui/blob/main/crates/bevy-inspector-egui/examples/integrations/egui_dock.rs>.

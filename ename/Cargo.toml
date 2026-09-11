@@ -12,7 +12,7 @@ default = ["dev", "editor", "agent"]
 dev = ["bevy/dynamic_linking", "bevy/dev"]
 # Links the editor into the binary. Off for a shipping build: absence of the crate is what makes
 # "does this ship?" a question the dependency graph answers.
-editor = ["dep:ename_editor", "dep:ename_game_editor"]
+editor = ["dep:ename_editor"]
 # Opens a BRP server on loopback for agent tooling. On by default so a `cargo run` is
 # immediately drivable from an agent. Never on in a shipping build: BRP is arbitrary read and
 # write access to the world, and localhost is not a trust boundary. `--no-default-features` is
@@ -25,7 +25,6 @@ dirs.workspace = true
 ename_editor = { workspace = true, optional = true }
 ename_engine = { workspace = true }
 ename_game = { workspace = true }
-ename_game_editor = { workspace = true, optional = true }
 ename_remote = { workspace = true, optional = true }
 
 [lints]

@@ -24,28 +24,28 @@ check() {
 }
 
 # `ename_engine` may depend on the asset crates below it, and must not name anything above.
-check ename_engine 'ename_editor|ename_game|ename_game_editor'
+check ename_engine 'ename_editor|ename_game'
 # The bottom of the asset stack. `ename_asset_alias` is the leaf: it owns the alias, the
 # `.alias` and `_alias_rules.toml` schema, and the walk over them, and names nothing first-party.
 check ename_asset_alias 'ename_.*'
 # `ename_asset_package` owns packages, load order, and the fold that turns an ordered scan into
 # one index, all on top of that same walk, so the alias leaf is the only first-party crate it
 # may name.
-check ename_asset_package 'ename_asset_content|ename_engine|ename_editor|ename_game|ename_game_editor|ename_remote|ename_mcp'
+check ename_asset_package 'ename_asset_content|ename_engine|ename_editor|ename_game|ename_remote|ename_mcp'
 # The glue may name both asset crates and nothing above it.
-check ename_asset_content 'ename_engine|ename_editor|ename_game|ename_game_editor'
-check ename_editor 'ename_game|ename_game_editor'
-check ename_game 'ename_editor|ename_game_editor'
-check ename_remote 'ename_editor|ename_game|ename_game_editor'
+check ename_asset_content 'ename_engine|ename_editor|ename_game'
+check ename_editor 'ename_game'
+check ename_game 'ename_editor'
+check ename_remote 'ename_editor|ename_game'
 # The sidecar is a separate process. A first-party dependency here would mean it had started
 # linking the engine it is supposed to talk to over a socket.
 check ename_mcp 'ename_.*'
 # The tooling binary. It reads the asset crates with StdVfs and must never link the renderer,
 # the editor, the game, or `ename_asset_content` (which always links Bevy) -- if it did,
 # `cargo xtask ename_check` would rebuild half the engine.
-check ename_xtask 'ename_asset_content|ename_engine|ename_editor|ename_game|ename_game_editor|ename_remote|ename_mcp'
+check ename_xtask 'ename_asset_content|ename_engine|ename_editor|ename_game|ename_remote|ename_mcp'
 # `--no-default-features` also proves the `agent` feature is off in the shipping graph, which
 # matters more than the editor: `ename_remote` is unauthenticated write access to the world.
-check ename 'ename_editor|ename_game_editor|ename_remote'
+check ename 'ename_editor|ename_remote'
 
 exit "$fail"
