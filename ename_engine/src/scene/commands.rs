@@ -76,7 +76,10 @@ pub(super) fn tag_membership_on_ready(
             .unwrap_or_else(|_| panic!("scene root entity in {path:?} is missing SceneId"));
         commands
             .entity(*root)
-            .insert(SceneName(scene_name_from_path(path)));
+            .insert(SceneName(scene_name_from_path(path)))
+            // A loaded scene root must be top-level; big_space validates floating origins
+            // against the ultimate hierarchy ancestor, not this transient load container.
+            .remove::<ChildOf>();
         id
     } else if let Ok(&SceneMembership(id)) = membership.get(container) {
         // Case 2: nested content (e.g. a WorldAssetRoot-addressed model authored inside a scene)
