@@ -4,8 +4,10 @@
 //! Bevy version to free the `bevy_scene` name for BSN. See `scratch/scenes-spec.md` for the full
 //! design.
 
+mod format;
 mod identity;
 
+pub use format::{SceneAppExt, SceneFormat, SceneFormatError, SceneFormats};
 pub use identity::{SceneId, SceneMembership, SceneName, SourcePath};
 
 use bevy::prelude::*;
