@@ -1,0 +1,33 @@
+ename_engine/tests/scene_round_trip.rs
+  s_ffd6bf502d6107::t_6b0d4e45cc1659 1-113
+ename_engine/Cargo.toml
+  s_a3a82109dc9633::t_cab4a6347c1fd1 13
+ename_engine/src/scene/commands.rs
+  s_a3a82109dc9633::t_494170d010dec4 1-122
+ename_engine/src/scene/mod.rs
+  s_a3a82109dc9633::t_8f5123f65eef0b 7,12,19,28-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e4f328ddd8e84ec945718c217c63e64075dd0986",
+  "prompts": {},
+  "sessions": {
+    "s_a3a82109dc9633": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d18b33e4-c0aa-41cd-8a6e-de3cd81ab879",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_ffd6bf502d6107": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09a16-fd42-7903-806a-c001efbeb870",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
