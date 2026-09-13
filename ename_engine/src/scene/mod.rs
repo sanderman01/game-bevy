@@ -1,0 +1,23 @@
+//! Loading and saving scene content from `.scn.ron` asset files -- a stopgap until Bevy ships
+//! scene *assets* for its new BSN system. Built on `bevy_world_serialization`
+//! (`bevy::world_serialization`), the classic reflection-based scene serializer, renamed in this
+//! Bevy version to free the `bevy_scene` name for BSN. See `scratch/scenes-spec.md` for the full
+//! design.
+
+mod identity;
+
+pub use identity::{SceneId, SceneMembership, SceneName, SourcePath};
+
+use bevy::prelude::*;
+
+/// Registers scene identity types for reflection. Format registration and the `open`/`save`
+/// machinery are added by later tasks in this plan.
+pub struct ScenePlugin;
+
+impl Plugin for ScenePlugin {
+    fn build(&self, app: &mut App) {
+        app.register_type::<SceneId>()
+            .register_type::<SceneMembership>()
+            .register_type::<SceneName>();
+    }
+}

@@ -12,6 +12,7 @@ pub mod camera;
 pub mod input;
 pub mod log;
 pub mod physics;
+pub mod scene;
 pub mod time;
 
 use bevy::{
