@@ -28,6 +28,9 @@ impl Plugin for ScenePlugin {
             .register_type::<SceneName>()
             .register_type::<bevy::world_serialization::WorldAssetRoot>()
             .register_type::<bevy::world_serialization::DynamicWorldRoot>()
+            // `Camera::viewport`'s `Range<f32>` lacks default serde data, breaking real save/load.
+            .register_type_data::<std::ops::Range<f32>, bevy::reflect::ReflectSerialize>()
+            .register_type_data::<std::ops::Range<f32>, bevy::reflect::ReflectDeserialize>()
             .add_observer(commands::tag_membership_on_ready);
     }
 }

@@ -29,9 +29,9 @@ pub fn open_scene_by_alias(
 
 /// Saves the scene identified by `id` under `alias`. If `alias` already resolves to a file, that
 /// file is overwritten in whatever format it already used. If `alias` has no file yet, one is
-/// created under a conventional path (`basegame/scenes/<alias, `::` replaced with `/`>.<ext>`)
-/// and a matching `.alias` sidecar is written alongside it, so a scan of the asset tree resolves
-/// `alias` to the new file from then on.
+/// created under `basegame/<alias>.<ext>`, with `::` replaced by `/`, inside the existing package
+/// named by the alias namespace. A matching `.alias` sidecar is written alongside it, so a scan
+/// of the asset tree resolves `alias` to the new file from then on.
 pub fn save_scene_by_alias(
     world: &mut World,
     asset_root: &Path,
@@ -67,11 +67,13 @@ pub fn save_scene_by_alias(
     Ok(())
 }
 
-/// The conventional path a brand-new scene alias gets: `basegame/scenes/<alias>.<extension>`,
-/// with `::` in the alias turned into path separators (`core::demo_scene` ->
-/// `basegame/scenes/core/demo_scene.<extension>`).
+/// The conventional path a brand-new scene alias gets: `basegame/<alias>.<extension>`, with `::`
+/// replaced by `/` (`core::demo_scene` -> `basegame/core/demo_scene.<extension>`), inside the
+/// package named by its alias namespace. `ename_asset_package::scan::read_packages_in` discovers
+/// packages only directly inside search paths; asset discovery recurses within those packages.
+/// The namespace must name an existing package directory; creating packages is out of scope.
 fn default_scene_path_for_alias(alias: &str, extension: &str) -> PathBuf {
-    PathBuf::from("basegame/scenes")
+    PathBuf::from("basegame")
         .join(alias.replace("::", "/"))
         .with_extension(extension)
 }

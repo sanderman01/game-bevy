@@ -23,6 +23,7 @@ use big_space::plugin::{BigSpaceDebugPlugins, BigSpaceDefaultPlugins};
 use ename_asset_content::AssetContentPlugin;
 use std::path::PathBuf;
 
+pub use ename_asset_content::DEFAULT_ASSET_ROOT;
 /// Re-exported so a target can name the user's load order file without depending on the asset
 /// crates itself. Where that file lives is the binary's decision; what it is called is not.
 pub use ename_asset_content::LOAD_ORDER_FILE;
@@ -125,6 +126,7 @@ impl PluginGroup for EnginePlugins {
             .add_group(BigSpaceDebugPlugins::default())
             .add(bigspace::BigSpacePlugin)
             .add(camera::VirtualCameraPlugin)
+            .add(scene::ScenePlugin)
             .add(input::FlyCameraPlugin)
             .add(physics::PhysicsIntegrationPlugin)
             .add(time::TimeControlPlugin)

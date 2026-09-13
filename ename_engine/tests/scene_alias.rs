@@ -53,8 +53,8 @@ fn saving_a_brand_new_alias_writes_the_scene_file_and_a_sidecar() {
     save_scene_by_alias(app.world_mut(), &asset_root, "core::demo_scene", id)
         .expect("save succeeds for a brand-new alias");
 
-    let scene_path = asset_root.join("basegame/scenes/core/demo_scene.scn.ron");
-    let sidecar_path = asset_root.join("basegame/scenes/core/demo_scene.scn.ron.alias");
+    let scene_path = asset_root.join("basegame/core/demo_scene.scn.ron");
+    let sidecar_path = asset_root.join("basegame/core/demo_scene.scn.ron.alias");
     assert!(
         scene_path.exists(),
         "scene file must be written at the conventional path"

@@ -32,6 +32,14 @@ impl SceneFormat for DynamicWorldFormat {
     fn serialize(&self, world: &World, entities: &[Entity]) -> Result<Vec<u8>, SceneFormatError> {
         let type_registry = world.resource::<AppTypeRegistry>().read();
         let dynamic_world = DynamicWorldBuilder::from_world(world, &type_registry)
+            // `VisibilityClass` made the real scene save fail: its `TypeId`s cannot serialize,
+            // and Bevy's visibility system recomputes it on load, so excluding it loses no data.
+            .deny_component::<bevy::camera::visibility::VisibilityClass>()
+            // Bevy marks these defaulted camera settings opaque; defaults are restored on load.
+            .deny_component::<bevy::camera::CameraMainTextureUsages>()
+            .deny_component::<bevy::camera::Exposure>()
+            // Camera requirements recreate this runtime-interned render graph selection on load.
+            .deny_component::<bevy::render::camera::CameraRenderGraph>()
             .extract_entities(entities.iter().copied())
             .build();
         Ok(dynamic_world.serialize(&type_registry)?.into_bytes())
