@@ -1,2 +1,2 @@
 alias = "core::{stem}"
-include = ["*.txt"]
+include = ["*.txt", "*.scn.ron"]

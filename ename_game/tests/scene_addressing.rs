@@ -10,12 +10,13 @@
 
 use bevy::{
     app::{App, TaskPoolPlugin},
-    asset::{AssetApp, AssetPlugin},
+    asset::AssetPlugin,
+    ecs::system::RunSystemOnce,
     prelude::*,
     state::app::StatesPlugin,
 };
-use ename_asset_alias::ALIAS_SOURCE;
 use ename_asset_content::AssetContentPlugin;
+use ename_engine::scene::SceneAppExt;
 use ename_game::{GameState, GameStatePlugin};
 
 /// Relative to the workspace root, which `BEVY_ASSET_ROOT` pins in `.cargo/config.toml`.
@@ -48,11 +49,11 @@ fn game_state_leaves_loading_without_the_content_layer() {
     );
 }
 
-/// The scene must address assets through `alias://`. If a handle were keyed on a resolved path,
-/// changing the active package set at runtime would leave every live handle pointing at the old
-/// file, which is the property the whole design exists to protect.
+/// The scene must still be keyed on `alias://`, not a resolved path, for the same reason the
+/// hand-built-handle version of this test checked it before `open_scene_by_alias` existed: a
+/// resolved-path handle would go stale the moment the active package set changes at runtime.
 #[test]
-fn scene_handles_are_keyed_on_the_alias_source() {
+fn scene_is_opened_through_the_alias_source() {
     let mut app = App::new();
     app.add_plugins(
         AssetContentPlugin::default()
@@ -64,23 +65,35 @@ fn scene_handles_are_keyed_on_the_alias_source() {
         file_path: FIXTURE_ROOT.to_owned(),
         ..Default::default()
     })
-    // The asset type only, not `ScenePlugin`: the test reads the handle's path and never loads.
-    .init_asset::<WorldAsset>();
+    .add_plugins(bevy::world_serialization::WorldSerializationPlugin)
+    .add_plugins(ename_engine::scene::ScenePlugin)
+    .register_scene_format(ename_engine::scene::DynamicWorldFormat);
 
-    let server = app.world().resource::<AssetServer>().clone();
+    let entity = app
+        .world_mut()
+        .run_system_once(
+            |mut commands: Commands,
+             asset_server: Res<AssetServer>,
+             formats: Res<ename_engine::scene::SceneFormats>| {
+                ename_engine::scene::open_scene_by_alias(
+                    &mut commands,
+                    &asset_server,
+                    &formats,
+                    "core::start_scene",
+                )
+            },
+        )
+        .expect("system runs");
 
-    // Exactly what `load_models` builds -- `WorldAssetRoot` is a `Handle<WorldAsset>` -- without
-    // dragging `ScenePlugin`'s renderer requirements in.
-    let handle = server.load::<WorldAsset>(
-        GltfAssetLabel::Scene(0).from_asset(format!("{ALIAS_SOURCE}://core::airship")),
-    );
-
-    let path = handle.path().expect("a path-backed handle");
+    let handle = app
+        .world()
+        .get::<DynamicWorldRoot>(entity)
+        .expect("open_scene_by_alias inserts a DynamicWorldRoot");
+    let path = handle.0.path().expect("a path-backed handle");
     assert_eq!(
         path.source().as_str(),
         Some("alias"),
-        "the handle must be keyed on the alias source, got {path}"
+        "the scene handle must be keyed on the alias source, got {path}"
     );
-    assert_eq!(path.path().to_str(), Some("core::airship"));
-    assert_eq!(path.label(), Some("Scene0"));
+    assert_eq!(path.path().to_str(), Some("core::start_scene"));
 }
