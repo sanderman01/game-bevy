@@ -105,9 +105,14 @@ fn open_scene_tags_the_scene_root_and_its_descendants() {
     assert_eq!(membership.0, id);
 
     let mut roots = app.world_mut().query::<(Entity, &SceneId, &SceneName)>();
-    let (_, &root_id, root_name) = roots
+    let (root_entity, &root_id, root_name) = roots
         .single(app.world())
         .expect("exactly one entity carries both SceneId and SceneName");
     assert_eq!(root_id, id);
     assert_eq!(root_name.0, "demo");
+    assert!(
+        app.world().get::<ChildOf>(root_entity).is_none(),
+        "a loaded scene's root must be a genuine top-level entity, not stay parented under the \
+         transient load container -- see commands.rs's tag_membership_on_ready Case 1"
+    );
 }
