@@ -1,0 +1,37 @@
+ename_engine/tests/scene_alias.rs
+  s_a3a82109dc9633::t_42096191d1cba6 56-57
+ename_engine/src/scene/dynamic_world_format.rs
+  s_c1b101b1cb2205::t_2118a097706f1d 35-42
+ename_game/src/scene.rs
+  s_a3a82109dc9633::t_8e627d501e2458 1-2,4-5,9,14-15,19,22,24
+ename_engine/src/scene/mod.rs
+  s_c1b101b1cb2205::t_85e4adede715c3 31-33
+ename_engine/src/scene/alias.rs
+  s_a3a82109dc9633::t_5cffa7d93dcd93 32-34,70-74,76
+ename_engine/src/lib.rs
+  s_c1b101b1cb2205::t_2b35ff29caf665 26,129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e8ef62c18e7940a6fb48719383fde7c4418c8d1d",
+  "prompts": {},
+  "sessions": {
+    "s_a3a82109dc9633": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d18b33e4-c0aa-41cd-8a6e-de3cd81ab879",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": null
+    },
+    "s_c1b101b1cb2205": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09a65-1b3f-7df2-b3ec-a2303f464150",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
