@@ -120,3 +120,74 @@ fn tag_recursive(
         }
     }
 }
+
+use bevy::platform::collections::HashSet;
+
+/// A [`save_scene`] call failed.
+#[derive(Debug, thiserror::Error)]
+pub enum SaveSceneError {
+    #[error("no SceneFormat registered for {0:?}")]
+    UnknownFormat(String),
+    #[error(transparent)]
+    Format(#[from] super::SceneFormatError),
+    #[error("failed to write scene file: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+/// Saves every entity tagged `SceneMembership(id)` to `path`, choosing a format by `path`'s
+/// extension. `world` is mutated: if the tagged entities have no single natural root (a lone
+/// top-level entity with no `ChildOf` into the tagged set), a synthetic root is created and the
+/// orphans reparented under it, so the saved file always has exactly one top-level entity -- the
+/// invariant [`open_scene`]'s membership tagging depends on. See `scratch/scenes-spec.md`.
+pub fn save_scene(path: &str, world: &mut World, id: SceneId) -> Result<(), SaveSceneError> {
+    world.resource_scope(
+        |world, formats: Mut<SceneFormats>| -> Result<(), SaveSceneError> {
+            let mut query = world.query::<(Entity, &SceneMembership)>();
+            let tagged: Vec<Entity> = query
+                .iter(world)
+                .filter(|(_, membership)| membership.0 == id)
+                .map(|(entity, _)| entity)
+                .collect();
+
+            let tagged_set: HashSet<Entity> = tagged.iter().copied().collect();
+            let top_level: Vec<Entity> = tagged
+                .iter()
+                .copied()
+                .filter(|&entity| {
+                    world
+                        .get::<ChildOf>(entity)
+                        .is_none_or(|child_of| !tagged_set.contains(&child_of.0))
+                })
+                .collect();
+
+            let root = match top_level.as_slice() {
+                [single] => {
+                    let single = *single;
+                    if world.get::<SceneId>(single).is_none() {
+                        world.entity_mut(single).insert(id);
+                    }
+                    single
+                }
+                _ => {
+                    let synthetic = world.spawn((id, SceneMembership(id))).id();
+                    for &orphan in &top_level {
+                        world.entity_mut(orphan).insert(ChildOf(synthetic));
+                    }
+                    synthetic
+                }
+            };
+
+            let mut entities = tagged;
+            if !entities.contains(&root) {
+                entities.push(root);
+            }
+
+            let format = formats
+                .for_path(path)
+                .ok_or_else(|| SaveSceneError::UnknownFormat(path.to_owned()))?;
+            let bytes = format.serialize(world, &entities)?;
+            std::fs::write(path, bytes)?;
+            Ok(())
+        },
+    )
+}

@@ -9,7 +9,7 @@ mod dynamic_world_format;
 mod format;
 mod identity;
 
-pub use commands::open_scene;
+pub use commands::{SaveSceneError, open_scene, save_scene};
 pub use dynamic_world_format::DynamicWorldFormat;
 pub use format::{SceneAppExt, SceneFormat, SceneFormatError, SceneFormats};
 pub use identity::{SceneId, SceneMembership, SceneName, SourcePath};
