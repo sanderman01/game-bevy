@@ -4,11 +4,13 @@
 //! Bevy version to free the `bevy_scene` name for BSN. See `scratch/scenes-spec.md` for the full
 //! design.
 
+mod alias;
 mod commands;
 mod dynamic_world_format;
 mod format;
 mod identity;
 
+pub use alias::{open_scene_by_alias, save_scene_by_alias};
 pub use commands::{SaveSceneError, open_scene, save_scene};
 pub use dynamic_world_format::DynamicWorldFormat;
 pub use format::{SceneAppExt, SceneFormat, SceneFormatError, SceneFormats};
