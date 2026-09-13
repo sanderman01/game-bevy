@@ -1,0 +1,19 @@
+ename_engine/tests/scene_round_trip.rs
+  s_dee555478fbb5a::t_21d1ad8bbef1ff 108,113-117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "57e8f40e9234c0607ab3a9df00cd9ff55ccae259",
+  "prompts": {},
+  "sessions": {
+    "s_dee555478fbb5a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09ab9-d817-7eb2-96c2-4d5e92ca94df",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
