@@ -1,0 +1,35 @@
+ename_engine/src/scene/dynamic_world_format.rs
+  s_fe6711cdeceab9::t_3d437e740f5a6d 5,11-13,46-47,50-71
+Cargo.lock
+  s_a3a82109dc9633::t_830367260fa235 3028,3030-3033
+ename_engine/src/camera/driver.rs
+  s_a3a82109dc9633::t_bd760f9d26e384 8,27
+ename_engine/src/camera/virtual_camera.rs
+  s_a3a82109dc9633::t_685f371a881be5 3-6,15
+ename_engine/tests/scene_round_trip.rs
+  s_a3a82109dc9633::t_69401a2d4f14a0 16,119-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5c32a0d86047baa3c3c2d0b102738f355c516a6a",
+  "prompts": {},
+  "sessions": {
+    "s_a3a82109dc9633": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d18b33e4-c0aa-41cd-8a6e-de3cd81ab879",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_fe6711cdeceab9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09ad3-7c12-71b3-835e-575cace1b6f9",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
