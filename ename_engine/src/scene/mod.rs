@@ -4,18 +4,19 @@
 //! Bevy version to free the `bevy_scene` name for BSN. See `scratch/scenes-spec.md` for the full
 //! design.
 
+mod commands;
 mod dynamic_world_format;
 mod format;
 mod identity;
 
+pub use commands::open_scene;
 pub use dynamic_world_format::DynamicWorldFormat;
 pub use format::{SceneAppExt, SceneFormat, SceneFormatError, SceneFormats};
 pub use identity::{SceneId, SceneMembership, SceneName, SourcePath};
 
 use bevy::prelude::*;
 
-/// Registers scene identity types for reflection. Format registration and the `open`/`save`
-/// machinery are added by later tasks in this plan.
+/// Registers scene identity types for reflection and tags loaded scene content with its identity.
 pub struct ScenePlugin;
 
 impl Plugin for ScenePlugin {
@@ -24,6 +25,7 @@ impl Plugin for ScenePlugin {
             .register_type::<SceneMembership>()
             .register_type::<SceneName>()
             .register_type::<bevy::world_serialization::WorldAssetRoot>()
-            .register_type::<bevy::world_serialization::DynamicWorldRoot>();
+            .register_type::<bevy::world_serialization::DynamicWorldRoot>()
+            .add_observer(commands::tag_membership_on_ready);
     }
 }
