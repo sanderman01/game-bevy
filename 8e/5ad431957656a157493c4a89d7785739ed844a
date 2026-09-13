@@ -1,0 +1,23 @@
+ename_engine/src/scene/commands.rs
+  s_acfe7833b43d61::t_9000d3f19f74ad 123-193
+ename_engine/src/scene/mod.rs
+  s_acfe7833b43d61::t_1498d7ec4f5d06 12
+ename_engine/tests/scene_membership.rs
+  s_acfe7833b43d61::t_b5f4ec87afd7c3 1-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8e5ad431957656a157493c4a89d7785739ed844a",
+  "prompts": {},
+  "sessions": {
+    "s_acfe7833b43d61": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09a3b-978b-7ab1-9b65-a3d7028749dd",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
