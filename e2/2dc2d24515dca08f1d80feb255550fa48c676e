@@ -1,0 +1,19 @@
+ename_engine/src/scene/commands.rs
+  s_dee555478fbb5a::t_73fc52c0e54491 79-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e22dc2d24515dca08f1d80feb255550fa48c676e",
+  "prompts": {},
+  "sessions": {
+    "s_dee555478fbb5a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09ab9-d817-7eb2-96c2-4d5e92ca94df",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
