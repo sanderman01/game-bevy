@@ -4,9 +4,11 @@
 //! Bevy version to free the `bevy_scene` name for BSN. See `scratch/scenes-spec.md` for the full
 //! design.
 
+mod dynamic_world_format;
 mod format;
 mod identity;
 
+pub use dynamic_world_format::DynamicWorldFormat;
 pub use format::{SceneAppExt, SceneFormat, SceneFormatError, SceneFormats};
 pub use identity::{SceneId, SceneMembership, SceneName, SourcePath};
 
@@ -20,6 +22,8 @@ impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<SceneId>()
             .register_type::<SceneMembership>()
-            .register_type::<SceneName>();
+            .register_type::<SceneName>()
+            .register_type::<bevy::world_serialization::WorldAssetRoot>()
+            .register_type::<bevy::world_serialization::DynamicWorldRoot>();
     }
 }
