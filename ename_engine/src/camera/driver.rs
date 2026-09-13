@@ -5,6 +5,7 @@ use bevy::{
         component::Component,
         entity::Entity,
         query::With,
+        reflect::ReflectComponent,
         system::{Query, Res},
     },
     math::Quat,
@@ -23,6 +24,7 @@ pub const DEFAULT_BLEND_DAMPING: Blend = Blend::Damping(10.0, 0.2);
 /// Controls camera transform and camera settings, based on the current live
 /// VirtualCamera. Attach to an entity with Camera3d or Camera2d component.
 #[derive(Debug, Component, Reflect)]
+#[reflect(Component)]
 pub struct CameraDriver {
     pub enabled: bool,
     pub channel_mask: u32,

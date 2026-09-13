@@ -1,6 +1,9 @@
 //! A pose the camera driver can be pointed at.
 
-use bevy::{ecs::component::Component, reflect::Reflect};
+use bevy::{
+    ecs::{component::Component, reflect::ReflectComponent},
+    reflect::Reflect,
+};
 
 use crate::camera::driver::{Blend, DEFAULT_CHANNEL_MASK, DEFAULT_PRIORITY};
 
@@ -9,6 +12,7 @@ use crate::camera::driver::{Blend, DEFAULT_CHANNEL_MASK, DEFAULT_PRIORITY};
 /// position and orientation of (or smoothly translate to) whichever virtual camera is currently
 /// live.
 #[derive(Debug, Component, Reflect)]
+#[reflect(Component)]
 pub struct VirtualCamera {
     pub enabled: bool,
     pub channel_mask: u32,

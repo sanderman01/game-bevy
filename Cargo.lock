@@ -3025,17 +3025,19 @@ dependencies = [
  "avian3d",
  "bevy",
  "big_space",
+ "ename_asset_alias",
  "ename_asset_content",
+ "ron",
+ "thiserror 2.0.20",
+ "toml",
+ "uuid",
 ]
 
 [[package]]
 name = "ename_game"
 version = "0.0.0"
 dependencies = [
- "avian3d",
  "bevy",
- "big_space",
- "ename_asset_alias",
  "ename_asset_content",
  "ename_engine",
 ]

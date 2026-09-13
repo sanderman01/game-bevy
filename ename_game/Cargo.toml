@@ -8,7 +8,6 @@ license.workspace = true
 
 [dependencies]
 bevy = { workspace = true }
-ename_asset_alias = { workspace = true, features = ["bevy"] }
 ename_engine = { workspace = true }
 
 [dev-dependencies]
