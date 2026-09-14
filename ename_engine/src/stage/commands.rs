@@ -11,7 +11,7 @@
 use bevy::{platform::collections::HashMap, prelude::*};
 use ename_asset_alias::ALIAS_SOURCE;
 
-use super::{SourcePath, StageFormats, StageId, StageMembership, StageName};
+use super::{SourcePath, StageFormats, StageId, StageMembership};
 
 /// Resolves `path` to a registered [`StageFormat`](super::StageFormat) by extension and spawns
 /// its container entity. Panics if no format is registered for `path`'s extension -- a missing
@@ -77,12 +77,12 @@ pub(super) fn tag_stage_membership_on_ready(
         let name = stage_name_from_path(path);
         commands
             .entity(*root)
-            // `Name`, not just `StageName`: every entity-addressing tool in this codebase (the
-            // editor's Hierarchy panel, ename_mcp) keys off `Name`, so the stage root must carry
-            // one to be discoverable by the stage's name at all. This overwrites whatever `Name`
-            // the root already had (e.g. a reused content entity like big_space's `Grid`) --
-            // nothing in this codebase depends on such a pre-existing name surviving a load.
-            .insert((StageName(name.clone()), Name::new(name)))
+            // `Name`: every entity-addressing tool in this codebase (the editor's Hierarchy
+            // panel, ename_mcp) keys off it, so the stage root must carry one to be discoverable
+            // by the stage's name at all. This overwrites whatever `Name` the root already had
+            // (e.g. a reused content entity like big_space's `Grid`) -- nothing in this codebase
+            // depends on such a pre-existing name surviving a load.
+            .insert(Name::new(name))
             // A loaded stage root must be top-level; big_space validates floating origins
             // against the ultimate hierarchy ancestor, not this transient load container.
             .remove::<ChildOf>();

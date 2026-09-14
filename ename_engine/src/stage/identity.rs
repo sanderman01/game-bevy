@@ -1,5 +1,7 @@
-//! The three identity concepts a stage carries, deliberately not conflated: a stable id, a
-//! membership tag keyed by that id, and a cosmetic display name. See `scratch/scenes-spec.md`.
+//! The two identity concepts a stage carries, deliberately not conflated: a stable id and a
+//! membership tag keyed by that id. Display naming is not a third concept here -- it's the
+//! stage root's ordinary `bevy_ecs::name::Name`, stamped from the path/alias the stage was
+//! opened with, same as any other named entity. See `scratch/scenes-spec.md`.
 
 use bevy::prelude::*;
 use uuid::Uuid;
@@ -17,16 +19,9 @@ pub struct StageId(pub Uuid);
 #[reflect(Component)]
 pub struct StageMembership(pub StageId);
 
-/// Cosmetic display name for a stage, stamped on its root entity when the stage is opened.
-/// Computed from the path/alias it was opened with, never persisted in the file itself: renaming
-/// the file (or re-aliasing the stage) changes the displayed name for free on next load.
-#[derive(Component, Clone, Debug, Reflect)]
-#[reflect(Component)]
-pub struct StageName(pub String);
-
 /// Recorded on the transient container entity by a [`StageFormat`](crate::stage::StageFormat)'s
-/// `spawn_root`, so the `WorldInstanceReady` observer can compute [`StageName`] once the stage's
-/// content has finished spawning. Describes the container, not stage content, so it is never
-/// `Reflect` and never saved.
+/// `spawn_root`, so the `WorldInstanceReady` observer can compute the stage root's `Name` once
+/// the stage's content has finished spawning. Describes the container, not stage content, so it
+/// is never `Reflect` and never saved.
 #[derive(Component, Clone, Debug)]
 pub struct SourcePath(pub String);

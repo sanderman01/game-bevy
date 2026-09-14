@@ -43,8 +43,6 @@ impl StageFormat for DynamicWorldFormat {
             .deny_component::<bevy::camera::Exposure>()
             // Camera requirements recreate this runtime-interned render graph selection on load.
             .deny_component::<bevy::render::camera::CameraRenderGraph>()
-            // StageName is derived from the path when a stage is opened, not authored content.
-            .deny_component::<super::StageName>()
             .extract_entities(entities.iter().copied())
             .build();
         let bytes = dynamic_world.serialize(&type_registry)?.into_bytes();

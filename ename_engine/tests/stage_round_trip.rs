@@ -1,6 +1,6 @@
 //! Proves the full load path: `open_stage` spawns a container, `WorldInstanceReady` fires once
 //! the file's content exists, and the membership-tagging observer stamps `StageId`/
-//! `StageMembership`/`StageName` correctly. This is also where a `WorldAssetRoot`-style handle's
+//! `StageMembership`/`Name` correctly. This is also where a `WorldAssetRoot`-style handle's
 //! path-preservation would show up, if it didn't round-trip -- see `scratch/scenes-spec.md` risk
 //! #2.
 
@@ -12,8 +12,8 @@ use bevy::{
     world_serialization::{DynamicWorldBuilder, WorldSerializationPlugin},
 };
 use ename_engine::stage::{
-    DynamicWorldFormat, StageAppExt, StageFormats, StageId, StageMembership, StageName,
-    StagePlugin, open_stage, save_stage,
+    DynamicWorldFormat, StageAppExt, StageFormats, StageId, StageMembership, StagePlugin,
+    open_stage, save_stage,
 };
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -104,18 +104,16 @@ fn open_stage_tags_the_stage_root_and_its_descendants() {
         .expect("descendant is tagged with StageMembership");
     assert_eq!(membership.0, id);
 
-    let mut roots = app.world_mut().query::<(Entity, &StageId, &StageName)>();
-    let (root_entity, &root_id, root_name) = roots
+    let mut roots = app.world_mut().query::<(Entity, &StageId)>();
+    let (root_entity, &root_id) = roots
         .single(app.world())
-        .expect("exactly one entity carries both StageId and StageName");
+        .expect("exactly one entity carries StageId");
     assert_eq!(root_id, id);
-    assert_eq!(root_name.0, "demo");
     assert_eq!(
         app.world().get::<Name>(root_entity).map(|n| n.as_str()),
         Some("demo"),
-        "the stage root must carry a Name matching its StageName, so it is discoverable in \
-         Name-keyed tooling (the editor hierarchy, ename_mcp) and not just via the custom \
-         StageName component"
+        "the stage root must carry a Name derived from the path it was opened with, so it is \
+         discoverable in Name-keyed tooling (the editor hierarchy, ename_mcp)"
     );
     assert!(
         app.world().get::<ChildOf>(root_entity).is_none(),

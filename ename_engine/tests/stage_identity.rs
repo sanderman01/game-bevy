@@ -2,7 +2,7 @@
 //! derive what they need to, and compare the way callers expect.
 
 use bevy::prelude::*;
-use ename_engine::stage::{StageId, StageMembership, StageName};
+use ename_engine::stage::{StageId, StageMembership};
 use uuid::Uuid;
 
 #[test]
@@ -23,8 +23,7 @@ fn stage_membership_wraps_a_stage_id() {
 fn identity_components_register_for_reflection() {
     let mut app = App::new();
     app.register_type::<StageId>()
-        .register_type::<StageMembership>()
-        .register_type::<StageName>();
+        .register_type::<StageMembership>();
 
     let registry = app.world().resource::<AppTypeRegistry>().read();
     assert!(registry.get(std::any::TypeId::of::<StageId>()).is_some());
@@ -33,5 +32,4 @@ fn identity_components_register_for_reflection() {
             .get(std::any::TypeId::of::<StageMembership>())
             .is_some()
     );
-    assert!(registry.get(std::any::TypeId::of::<StageName>()).is_some());
 }
