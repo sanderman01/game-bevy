@@ -1,0 +1,28 @@
+ename_asset_content/src/lib.rs
+  s_75e889357e0ca6::t_7bffb34ea6df0e 37
+ename_mcp/src/entity.rs
+  s_75e889357e0ca6::t_d2228791f7f82d 100
+docs/design/agent-tooling.md
+  s_75e889357e0ca6::t_a6abe70c89bcda 31
+docs/design.md
+  s_75e889357e0ca6::t_e3b4128bc27e32 103,110-115
+  s_75e889357e0ca6::t_4a16f712a57a70 76-80
+docs/agent-tools.md
+  s_75e889357e0ca6::t_09d1bbbeda05d7 81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "25f2424f5fa02f332814d5fe3b17aae01c113167",
+  "prompts": {},
+  "sessions": {
+    "s_75e889357e0ca6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8be2ab39-cc11-40dd-92b1-a012c44871a2",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
