@@ -3029,7 +3029,6 @@ dependencies = [
  "ename_asset_content",
  "ron",
  "thiserror 2.0.20",
- "toml",
  "uuid",
 ]
 

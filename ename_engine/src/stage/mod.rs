@@ -7,26 +7,28 @@
 //! Called a "stage" rather than a "scene" in this project's own types, deliberately: Bevy's own
 //! `Scene`/`bsn!`/`Template` (in `bevy_scene`, the new BSN system) already claims that name.
 
-mod alias;
 mod commands;
 mod dynamic_world_format;
 mod format;
 mod identity;
+mod workflow;
 
-pub use alias::{open_stage_by_alias, save_stage_by_alias};
-pub use commands::{SaveStageError, open_stage, save_stage};
+pub use commands::{SaveStageError, write_stage_file};
 pub use dynamic_world_format::DynamicWorldFormat;
 pub use format::{StageAppExt, StageFormat, StageFormatError, StageFormats};
-pub use identity::{SourcePath, StageId, StageMember};
+pub use identity::{AssetRoot, SourcePath, StageId, StageMember, StageSource};
+pub use workflow::{new_stage, open_stage, open_stage_additive, save_stage, stage_of};
 
 use bevy::prelude::*;
 
-/// Registers stage identity types for reflection and tags loaded stage content with its identity.
+/// Registers stage identity types for reflection, inserts a production-default `AssetRoot`, and
+/// tags loaded stage content with its identity.
 pub struct StagePlugin;
 
 impl Plugin for StagePlugin {
     fn build(&self, app: &mut App) {
-        app.register_type::<StageId>()
+        app.insert_resource(AssetRoot(commands::default_asset_root()))
+            .register_type::<StageId>()
             .register_type::<StageMember>()
             .register_type::<bevy::world_serialization::WorldAssetRoot>()
             .register_type::<bevy::world_serialization::DynamicWorldRoot>()

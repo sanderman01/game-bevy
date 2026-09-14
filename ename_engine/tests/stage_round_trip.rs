@@ -7,13 +7,12 @@
 use bevy::{
     app::{App, TaskPoolPlugin},
     asset::AssetPlugin,
-    ecs::system::RunSystemOnce,
     prelude::*,
     world_serialization::{DynamicWorldBuilder, WorldSerializationPlugin},
 };
 use ename_engine::stage::{
-    DynamicWorldFormat, StageAppExt, StageFormats, StageId, StageMember, StagePlugin, open_stage,
-    save_stage,
+    DynamicWorldFormat, StageAppExt, StageId, StageMember, StagePlugin, open_stage,
+    write_stage_file,
 };
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -75,13 +74,7 @@ fn open_stage_tags_the_stage_root_and_its_descendants() {
     write_fixture_stage(&dir, id);
 
     let mut app = test_app(&dir);
-    app.world_mut()
-        .run_system_once(
-            |mut commands: Commands, asset_server: Res<AssetServer>, formats: Res<StageFormats>| {
-                open_stage(&mut commands, &asset_server, &formats, "demo.scn.ron");
-            },
-        )
-        .expect("system runs");
+    open_stage(app.world_mut(), "demo.scn.ron");
 
     // Loading is async: run updates until the marker entity shows up or we give up.
     let mut marker_entity = None;
@@ -151,13 +144,7 @@ fn open_stage_overwrites_a_pre_existing_name_on_the_root() {
     write_fixture_stage_with_existing_name(&dir, id, "Grid");
 
     let mut app = test_app(&dir);
-    app.world_mut()
-        .run_system_once(
-            |mut commands: Commands, asset_server: Res<AssetServer>, formats: Res<StageFormats>| {
-                open_stage(&mut commands, &asset_server, &formats, "demo.scn.ron");
-            },
-        )
-        .expect("system runs");
+    open_stage(app.world_mut(), "demo.scn.ron");
 
     let mut root_entity = None;
     for _ in 0..200 {
@@ -193,18 +180,11 @@ fn save_then_open_preserves_stage_identity_membership_and_marker() {
     source_app
         .world_mut()
         .spawn((Marker(7), StageMember(id), ChildOf(root)));
-    save_stage(&path.to_string_lossy(), source_app.world_mut(), id)
-        .expect("save_stage writes a stage file");
+    write_stage_file(&path.to_string_lossy(), source_app.world_mut(), id)
+        .expect("write_stage_file writes a stage file");
 
     let mut loaded_app = test_app(&dir);
-    loaded_app
-        .world_mut()
-        .run_system_once(
-            |mut commands: Commands, asset_server: Res<AssetServer>, formats: Res<StageFormats>| {
-                open_stage(&mut commands, &asset_server, &formats, "round_trip.scn.ron");
-            },
-        )
-        .expect("open_stage system runs");
+    open_stage(loaded_app.world_mut(), "round_trip.scn.ron");
 
     let mut marker_entity = None;
     for _ in 0..200 {

@@ -14,7 +14,6 @@ ename_asset_alias.workspace = true
 ename_asset_content.workspace = true
 ron.workspace = true
 thiserror.workspace = true
-toml.workspace = true
 uuid.workspace = true
 
 [lints]

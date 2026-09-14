@@ -8,7 +8,7 @@ use bevy::{
     world_serialization::WorldSerializationPlugin,
 };
 use ename_engine::stage::{
-    DynamicWorldFormat, StageAppExt, StageId, StageMember, StagePlugin, save_stage,
+    DynamicWorldFormat, StageAppExt, StageId, StageMember, StagePlugin, write_stage_file,
 };
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -55,7 +55,7 @@ fn untagged_entities_never_appear_in_the_saved_output() {
     app.world_mut().spawn(EditorOnly);
 
     let path = dir.join("demo.scn.ron");
-    save_stage(&path.to_string_lossy(), app.world_mut(), id).expect("save succeeds");
+    write_stage_file(&path.to_string_lossy(), app.world_mut(), id).expect("save succeeds");
 
     let text = std::fs::read_to_string(&path).expect("file was written");
     assert!(
@@ -80,7 +80,7 @@ fn multiple_top_level_entities_are_reparented_under_a_synthetic_root() {
     app.world_mut().spawn((StageMember(id), Marker(2)));
 
     let path = dir.join("demo.scn.ron");
-    save_stage(&path.to_string_lossy(), app.world_mut(), id).expect("save succeeds");
+    write_stage_file(&path.to_string_lossy(), app.world_mut(), id).expect("save succeeds");
 
     let mut roots = app.world_mut().query::<&StageId>();
     assert_eq!(
