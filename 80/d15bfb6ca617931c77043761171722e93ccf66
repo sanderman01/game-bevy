@@ -1,0 +1,29 @@
+ename_engine/tests/stage_workflow.rs
+  s_5ea65b9864b56a::t_17a01408c12d0b 244-309
+  s_5ea65b9864b56a::t_9062efc2d6b921 12-13
+ename_engine/src/stage/workflow.rs
+  s_5ea65b9864b56a::t_76ccc021b4c336 6,11
+  s_5ea65b9864b56a::t_90009a12a98e30 75-79,82-97,101-104
+ename_engine/src/stage/commands.rs
+  s_5ea65b9864b56a::t_4d362a5eced665 290-336
+  s_5ea65b9864b56a::t_38a2871df78137 81
+  s_5ea65b9864b56a::t_5bc41ea931d0b6 118-120,122-128
+  s_5ea65b9864b56a::t_99b418a42947ee 268-272,276-280
+  s_5ea65b9864b56a::t_61c69c791873ad 273-275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "80d15bfb6ca617931c77043761171722e93ccf66",
+  "prompts": {},
+  "sessions": {
+    "s_5ea65b9864b56a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "07aef37e-9a88-48cd-b003-da41fc501a13",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
