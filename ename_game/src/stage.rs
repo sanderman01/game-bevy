@@ -2,7 +2,8 @@
 //! alias `core::start_stage`. See `scratch/scenes-spec.md`.
 
 use bevy::prelude::*;
-use ename_engine::stage::{DynamicWorldFormat, StageAppExt, open_stage_by_alias};
+use ename_asset_alias::ALIAS_SOURCE;
+use ename_engine::stage::{DynamicWorldFormat, StageAppExt, open_stage};
 
 use crate::GameState;
 
@@ -16,10 +17,6 @@ impl Plugin for StagePlugin {
     }
 }
 
-fn open_start_stage(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    formats: Res<ename_engine::stage::StageFormats>,
-) {
-    open_stage_by_alias(&mut commands, &asset_server, &formats, "core::start_stage");
+fn open_start_stage(world: &mut World) {
+    open_stage(world, &format!("{ALIAS_SOURCE}://core::start_stage"));
 }

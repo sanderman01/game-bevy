@@ -11,7 +11,6 @@
 use bevy::{
     app::{App, TaskPoolPlugin},
     asset::AssetPlugin,
-    ecs::system::RunSystemOnce,
     prelude::*,
     state::app::StatesPlugin,
 };
@@ -50,7 +49,7 @@ fn game_state_leaves_loading_without_the_content_layer() {
 }
 
 /// The stage must still be keyed on `alias://`, not a resolved path, for the same reason the
-/// hand-built-handle version of this test checked it before `open_stage_by_alias` existed: a
+/// hand-built-handle version of this test checked it before `open_stage` existed: a
 /// resolved-path handle would go stale the moment the active package set changes at runtime.
 #[test]
 fn stage_is_opened_through_the_alias_source() {
@@ -69,26 +68,15 @@ fn stage_is_opened_through_the_alias_source() {
     .add_plugins(ename_engine::stage::StagePlugin)
     .register_stage_format(ename_engine::stage::DynamicWorldFormat);
 
-    let entity = app
-        .world_mut()
-        .run_system_once(
-            |mut commands: Commands,
-             asset_server: Res<AssetServer>,
-             formats: Res<ename_engine::stage::StageFormats>| {
-                ename_engine::stage::open_stage_by_alias(
-                    &mut commands,
-                    &asset_server,
-                    &formats,
-                    "core::start_stage",
-                )
-            },
-        )
-        .expect("system runs");
+    let entity = ename_engine::stage::open_stage(
+        app.world_mut(),
+        &format!("{}://core::start_stage", ename_asset_alias::ALIAS_SOURCE),
+    );
 
     let handle = app
         .world()
         .get::<DynamicWorldRoot>(entity)
-        .expect("open_stage_by_alias inserts a DynamicWorldRoot");
+        .expect("open_stage inserts a DynamicWorldRoot");
     let path = handle.0.path().expect("a path-backed handle");
     assert_eq!(
         path.source().as_str(),
