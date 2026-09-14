@@ -9,7 +9,7 @@ use bevy::{
     prelude::*,
     world_serialization::WorldSerializationPlugin,
 };
-use ename_engine::scene::{DynamicWorldFormat, SceneFormat, SourcePath};
+use ename_engine::stage::{DynamicWorldFormat, SourcePath, StageFormat};
 
 const FIXTURE_ROOT: &str = "ename_engine/tests/fixtures";
 

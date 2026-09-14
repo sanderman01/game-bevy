@@ -8,7 +8,7 @@ use bevy::prelude::*;
 pub enum GameState {
     #[default]
     Loading,
-    Scene,
+    Stage,
     Play,
 }
 
@@ -18,13 +18,13 @@ pub struct GameStatePlugin;
 impl Plugin for GameStatePlugin {
     fn build(&self, app: &mut App) {
         app.insert_state(GameState::Loading)
-            .add_systems(Startup, enter_scene);
+            .add_systems(Startup, enter_stage);
     }
 }
 
-/// The scene addresses assets through `alias://`, which resolves inside `bevy_asset`, so there is
+/// The stage addresses assets through `alias://`, which resolves inside `bevy_asset`, so there is
 /// nothing to wait for. A loading screen later gates on `AssetServer::load_state` for the handles
 /// it cares about rather than on another crate's bookkeeping.
-fn enter_scene(mut game_state: ResMut<NextState<GameState>>) {
-    game_state.set(GameState::Scene);
+fn enter_stage(mut game_state: ResMut<NextState<GameState>>) {
+    game_state.set(GameState::Stage);
 }

@@ -1,37 +1,37 @@
-//! `open_scene`: the path-based entry point for loading a scene, and the observer that stamps
-//! scene identity onto whatever a `WorldInstanceReady` event just finished spawning.
+//! `open_stage`: the path-based entry point for loading a stage, and the observer that stamps
+//! stage identity onto whatever a `WorldInstanceReady` event just finished spawning.
 //!
-//! Two cases share one `WorldInstanceReady` handler: opening a scene directly (the container
-//! carries `SourcePath`, and its one child carries the file's own `SceneId`), and loading nested
-//! content under an already-open scene (e.g. a `WorldAssetRoot`-addressed glTF model authored
-//! inside a scene file) -- there the container already carries `SceneMembership` from having been
-//! tagged as a descendant of its parent scene, and that membership is what propagates further
+//! Two cases share one `WorldInstanceReady` handler: opening a stage directly (the container
+//! carries `SourcePath`, and its one child carries the file's own `StageId`), and loading nested
+//! content under an already-open stage (e.g. a `WorldAssetRoot`-addressed glTF model authored
+//! inside a stage file) -- there the container already carries `StageMembership` from having been
+//! tagged as a descendant of its parent stage, and that membership is what propagates further
 //! down. See `scratch/scenes-spec.md`.
 
 use bevy::{platform::collections::HashMap, prelude::*};
 use ename_asset_alias::ALIAS_SOURCE;
 
-use super::{SceneFormats, SceneId, SceneMembership, SceneName, SourcePath};
+use super::{SourcePath, StageFormats, StageId, StageMembership, StageName};
 
-/// Resolves `path` to a registered [`SceneFormat`](super::SceneFormat) by extension and spawns
+/// Resolves `path` to a registered [`StageFormat`](super::StageFormat) by extension and spawns
 /// its container entity. Panics if no format is registered for `path`'s extension -- a missing
 /// format is a startup wiring bug, not a runtime condition to recover from.
-pub fn open_scene(
+pub fn open_stage(
     commands: &mut Commands,
     asset_server: &AssetServer,
-    formats: &SceneFormats,
+    formats: &StageFormats,
     path: &str,
 ) -> Entity {
     let format = formats
         .for_path(path)
-        .unwrap_or_else(|| panic!("no SceneFormat registered for path {path:?}"));
+        .unwrap_or_else(|| panic!("no StageFormat registered for path {path:?}"));
     format.spawn_root(commands, asset_server, path)
 }
 
-/// Derives a scene's cosmetic name from the path it was opened with: the filename minus
+/// Derives a stage's cosmetic name from the path it was opened with: the filename minus
 /// extension for a plain path, or the alias's own name segment (the part after the last `::`)
 /// for an `alias://` path, since there is no filename to read once the alias has resolved.
-pub(super) fn scene_name_from_path(path: &str) -> String {
+pub(super) fn stage_name_from_path(path: &str) -> String {
     let path = path
         .strip_prefix(&format!("{ALIAS_SOURCE}://"))
         .unwrap_or(path);
@@ -43,14 +43,14 @@ pub(super) fn scene_name_from_path(path: &str) -> String {
     stem.rsplit("::").next().unwrap_or(stem).to_owned()
 }
 
-/// Stamps `SceneMembership` on everything a `WorldInstanceReady` event just finished spawning.
+/// Stamps `StageMembership` on everything a `WorldInstanceReady` event just finished spawning.
 /// See the module doc for the two cases this handles.
-pub(super) fn tag_membership_on_ready(
+pub(super) fn tag_stage_membership_on_ready(
     trigger: On<bevy::world_serialization::WorldInstanceReady>,
     children_of: Query<&Children>,
     child_of: Query<(Entity, &ChildOf)>,
-    ids: Query<&SceneId>,
-    membership: Query<&SceneMembership>,
+    ids: Query<&StageId>,
+    membership: Query<&StageMembership>,
     source_paths: Query<&SourcePath>,
     mut commands: Commands,
 ) {
@@ -59,34 +59,34 @@ pub(super) fn tag_membership_on_ready(
         return;
     }
 
-    let scene_id = if let Ok(SourcePath(path)) = source_paths.get(container) {
-        // Case 1: this container is a scene we opened ourselves. Its file's data is exactly one
-        // top-level entity (the scene root), carrying the file's own SceneId.
+    let stage_id = if let Ok(SourcePath(path)) = source_paths.get(container) {
+        // Case 1: this container is a stage we opened ourselves. Its file's data is exactly one
+        // top-level entity (the stage root), carrying the file's own StageId.
         let Ok(children) = children_of.get(container) else {
             return;
         };
         let [root] = &children[..] else {
             panic!(
-                "scene file at {path:?} did not have exactly one top-level entity \
+                "stage file at {path:?} did not have exactly one top-level entity \
                  (the save-time invariant that guarantees this was violated)"
             );
         };
         let id = *ids
             .get(*root)
-            .unwrap_or_else(|_| panic!("scene root entity in {path:?} is missing SceneId"));
+            .unwrap_or_else(|_| panic!("stage root entity in {path:?} is missing StageId"));
         commands
             .entity(*root)
-            .insert(SceneName(scene_name_from_path(path)))
-            // A loaded scene root must be top-level; big_space validates floating origins
+            .insert(StageName(stage_name_from_path(path)))
+            // A loaded stage root must be top-level; big_space validates floating origins
             // against the ultimate hierarchy ancestor, not this transient load container.
             .remove::<ChildOf>();
         id
-    } else if let Ok(&SceneMembership(id)) = membership.get(container) {
-        // Case 2: nested content (e.g. a WorldAssetRoot-addressed model authored inside a scene)
-        // that already belongs to a scene. Propagate that same membership to its new children.
+    } else if let Ok(&StageMembership(id)) = membership.get(container) {
+        // Case 2: nested content (e.g. a WorldAssetRoot-addressed model authored inside a stage)
+        // that already belongs to a stage. Propagate that same membership to its new children.
         id
     } else {
-        // Not scene-related content at all.
+        // Not stage-related content at all.
         return;
     };
 
@@ -101,18 +101,18 @@ pub(super) fn tag_membership_on_ready(
         },
     );
     for &child in children {
-        tag_recursive(child, scene_id, &children_of, &child_map, &mut commands);
+        tag_recursive(child, stage_id, &children_of, &child_map, &mut commands);
     }
 }
 
 fn tag_recursive(
     entity: Entity,
-    id: SceneId,
+    id: StageId,
     children_of: &Query<&Children>,
     child_map: &HashMap<Entity, Vec<Entity>>,
     commands: &mut Commands,
 ) {
-    commands.entity(entity).insert(SceneMembership(id));
+    commands.entity(entity).insert(StageMembership(id));
     if let Ok(children) = children_of.get(entity) {
         for &child in children {
             tag_recursive(child, id, children_of, child_map, commands);
@@ -126,26 +126,26 @@ fn tag_recursive(
 
 use bevy::platform::collections::HashSet;
 
-/// A [`save_scene`] call failed.
+/// A [`save_stage`] call failed.
 #[derive(Debug, thiserror::Error)]
-pub enum SaveSceneError {
-    #[error("no SceneFormat registered for {0:?}")]
+pub enum SaveStageError {
+    #[error("no StageFormat registered for {0:?}")]
     UnknownFormat(String),
     #[error(transparent)]
-    Format(#[from] super::SceneFormatError),
-    #[error("failed to write scene file: {0}")]
+    Format(#[from] super::StageFormatError),
+    #[error("failed to write stage file: {0}")]
     Io(#[from] std::io::Error),
 }
 
-/// Saves every entity tagged `SceneMembership(id)` to `path`, choosing a format by `path`'s
+/// Saves every entity tagged `StageMembership(id)` to `path`, choosing a format by `path`'s
 /// extension. `world` is mutated: if the tagged entities have no single natural root (a lone
 /// top-level entity with no `ChildOf` into the tagged set), a synthetic root is created and the
 /// orphans reparented under it, so the saved file always has exactly one top-level entity -- the
-/// invariant [`open_scene`]'s membership tagging depends on. See `scratch/scenes-spec.md`.
-pub fn save_scene(path: &str, world: &mut World, id: SceneId) -> Result<(), SaveSceneError> {
+/// invariant [`open_stage`]'s membership tagging depends on. See `scratch/scenes-spec.md`.
+pub fn save_stage(path: &str, world: &mut World, id: StageId) -> Result<(), SaveStageError> {
     world.resource_scope(
-        |world, formats: Mut<SceneFormats>| -> Result<(), SaveSceneError> {
-            let mut query = world.query::<(Entity, &SceneMembership)>();
+        |world, formats: Mut<StageFormats>| -> Result<(), SaveStageError> {
+            let mut query = world.query::<(Entity, &StageMembership)>();
             let tagged: Vec<Entity> = query
                 .iter(world)
                 .filter(|(_, membership)| membership.0 == id)
@@ -166,13 +166,13 @@ pub fn save_scene(path: &str, world: &mut World, id: SceneId) -> Result<(), Save
             let root = match top_level.as_slice() {
                 [single] => {
                     let single = *single;
-                    if world.get::<SceneId>(single).is_none() {
+                    if world.get::<StageId>(single).is_none() {
                         world.entity_mut(single).insert(id);
                     }
                     single
                 }
                 _ => {
-                    let synthetic = world.spawn((id, SceneMembership(id))).id();
+                    let synthetic = world.spawn((id, StageMembership(id))).id();
                     for &orphan in &top_level {
                         world.entity_mut(orphan).insert(ChildOf(synthetic));
                     }
@@ -187,7 +187,7 @@ pub fn save_scene(path: &str, world: &mut World, id: SceneId) -> Result<(), Save
 
             let format = formats
                 .for_path(path)
-                .ok_or_else(|| SaveSceneError::UnknownFormat(path.to_owned()))?;
+                .ok_or_else(|| SaveStageError::UnknownFormat(path.to_owned()))?;
             let bytes = format.serialize(world, &entities)?;
             std::fs::write(path, bytes)?;
             Ok(())

@@ -3,7 +3,7 @@
 //! Two properties, both of which phase 1 changed:
 //!
 //! 1. `GameState` leaves `Loading` without waiting on the content layer.
-//! 2. The scene's asset handles are keyed on `alias://`, not on a resolved file path.
+//! 2. The stage's asset handles are keyed on `alias://`, not on a resolved file path.
 //!
 //! Neither needs the real `assets/` tree, which is a symlink outside the repository and is not
 //! present on a fresh clone.
@@ -16,7 +16,7 @@ use bevy::{
     state::app::StatesPlugin,
 };
 use ename_asset_content::AssetContentPlugin;
-use ename_engine::scene::SceneAppExt;
+use ename_engine::stage::StageAppExt;
 use ename_game::{GameState, GameStatePlugin};
 
 /// Relative to the workspace root, which `BEVY_ASSET_ROOT` pins in `.cargo/config.toml`.
@@ -44,16 +44,16 @@ fn game_state_leaves_loading_without_the_content_layer() {
 
     assert_eq!(
         *app.world().resource::<State<GameState>>().get(),
-        GameState::Scene,
-        "reaches Scene without any content plugin in the App"
+        GameState::Stage,
+        "reaches Stage without any content plugin in the App"
     );
 }
 
-/// The scene must still be keyed on `alias://`, not a resolved path, for the same reason the
-/// hand-built-handle version of this test checked it before `open_scene_by_alias` existed: a
+/// The stage must still be keyed on `alias://`, not a resolved path, for the same reason the
+/// hand-built-handle version of this test checked it before `open_stage_by_alias` existed: a
 /// resolved-path handle would go stale the moment the active package set changes at runtime.
 #[test]
-fn scene_is_opened_through_the_alias_source() {
+fn stage_is_opened_through_the_alias_source() {
     let mut app = App::new();
     app.add_plugins(
         AssetContentPlugin::default()
@@ -66,20 +66,20 @@ fn scene_is_opened_through_the_alias_source() {
         ..Default::default()
     })
     .add_plugins(bevy::world_serialization::WorldSerializationPlugin)
-    .add_plugins(ename_engine::scene::ScenePlugin)
-    .register_scene_format(ename_engine::scene::DynamicWorldFormat);
+    .add_plugins(ename_engine::stage::StagePlugin)
+    .register_stage_format(ename_engine::stage::DynamicWorldFormat);
 
     let entity = app
         .world_mut()
         .run_system_once(
             |mut commands: Commands,
              asset_server: Res<AssetServer>,
-             formats: Res<ename_engine::scene::SceneFormats>| {
-                ename_engine::scene::open_scene_by_alias(
+             formats: Res<ename_engine::stage::StageFormats>| {
+                ename_engine::stage::open_stage_by_alias(
                     &mut commands,
                     &asset_server,
                     &formats,
-                    "core::start_scene",
+                    "core::start_stage",
                 )
             },
         )
@@ -88,12 +88,12 @@ fn scene_is_opened_through_the_alias_source() {
     let handle = app
         .world()
         .get::<DynamicWorldRoot>(entity)
-        .expect("open_scene_by_alias inserts a DynamicWorldRoot");
+        .expect("open_stage_by_alias inserts a DynamicWorldRoot");
     let path = handle.0.path().expect("a path-backed handle");
     assert_eq!(
         path.source().as_str(),
         Some("alias"),
-        "the scene handle must be keyed on the alias source, got {path}"
+        "the stage handle must be keyed on the alias source, got {path}"
     );
-    assert_eq!(path.path().to_str(), Some("core::start_scene"));
+    assert_eq!(path.path().to_str(), Some("core::start_stage"));
 }

@@ -1,6 +1,6 @@
-//! Proves the full load path: `open_scene` spawns a container, `WorldInstanceReady` fires once
-//! the file's content exists, and the membership-tagging observer stamps `SceneId`/
-//! `SceneMembership`/`SceneName` correctly. This is also where a `WorldAssetRoot`-style handle's
+//! Proves the full load path: `open_stage` spawns a container, `WorldInstanceReady` fires once
+//! the file's content exists, and the membership-tagging observer stamps `StageId`/
+//! `StageMembership`/`StageName` correctly. This is also where a `WorldAssetRoot`-style handle's
 //! path-preservation would show up, if it didn't round-trip -- see `scratch/scenes-spec.md` risk
 //! #2.
 
@@ -11,9 +11,9 @@ use bevy::{
     prelude::*,
     world_serialization::{DynamicWorldBuilder, WorldSerializationPlugin},
 };
-use ename_engine::scene::{
-    DynamicWorldFormat, SceneAppExt, SceneFormats, SceneId, SceneMembership, SceneName,
-    ScenePlugin, open_scene, save_scene,
+use ename_engine::stage::{
+    DynamicWorldFormat, StageAppExt, StageFormats, StageId, StageMembership, StageName,
+    StagePlugin, open_stage, save_stage,
 };
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -24,12 +24,12 @@ struct Marker(i32);
 
 /// A fresh temp directory per test run, so nothing lands in the repo and parallel test runs
 /// don't collide.
-fn temp_scene_dir(test_name: &str) -> PathBuf {
+fn temp_stage_dir(test_name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "ename_engine_scene_round_trip_{test_name}_{}",
+        "ename_engine_stage_round_trip_{test_name}_{}",
         std::process::id()
     ));
-    std::fs::create_dir_all(&dir).expect("create temp scene dir");
+    std::fs::create_dir_all(&dir).expect("create temp stage dir");
     dir
 }
 
@@ -41,22 +41,22 @@ fn test_app(asset_root: &std::path::Path) -> App {
             ..Default::default()
         })
         .add_plugins(WorldSerializationPlugin)
-        .add_plugins(ScenePlugin)
-        .register_scene_format(DynamicWorldFormat)
+        .add_plugins(StagePlugin)
+        .register_stage_format(DynamicWorldFormat)
         .register_type::<Marker>();
     app
 }
 
-/// Writes a `.scn.ron` file directly (bypassing `save_scene`, which Task 6 adds) containing one
-/// scene-root entity with `SceneId` and one child with `Marker`, so this test can exercise
-/// `open_scene` on its own.
-fn write_fixture_scene(dir: &std::path::Path, id: SceneId) -> String {
+/// Writes a `.scn.ron` file directly (bypassing `save_stage`, which Task 6 adds) containing one
+/// stage-root entity with `StageId` and one child with `Marker`, so this test can exercise
+/// `open_stage` on its own.
+fn write_fixture_stage(dir: &std::path::Path, id: StageId) -> String {
     let mut world = World::new();
     let root = world.spawn(id).id();
     let child = world.spawn((Marker(7), ChildOf(root))).id();
 
     let mut type_registry = bevy::reflect::TypeRegistry::default();
-    type_registry.register::<SceneId>();
+    type_registry.register::<StageId>();
     type_registry.register::<Marker>();
     type_registry.register::<ChildOf>();
 
@@ -69,16 +69,16 @@ fn write_fixture_scene(dir: &std::path::Path, id: SceneId) -> String {
 }
 
 #[test]
-fn open_scene_tags_the_scene_root_and_its_descendants() {
-    let dir = temp_scene_dir("open");
-    let id = SceneId(Uuid::new_v4());
-    write_fixture_scene(&dir, id);
+fn open_stage_tags_the_stage_root_and_its_descendants() {
+    let dir = temp_stage_dir("open");
+    let id = StageId(Uuid::new_v4());
+    write_fixture_stage(&dir, id);
 
     let mut app = test_app(&dir);
     app.world_mut()
         .run_system_once(
-            |mut commands: Commands, asset_server: Res<AssetServer>, formats: Res<SceneFormats>| {
-                open_scene(&mut commands, &asset_server, &formats, "demo.scn.ron");
+            |mut commands: Commands, asset_server: Res<AssetServer>, formats: Res<StageFormats>| {
+                open_stage(&mut commands, &asset_server, &formats, "demo.scn.ron");
             },
         )
         .expect("system runs");
@@ -96,50 +96,50 @@ fn open_scene_tags_the_scene_root_and_its_descendants() {
             break;
         }
     }
-    let marker_entity = marker_entity.expect("scene loads within 200 frames");
+    let marker_entity = marker_entity.expect("stage loads within 200 frames");
 
     let membership = app
         .world()
-        .get::<SceneMembership>(marker_entity)
-        .expect("descendant is tagged with SceneMembership");
+        .get::<StageMembership>(marker_entity)
+        .expect("descendant is tagged with StageMembership");
     assert_eq!(membership.0, id);
 
-    let mut roots = app.world_mut().query::<(Entity, &SceneId, &SceneName)>();
+    let mut roots = app.world_mut().query::<(Entity, &StageId, &StageName)>();
     let (root_entity, &root_id, root_name) = roots
         .single(app.world())
-        .expect("exactly one entity carries both SceneId and SceneName");
+        .expect("exactly one entity carries both StageId and StageName");
     assert_eq!(root_id, id);
     assert_eq!(root_name.0, "demo");
     assert!(
         app.world().get::<ChildOf>(root_entity).is_none(),
-        "a loaded scene's root must be a genuine top-level entity, not stay parented under the \
-         transient load container -- see commands.rs's tag_membership_on_ready Case 1"
+        "a loaded stage's root must be a genuine top-level entity, not stay parented under the \
+         transient load container -- see commands.rs's tag_stage_membership_on_ready Case 1"
     );
 }
 
 #[test]
-fn save_then_open_preserves_scene_identity_membership_and_marker() {
-    let dir = temp_scene_dir("save_open");
-    let id = SceneId(Uuid::new_v4());
+fn save_then_open_preserves_stage_identity_membership_and_marker() {
+    let dir = temp_stage_dir("save_open");
+    let id = StageId(Uuid::new_v4());
     let path = dir.join("round_trip.scn.ron");
 
     let mut source_app = test_app(&dir);
-    let root = source_app.world_mut().spawn((id, SceneMembership(id))).id();
+    let root = source_app.world_mut().spawn((id, StageMembership(id))).id();
     source_app
         .world_mut()
-        .spawn((Marker(7), SceneMembership(id), ChildOf(root)));
-    save_scene(&path.to_string_lossy(), source_app.world_mut(), id)
-        .expect("save_scene writes a scene file");
+        .spawn((Marker(7), StageMembership(id), ChildOf(root)));
+    save_stage(&path.to_string_lossy(), source_app.world_mut(), id)
+        .expect("save_stage writes a stage file");
 
     let mut loaded_app = test_app(&dir);
     loaded_app
         .world_mut()
         .run_system_once(
-            |mut commands: Commands, asset_server: Res<AssetServer>, formats: Res<SceneFormats>| {
-                open_scene(&mut commands, &asset_server, &formats, "round_trip.scn.ron");
+            |mut commands: Commands, asset_server: Res<AssetServer>, formats: Res<StageFormats>| {
+                open_stage(&mut commands, &asset_server, &formats, "round_trip.scn.ron");
             },
         )
-        .expect("open_scene system runs");
+        .expect("open_stage system runs");
 
     let mut marker_entity = None;
     for _ in 0..200 {
@@ -153,26 +153,26 @@ fn save_then_open_preserves_scene_identity_membership_and_marker() {
             break;
         }
     }
-    let marker_entity = marker_entity.expect("saved scene loads within 200 frames");
+    let marker_entity = marker_entity.expect("saved stage loads within 200 frames");
     assert_eq!(
         loaded_app.world().get::<Marker>(marker_entity),
         Some(&Marker(7))
     );
 
     let root_entity = {
-        let mut roots = loaded_app.world_mut().query::<(Entity, &SceneId)>();
+        let mut roots = loaded_app.world_mut().query::<(Entity, &StageId)>();
         let (entity, &root_id) = roots
             .single(loaded_app.world())
-            .expect("exactly one loaded root carries SceneId");
+            .expect("exactly one loaded root carries StageId");
         assert_eq!(root_id, id);
         entity
     };
     assert_eq!(
-        loaded_app.world().get::<SceneMembership>(root_entity),
-        Some(&SceneMembership(id))
+        loaded_app.world().get::<StageMembership>(root_entity),
+        Some(&StageMembership(id))
     );
     assert_eq!(
-        loaded_app.world().get::<SceneMembership>(marker_entity),
-        Some(&SceneMembership(id))
+        loaded_app.world().get::<StageMembership>(marker_entity),
+        Some(&StageMembership(id))
     );
 }

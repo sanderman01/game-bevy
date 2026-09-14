@@ -1,19 +1,19 @@
-//! [`SceneFormat`] backed by `bevy_world_serialization`'s `DynamicWorld`/`DynamicWorldRoot`
+//! [`StageFormat`] backed by `bevy_world_serialization`'s `DynamicWorld`/`DynamicWorldRoot`
 //! (`bevy::world_serialization` in this Bevy version -- the crate was renamed to free
 //! `bevy_scene` for BSN, see `scratch/scenes-spec.md`).
 
 use bevy::{log::warn, prelude::*, world_serialization::DynamicWorldBuilder};
 
-use super::{SceneFormat, SceneFormatError, SourcePath};
+use super::{SourcePath, StageFormat, StageFormatError};
 
-/// The one scene format this project ships today: Bevy's classic reflection-based scene
+/// The one stage format this project ships today: Bevy's classic reflection-based scene
 /// serializer, `.scn`/`.scn.ron`.
 ///
 /// Procedurally-created, non-file-backed assets are not preserved by this format. Serialization
 /// warns when it detects the placeholder asset ID, but callers must author those assets as files.
 pub struct DynamicWorldFormat;
 
-impl SceneFormat for DynamicWorldFormat {
+impl StageFormat for DynamicWorldFormat {
     fn extension(&self) -> &str {
         "scn.ron"
     }
@@ -32,10 +32,10 @@ impl SceneFormat for DynamicWorldFormat {
             .id()
     }
 
-    fn serialize(&self, world: &World, entities: &[Entity]) -> Result<Vec<u8>, SceneFormatError> {
+    fn serialize(&self, world: &World, entities: &[Entity]) -> Result<Vec<u8>, StageFormatError> {
         let type_registry = world.resource::<AppTypeRegistry>().read();
         let dynamic_world = DynamicWorldBuilder::from_world(world, &type_registry)
-            // `VisibilityClass` made the real scene save fail: its `TypeId`s cannot serialize,
+            // `VisibilityClass` made the real stage save fail: its `TypeId`s cannot serialize,
             // and Bevy's visibility system recomputes it on load, so excluding it loses no data.
             .deny_component::<bevy::camera::visibility::VisibilityClass>()
             // Bevy marks these defaulted camera settings opaque; defaults are restored on load.
@@ -43,8 +43,8 @@ impl SceneFormat for DynamicWorldFormat {
             .deny_component::<bevy::camera::Exposure>()
             // Camera requirements recreate this runtime-interned render graph selection on load.
             .deny_component::<bevy::render::camera::CameraRenderGraph>()
-            // SceneName is derived from the path when a scene is opened, not authored content.
-            .deny_component::<super::SceneName>()
+            // StageName is derived from the path when a stage is opened, not authored content.
+            .deny_component::<super::StageName>()
             .extract_entities(entities.iter().copied())
             .build();
         let bytes = dynamic_world.serialize(&type_registry)?.into_bytes();
@@ -65,7 +65,7 @@ fn warn_on_placeholder_asset_ids(bytes: &[u8]) {
         && text.contains(&placeholder)
     {
         warn!(
-            "scene save contains a Handle with no AssetPath (serialized as the placeholder id \
+            "stage save contains a Handle with no AssetPath (serialized as the placeholder id \
              {placeholder}) -- this asset was created at runtime rather than loaded from a file, \
              and will not survive a reload. Author it as a real asset file instead."
         );

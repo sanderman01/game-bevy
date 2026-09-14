@@ -12,7 +12,7 @@ pub mod camera;
 pub mod input;
 pub mod log;
 pub mod physics;
-pub mod scene;
+pub mod stage;
 pub mod time;
 
 use bevy::{
@@ -126,7 +126,7 @@ impl PluginGroup for EnginePlugins {
             .add_group(BigSpaceDebugPlugins::default())
             .add(bigspace::BigSpacePlugin)
             .add(camera::VirtualCameraPlugin)
-            .add(scene::ScenePlugin)
+            .add(stage::StagePlugin)
             .add(input::FlyCameraPlugin)
             .add(physics::PhysicsIntegrationPlugin)
             .add(time::TimeControlPlugin)

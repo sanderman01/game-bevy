@@ -3,4 +3,4 @@ id = "core"
 version = "1.0.0"
 authors = ["Test"]
 title = "Core test package"
-description = "Just enough for the scene addressing tests."
+description = "Just enough for the stage addressing tests."

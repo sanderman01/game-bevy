@@ -1,4 +1,4 @@
-//! `save_scene` must only ever capture entities tagged with the scene's `SceneMembership` --
+//! `save_stage` must only ever capture entities tagged with the stage's `StageMembership` --
 //! never editor UI, gizmos, or anything else untagged.
 
 use bevy::{
@@ -7,8 +7,8 @@ use bevy::{
     prelude::*,
     world_serialization::WorldSerializationPlugin,
 };
-use ename_engine::scene::{
-    DynamicWorldFormat, SceneAppExt, SceneId, SceneMembership, ScenePlugin, save_scene,
+use ename_engine::stage::{
+    DynamicWorldFormat, StageAppExt, StageId, StageMembership, StagePlugin, save_stage,
 };
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -21,12 +21,12 @@ struct Marker(i32);
 #[reflect(Component)]
 struct EditorOnly;
 
-fn temp_scene_dir(test_name: &str) -> PathBuf {
+fn temp_stage_dir(test_name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "ename_engine_scene_membership_{test_name}_{}",
+        "ename_engine_stage_membership_{test_name}_{}",
         std::process::id()
     ));
-    std::fs::create_dir_all(&dir).expect("create temp scene dir");
+    std::fs::create_dir_all(&dir).expect("create temp stage dir");
     dir
 }
 
@@ -38,8 +38,8 @@ fn test_app(asset_root: &std::path::Path) -> App {
             ..Default::default()
         })
         .add_plugins(WorldSerializationPlugin)
-        .add_plugins(ScenePlugin)
-        .register_scene_format(DynamicWorldFormat)
+        .add_plugins(StagePlugin)
+        .register_stage_format(DynamicWorldFormat)
         .register_type::<Marker>()
         .register_type::<EditorOnly>();
     app
@@ -47,15 +47,15 @@ fn test_app(asset_root: &std::path::Path) -> App {
 
 #[test]
 fn untagged_entities_never_appear_in_the_saved_output() {
-    let dir = temp_scene_dir("save");
+    let dir = temp_stage_dir("save");
     let mut app = test_app(&dir);
-    let id = SceneId(Uuid::new_v4());
+    let id = StageId(Uuid::new_v4());
 
-    app.world_mut().spawn((id, SceneMembership(id), Marker(1)));
+    app.world_mut().spawn((id, StageMembership(id), Marker(1)));
     app.world_mut().spawn(EditorOnly);
 
     let path = dir.join("demo.scn.ron");
-    save_scene(&path.to_string_lossy(), app.world_mut(), id).expect("save succeeds");
+    save_stage(&path.to_string_lossy(), app.world_mut(), id).expect("save succeeds");
 
     let text = std::fs::read_to_string(&path).expect("file was written");
     assert!(
@@ -70,22 +70,22 @@ fn untagged_entities_never_appear_in_the_saved_output() {
 
 #[test]
 fn multiple_top_level_entities_are_reparented_under_a_synthetic_root() {
-    let dir = temp_scene_dir("synthetic_root");
+    let dir = temp_stage_dir("synthetic_root");
     let mut app = test_app(&dir);
-    let id = SceneId(Uuid::new_v4());
+    let id = StageId(Uuid::new_v4());
 
-    // Two independent top-level entities, neither carrying SceneId -- there is no single natural
-    // root, so save_scene must invent one.
-    app.world_mut().spawn((SceneMembership(id), Marker(1)));
-    app.world_mut().spawn((SceneMembership(id), Marker(2)));
+    // Two independent top-level entities, neither carrying StageId -- there is no single natural
+    // root, so save_stage must invent one.
+    app.world_mut().spawn((StageMembership(id), Marker(1)));
+    app.world_mut().spawn((StageMembership(id), Marker(2)));
 
     let path = dir.join("demo.scn.ron");
-    save_scene(&path.to_string_lossy(), app.world_mut(), id).expect("save succeeds");
+    save_stage(&path.to_string_lossy(), app.world_mut(), id).expect("save succeeds");
 
-    let mut roots = app.world_mut().query::<&SceneId>();
+    let mut roots = app.world_mut().query::<&StageId>();
     assert_eq!(
         roots.iter(app.world()).count(),
         1,
-        "exactly one entity must carry SceneId after save"
+        "exactly one entity must carry StageId after save"
     );
 }
