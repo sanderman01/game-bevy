@@ -1,0 +1,54 @@
+ename_engine/src/stage/dynamic_world_format.rs
+  s_75e889357e0ca6::t_bd3aa7a34dc85f 1-68
+ename_game/src/lib.rs
+  s_75e889357e0ca6::t_2c59b46828517b 1,6,15,23
+ename_engine/tests/stage_membership.rs
+  s_75e889357e0ca6::t_dee22ee3c27d66 1-89
+ename_engine/src/stage/identity.rs
+  s_75e889357e0ca6::t_66fc745b3447c6 1-29
+ename_game/src/state.rs
+  s_75e889357e0ca6::t_3e0d9d209d9f0f 11,21,25,28-29
+ename_engine/tests/stage_identity.rs
+  s_75e889357e0ca6::t_4c5376665c2dde 1-36
+ename_game/tests/stage_addressing.rs
+  s_75e889357e0ca6::t_de277ec67211c6 6-98
+ename_engine/tests/stage_alias.rs
+  s_75e889357e0ca6::t_9232135df26382 1-69
+ename_engine/tests/stage_dynamic_world_format.rs
+  s_75e889357e0ca6::t_9d44909d35d5a1 12
+ename_engine/src/lib.rs
+  s_75e889357e0ca6::t_60e48af003c0f6 129
+  s_75e889357e0ca6::t_d3a58572b42d3c 15
+ename_game/tests/fixtures/packages/core/manifest.toml
+  s_75e889357e0ca6::t_e987ccb8dbde4e 6
+ename_game/src/stage.rs
+  s_75e889357e0ca6::t_8c36bc693cffde 1-24
+ename_engine/tests/stage_round_trip.rs
+  s_75e889357e0ca6::t_0210342faf93ff 1-176
+ename_engine/src/stage/format.rs
+  s_75e889357e0ca6::t_c30f6696749868 1-74
+ename_engine/src/stage/alias.rs
+  s_75e889357e0ca6::t_67fe856e7b6044 1-85
+ename_engine/src/stage/commands.rs
+  s_75e889357e0ca6::t_951e7715fd4c9d 1-190
+ename_engine/tests/stage_format_registry.rs
+  s_75e889357e0ca6::t_5e591c310afab4 5-58
+ename_engine/src/stage/mod.rs
+  s_75e889357e0ca6::t_c1e163e8ef1ce2 1-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dc44a8471f4b5158cc3b6264329a3a1963375d03",
+  "prompts": {},
+  "sessions": {
+    "s_75e889357e0ca6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8be2ab39-cc11-40dd-92b1-a012c44871a2",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
