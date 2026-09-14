@@ -28,7 +28,7 @@ look for. Three letters keeps the per-response cost near zero.
 **Every tool that names an entity takes a name or an id, and every result carries both.** Neither
 works alone. An `Entity` is a generation-and-index bit pattern that changes every run, so an id
 cannot be written into a plan or quoted back to the user. Names can, but an entity need not have a
-`Name` and names are not unique: the starting scene has three entities named `VirtualCamera`. An
+`Name` and names are not unique: the starting stage has three entities named `VirtualCamera`. An
 ambiguous name is an error listing the candidates, never a silent pick of the first match.
 
 **An entity id crosses the boundary as the raw `Entity::to_bits` u64.** A readable `606v0` form,

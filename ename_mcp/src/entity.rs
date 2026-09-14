@@ -97,7 +97,7 @@ impl EntitySelector {
     ///
     /// An ambiguous name is an error listing every candidate rather than a silent pick of the
     /// first match: picking silently would let the agent believe it edited something it did
-    /// not, and the scene already contains three entities named `VirtualCamera`.
+    /// not, and the stage already contains three entities named `VirtualCamera`.
     ///
     /// An id is already the integer BRP wants, so resolving one is a single read of `Name`
     /// rather than a walk of the world. That read is not redundant: `world.get_components`

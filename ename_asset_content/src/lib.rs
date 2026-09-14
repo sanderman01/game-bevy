@@ -34,7 +34,7 @@ use std::{path::PathBuf, sync::Arc};
 
 /// The default asset root, matching `AssetPlugin::file_path`'s own default. Exported so a
 /// caller that needs an absolute filesystem path for something outside the asset pipeline (for
-/// example, writing a scene file directly to disk) does not have to duplicate the literal.
+/// example, writing a stage file directly to disk) does not have to duplicate the literal.
 pub const DEFAULT_ASSET_ROOT: &str = "assets";
 
 /// No search paths by default. Which directories a game ships is game policy: the target passes

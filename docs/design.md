@@ -73,9 +73,11 @@ A binary aunched straight from `target/` falls back to Bevy's executable-directo
 
 ## Open questions
 
-- **Scene format.** The editor mutates a live `World` and cannot persist an edit. `DynamicScene`
-  and `.scn.ron` exist today, but the `Template` trait landing in `bevy_ecs` says upstream is
-  heading somewhere better. Revisit when keeping an edit starts to matter.
+- **Stage format.** `ename_engine::stage` now loads/saves stage content via
+  `bevy_world_serialization` (`.scn.ron`), but the editor still has no Save button wired to it --
+  every panel mutates the live `World` with no persistence path. The `Template` trait landing in
+  `bevy_ecs` says upstream is heading somewhere better long-term; revisit the format itself if
+  that lands.
 - **Undo.** Every feature mutates the `World` directly, so retrofitting undo means rewriting every
   feature. `ename_remote` mutates the same `World` over BRP, so the design has to cover that path
   too. Decide before the editor grows past its handful of mutation sites.
@@ -98,18 +100,19 @@ A binary aunched straight from `target/` falls back to Bevy's executable-directo
 - The asset crates and `ename_game` have integration tests that run a headless `App`
   (`ename_asset_alias/tests/alias_reader.rs` and `alias_scan.rs`,
   `ename_asset_content/tests/alias_source.rs`,
-  `ename_game/tests/scene_addressing.rs`), using `TaskPoolPlugin` plus `AssetPlugin` over
+  `ename_game/tests/stage_addressing.rs`), using `TaskPoolPlugin` plus `AssetPlugin` over
   committed fixture trees in each crate's own `tests/fixtures`, never the `assets/` symlink, which
   is not present on a fresh clone. The walk itself needs none of that, because it runs through a
   `Vfs` trait: `ename_asset_alias/tests/asset_discovery.rs` drives it over an in-memory `FakeVfs`
   and `ename_asset_package/tests/package_scan.rs` over `StdVfs` against a fixture tree, with no
   `App` and no Bevy in the graph either way. A `.meta` names its loader by Rust type path, and that
   path is scoped to the test binary that defines the type, so the one fixture carrying a `.meta`
-  sits outside the tree `alias_scan.rs` walks. Nothing that needs a renderer or a window is covered: `ScenePlugin`,
-  `ename_engine` and `ename_editor` still have no tests. A harness for those needs `MinimalPlugins`
-  plus `BigSpaceDefaultPlugins`, because transform propagation comes from big_space and this
-  project disables Bevy's `TransformPlugin`.
-- `GameState::{Loading, Scene, Play}` all live in one `App` with the editor resident. The moment
+  sits outside the tree `alias_scan.rs` walks. Nothing that needs a renderer or a window is covered:
+  `ename_editor` still has no tests, and `StagePlugin`'s own tests (`ename_engine/tests/stage_*.rs`)
+  are headless, needing no window either. A harness for a windowed/rendering test needs
+  `MinimalPlugins` plus `BigSpaceDefaultPlugins`, because transform propagation comes from
+  big_space and this project disables Bevy's `TransformPlugin`.
+- `GameState::{Loading, Stage, Play}` all live in one `App` with the editor resident. The moment
   `Play` mutates the world, entering and leaving play will destroy authored state.
 - Frame pacing for input lag (`bevy_framepace`) was a commented-out plugin line before the refactor
   and did not survive it. Evaluated, not adopted.

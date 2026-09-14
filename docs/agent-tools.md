@@ -78,7 +78,7 @@ A few things about them are worth knowing before reading the schemas.
 **Entities are addressed by `name` or by `entity`, and results carry both.** An entity id is a
 generation-and-index bit pattern that changes every run, so it cannot go into a written plan or
 be quoted to a user. Names can. But an entity need not have one, and names are not unique: the
-starting scene has three called `VirtualCamera`. An ambiguous name is an error listing the
+starting stage has three called `VirtualCamera`. An ambiguous name is an error listing the
 candidates.
 
 **Discovery hides the ECS's own entities.** Bevy stores resources, observers and registered
