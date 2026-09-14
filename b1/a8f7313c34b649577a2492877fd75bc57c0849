@@ -1,0 +1,33 @@
+ename_game/Cargo.toml
+  s_5ea65b9864b56a::t_965a1ab16c2054 11
+ename_game/src/stage.rs
+  s_5ea65b9864b56a::t_f9e4c0ccb5d595 5-6,20-21
+ename_game/tests/stage_addressing.rs
+  s_5ea65b9864b56a::t_ac09568c7fc900 52,71-74,79
+Cargo.lock
+  s_3ab457e97a2df8::t_80745ff948203d 3040
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b1a8f7313c34b649577a2492877fd75bc57c0849",
+  "prompts": {},
+  "sessions": {
+    "s_3ab457e97a2df8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9eb9187bc68d7c46",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_5ea65b9864b56a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "07aef37e-9a88-48cd-b003-da41fc501a13",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
