@@ -1,8 +1,8 @@
-//! `StageId`/`StageMembership` are plain reflected components: this only proves they compile,
+//! `StageId`/`StageMember` are plain reflected components: this only proves they compile,
 //! derive what they need to, and compare the way callers expect.
 
 use bevy::prelude::*;
-use ename_engine::stage::{StageId, StageMembership};
+use ename_engine::stage::{StageId, StageMember};
 use uuid::Uuid;
 
 #[test]
@@ -15,7 +15,7 @@ fn stage_id_equality_is_by_value() {
 #[test]
 fn stage_membership_wraps_a_stage_id() {
     let id = StageId(Uuid::new_v4());
-    let membership = StageMembership(id);
+    let membership = StageMember(id);
     assert_eq!(membership.0, id);
 }
 
@@ -23,13 +23,13 @@ fn stage_membership_wraps_a_stage_id() {
 fn identity_components_register_for_reflection() {
     let mut app = App::new();
     app.register_type::<StageId>()
-        .register_type::<StageMembership>();
+        .register_type::<StageMember>();
 
     let registry = app.world().resource::<AppTypeRegistry>().read();
     assert!(registry.get(std::any::TypeId::of::<StageId>()).is_some());
     assert!(
         registry
-            .get(std::any::TypeId::of::<StageMembership>())
+            .get(std::any::TypeId::of::<StageMember>())
             .is_some()
     );
 }

@@ -4,14 +4,14 @@
 //! Two cases share one `WorldInstanceReady` handler: opening a stage directly (the container
 //! carries `SourcePath`, and its one child carries the file's own `StageId`), and loading nested
 //! content under an already-open stage (e.g. a `WorldAssetRoot`-addressed glTF model authored
-//! inside a stage file) -- there the container already carries `StageMembership` from having been
+//! inside a stage file) -- there the container already carries `StageMember` from having been
 //! tagged as a descendant of its parent stage, and that membership is what propagates further
 //! down. See `scratch/scenes-spec.md`.
 
 use bevy::{platform::collections::HashMap, prelude::*};
 use ename_asset_alias::ALIAS_SOURCE;
 
-use super::{SourcePath, StageFormats, StageId, StageMembership};
+use super::{SourcePath, StageFormats, StageId, StageMember};
 
 /// Resolves `path` to a registered [`StageFormat`](super::StageFormat) by extension and spawns
 /// its container entity. Panics if no format is registered for `path`'s extension -- a missing
@@ -43,14 +43,14 @@ pub(super) fn stage_name_from_path(path: &str) -> String {
     stem.rsplit("::").next().unwrap_or(stem).to_owned()
 }
 
-/// Stamps `StageMembership` on everything a `WorldInstanceReady` event just finished spawning.
+/// Stamps `StageMember` on everything a `WorldInstanceReady` event just finished spawning.
 /// See the module doc for the two cases this handles.
 pub(super) fn tag_stage_membership_on_ready(
     trigger: On<bevy::world_serialization::WorldInstanceReady>,
     children_of: Query<&Children>,
     child_of: Query<(Entity, &ChildOf)>,
     ids: Query<&StageId>,
-    membership: Query<&StageMembership>,
+    membership: Query<&StageMember>,
     source_paths: Query<&SourcePath>,
     mut commands: Commands,
 ) {
@@ -87,7 +87,7 @@ pub(super) fn tag_stage_membership_on_ready(
             // against the ultimate hierarchy ancestor, not this transient load container.
             .remove::<ChildOf>();
         id
-    } else if let Ok(&StageMembership(id)) = membership.get(container) {
+    } else if let Ok(&StageMember(id)) = membership.get(container) {
         // Case 2: nested content (e.g. a WorldAssetRoot-addressed model authored inside a stage)
         // that already belongs to a stage. Propagate that same membership to its new children.
         id
@@ -118,7 +118,7 @@ fn tag_recursive(
     child_map: &HashMap<Entity, Vec<Entity>>,
     commands: &mut Commands,
 ) {
-    commands.entity(entity).insert(StageMembership(id));
+    commands.entity(entity).insert(StageMember(id));
     if let Ok(children) = children_of.get(entity) {
         for &child in children {
             tag_recursive(child, id, children_of, child_map, commands);
@@ -143,7 +143,7 @@ pub enum SaveStageError {
     Io(#[from] std::io::Error),
 }
 
-/// Saves every entity tagged `StageMembership(id)` to `path`, choosing a format by `path`'s
+/// Saves every entity tagged `StageMember(id)` to `path`, choosing a format by `path`'s
 /// extension. `world` is mutated: if the tagged entities have no single natural root (a lone
 /// top-level entity with no `ChildOf` into the tagged set), a synthetic root is created and the
 /// orphans reparented under it, so the saved file always has exactly one top-level entity -- the
@@ -151,7 +151,7 @@ pub enum SaveStageError {
 pub fn save_stage(path: &str, world: &mut World, id: StageId) -> Result<(), SaveStageError> {
     world.resource_scope(
         |world, formats: Mut<StageFormats>| -> Result<(), SaveStageError> {
-            let mut query = world.query::<(Entity, &StageMembership)>();
+            let mut query = world.query::<(Entity, &StageMember)>();
             let tagged: Vec<Entity> = query
                 .iter(world)
                 .filter(|(_, membership)| membership.0 == id)
@@ -178,7 +178,7 @@ pub fn save_stage(path: &str, world: &mut World, id: StageId) -> Result<(), Save
                     single
                 }
                 _ => {
-                    let synthetic = world.spawn((id, StageMembership(id))).id();
+                    let synthetic = world.spawn((id, StageMember(id))).id();
                     for &orphan in &top_level {
                         world.entity_mut(orphan).insert(ChildOf(synthetic));
                     }

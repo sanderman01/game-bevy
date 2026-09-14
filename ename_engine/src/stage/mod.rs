@@ -17,7 +17,7 @@ pub use alias::{open_stage_by_alias, save_stage_by_alias};
 pub use commands::{SaveStageError, open_stage, save_stage};
 pub use dynamic_world_format::DynamicWorldFormat;
 pub use format::{StageAppExt, StageFormat, StageFormatError, StageFormats};
-pub use identity::{SourcePath, StageId, StageMembership};
+pub use identity::{SourcePath, StageId, StageMember};
 
 use bevy::prelude::*;
 
@@ -27,7 +27,7 @@ pub struct StagePlugin;
 impl Plugin for StagePlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<StageId>()
-            .register_type::<StageMembership>()
+            .register_type::<StageMember>()
             .register_type::<bevy::world_serialization::WorldAssetRoot>()
             .register_type::<bevy::world_serialization::DynamicWorldRoot>()
             // `Camera::viewport`'s `Range<f32>` lacks default serde data, breaking real save/load.

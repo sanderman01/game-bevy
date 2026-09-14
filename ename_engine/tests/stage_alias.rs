@@ -10,7 +10,7 @@ use bevy::{
 };
 use ename_asset_alias::ContentIndex;
 use ename_engine::stage::{
-    DynamicWorldFormat, StageAppExt, StageId, StageMembership, StagePlugin, save_stage_by_alias,
+    DynamicWorldFormat, StageAppExt, StageId, StageMember, StagePlugin, save_stage_by_alias,
 };
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -48,7 +48,7 @@ fn saving_a_brand_new_alias_writes_the_stage_file_and_a_sidecar() {
     let asset_root = temp_asset_root("new_alias");
     let mut app = test_app(&asset_root);
     let id = StageId(Uuid::new_v4());
-    app.world_mut().spawn((id, StageMembership(id), Marker(1)));
+    app.world_mut().spawn((id, StageMember(id), Marker(1)));
 
     save_stage_by_alias(app.world_mut(), &asset_root, "core::demo_stage", id)
         .expect("save succeeds for a brand-new alias");

@@ -1,4 +1,4 @@
-//! `save_stage` must only ever capture entities tagged with the stage's `StageMembership` --
+//! `save_stage` must only ever capture entities tagged with the stage's `StageMember` --
 //! never editor UI, gizmos, or anything else untagged.
 
 use bevy::{
@@ -8,7 +8,7 @@ use bevy::{
     world_serialization::WorldSerializationPlugin,
 };
 use ename_engine::stage::{
-    DynamicWorldFormat, StageAppExt, StageId, StageMembership, StagePlugin, save_stage,
+    DynamicWorldFormat, StageAppExt, StageId, StageMember, StagePlugin, save_stage,
 };
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -51,7 +51,7 @@ fn untagged_entities_never_appear_in_the_saved_output() {
     let mut app = test_app(&dir);
     let id = StageId(Uuid::new_v4());
 
-    app.world_mut().spawn((id, StageMembership(id), Marker(1)));
+    app.world_mut().spawn((id, StageMember(id), Marker(1)));
     app.world_mut().spawn(EditorOnly);
 
     let path = dir.join("demo.scn.ron");
@@ -76,8 +76,8 @@ fn multiple_top_level_entities_are_reparented_under_a_synthetic_root() {
 
     // Two independent top-level entities, neither carrying StageId -- there is no single natural
     // root, so save_stage must invent one.
-    app.world_mut().spawn((StageMembership(id), Marker(1)));
-    app.world_mut().spawn((StageMembership(id), Marker(2)));
+    app.world_mut().spawn((StageMember(id), Marker(1)));
+    app.world_mut().spawn((StageMember(id), Marker(2)));
 
     let path = dir.join("demo.scn.ron");
     save_stage(&path.to_string_lossy(), app.world_mut(), id).expect("save succeeds");

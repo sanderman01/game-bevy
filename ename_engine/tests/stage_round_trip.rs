@@ -1,6 +1,6 @@
 //! Proves the full load path: `open_stage` spawns a container, `WorldInstanceReady` fires once
 //! the file's content exists, and the membership-tagging observer stamps `StageId`/
-//! `StageMembership`/`Name` correctly. This is also where a `WorldAssetRoot`-style handle's
+//! `StageMember`/`Name` correctly. This is also where a `WorldAssetRoot`-style handle's
 //! path-preservation would show up, if it didn't round-trip -- see `scratch/scenes-spec.md` risk
 //! #2.
 
@@ -12,8 +12,8 @@ use bevy::{
     world_serialization::{DynamicWorldBuilder, WorldSerializationPlugin},
 };
 use ename_engine::stage::{
-    DynamicWorldFormat, StageAppExt, StageFormats, StageId, StageMembership, StagePlugin,
-    open_stage, save_stage,
+    DynamicWorldFormat, StageAppExt, StageFormats, StageId, StageMember, StagePlugin, open_stage,
+    save_stage,
 };
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -100,8 +100,8 @@ fn open_stage_tags_the_stage_root_and_its_descendants() {
 
     let membership = app
         .world()
-        .get::<StageMembership>(marker_entity)
-        .expect("descendant is tagged with StageMembership");
+        .get::<StageMember>(marker_entity)
+        .expect("descendant is tagged with StageMember");
     assert_eq!(membership.0, id);
 
     let mut roots = app.world_mut().query::<(Entity, &StageId)>();
@@ -189,10 +189,10 @@ fn save_then_open_preserves_stage_identity_membership_and_marker() {
     let path = dir.join("round_trip.scn.ron");
 
     let mut source_app = test_app(&dir);
-    let root = source_app.world_mut().spawn((id, StageMembership(id))).id();
+    let root = source_app.world_mut().spawn((id, StageMember(id))).id();
     source_app
         .world_mut()
-        .spawn((Marker(7), StageMembership(id), ChildOf(root)));
+        .spawn((Marker(7), StageMember(id), ChildOf(root)));
     save_stage(&path.to_string_lossy(), source_app.world_mut(), id)
         .expect("save_stage writes a stage file");
 
@@ -233,11 +233,11 @@ fn save_then_open_preserves_stage_identity_membership_and_marker() {
         entity
     };
     assert_eq!(
-        loaded_app.world().get::<StageMembership>(root_entity),
-        Some(&StageMembership(id))
+        loaded_app.world().get::<StageMember>(root_entity),
+        Some(&StageMember(id))
     );
     assert_eq!(
-        loaded_app.world().get::<StageMembership>(marker_entity),
-        Some(&StageMembership(id))
+        loaded_app.world().get::<StageMember>(marker_entity),
+        Some(&StageMember(id))
     );
 }

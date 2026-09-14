@@ -17,7 +17,7 @@ pub struct StageId(pub Uuid);
 /// entity without it (editor UI, gizmos, the pointer) is never captured.
 #[derive(Component, Clone, Copy, PartialEq, Eq, Debug, Reflect)]
 #[reflect(Component)]
-pub struct StageMembership(pub StageId);
+pub struct StageMember(pub StageId);
 
 /// Recorded on the transient container entity by a [`StageFormat`](crate::stage::StageFormat)'s
 /// `spawn_root`, so the `WorldInstanceReady` observer can compute the stage root's `Name` once
