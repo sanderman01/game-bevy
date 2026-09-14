@@ -73,11 +73,10 @@ A binary aunched straight from `target/` falls back to Bevy's executable-directo
 
 ## Open questions
 
-- **Stage format.** `ename_engine::stage` now loads/saves stage content via
-  `bevy_world_serialization` (`.scn.ron`), but the editor still has no Save button wired to it --
-  every panel mutates the live `World` with no persistence path. The `Template` trait landing in
-  `bevy_ecs` says upstream is heading somewhere better long-term; revisit the format itself if
-  that lands.
+- **Stage format.** `ename_engine::stage` loads/saves stage content via `bevy_world_serialization`
+  (`.scn.ron`); the editor's File menu (`docs/superpowers/plans/2026-09-14-stage-file-menu.md`)
+  wires it up. The `Template` trait landing in `bevy_ecs` says upstream is heading somewhere
+  better long-term; revisit the format itself if that lands.
 - **Undo.** Every feature mutates the `World` directly, so retrofitting undo means rewriting every
   feature. `ename_remote` mutates the same `World` over BRP, so the design has to cover that path
   too. Decide before the editor grows past its handful of mutation sites.
@@ -91,9 +90,9 @@ A binary aunched straight from `target/` falls back to Bevy's executable-directo
 
 ## Known gaps
 
-- The editor has no save path and no command layer, so every panel mutates the `World` directly.
-  Undo later means touching every mutation site; there are five today, the four `bevy_inspector`
-  calls in `panels.rs` and the transform gizmo drag.
+- The editor has no command layer, so every panel mutates the `World` directly. Undo later means
+  touching every mutation site; there are five today, the four `bevy_inspector` calls in
+  `panels.rs` and the transform gizmo drag.
 - `ename_engine::bigspace::grid` exposes `big_space::Grid` in its signatures, so every consumer is
   pinned to that git revision. Accepted deliberately; newtype it if the engine is ever consumed
   outside this workspace.
