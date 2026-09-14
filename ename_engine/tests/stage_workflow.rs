@@ -9,7 +9,8 @@ use bevy::{
 };
 use ename_engine::stage::{
     AssetRoot, DynamicWorldFormat, SaveStageError, StageAppExt, StageId, StageMember, StagePlugin,
-    new_stage, open_stage, open_stage_additive, save_stage, stage_of,
+    StageSource, new_stage, open_stage, open_stage_additive, save_stage, stage_of,
+    write_stage_file,
 };
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -239,4 +240,70 @@ fn stage_of_agrees_only_when_every_selected_entity_shares_a_stage() {
     assert_eq!(stage_of(app.world(), &[a1, b1]), None);
     assert_eq!(stage_of(app.world(), &[unrelated]), None);
     assert_eq!(stage_of(app.world(), &[]), None);
+}
+
+#[test]
+fn open_stage_recovers_from_a_malformed_file_with_no_single_root() {
+    let dir = temp_stage_dir("malformed_multi_root");
+    let mut world = World::new();
+    let a = world.spawn(Name::new("orphan_a")).id();
+    let b = world.spawn(Name::new("orphan_b")).id();
+    let mut type_registry = bevy::reflect::TypeRegistry::default();
+    type_registry.register::<Name>();
+    let dynamic_world = DynamicWorldBuilder::from_world(&world, &type_registry)
+        .extract_entities([a, b].into_iter())
+        .build();
+    let ron = dynamic_world.serialize(&type_registry).expect("serializes");
+    std::fs::write(dir.join("broken.scn.ron"), ron).expect("writes fixture");
+
+    let mut app = test_app(&dir);
+    open_stage(app.world_mut(), "broken.scn.ron");
+
+    // The point of this test is that this loop does not panic.
+    for _ in 0..50 {
+        app.update();
+    }
+
+    let mut roots = app.world_mut().query::<&StageId>();
+    assert_eq!(
+        roots.iter(app.world()).count(),
+        0,
+        "a malformed stage file (two top-level entities, no StageId) must not leave any \
+         StageId-tagged entity behind"
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn write_stage_file_derives_a_relative_source_through_a_symlinked_asset_root() {
+    let real_dir = temp_stage_dir("symlink_real");
+    let link_dir = std::env::temp_dir().join(format!(
+        "ename_engine_stage_workflow_symlink_link_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&link_dir);
+    std::os::unix::fs::symlink(&real_dir, &link_dir).expect("create symlink");
+
+    let mut app = test_app(&real_dir);
+    app.world_mut().insert_resource(AssetRoot(link_dir.clone()));
+
+    let id = StageId(Uuid::new_v4());
+    app.world_mut().spawn((id, StageMember(id)));
+
+    let save_path = link_dir.join("through_symlink.scn.ron");
+    write_stage_file(&save_path.to_string_lossy(), app.world_mut(), id).expect("save succeeds");
+
+    let mut roots = app.world_mut().query::<(&StageId, &StageSource)>();
+    let (_, source) = roots
+        .iter(app.world())
+        .find(|(found, _)| **found == id)
+        .expect("stage root exists");
+    assert_eq!(
+        source.0, "through_symlink.scn.ron",
+        "StageSource must be asset-relative even when the save path was reached through a \
+         symlinked asset root, got {:?}",
+        source.0
+    );
+
+    let _ = std::fs::remove_file(&link_dir);
 }

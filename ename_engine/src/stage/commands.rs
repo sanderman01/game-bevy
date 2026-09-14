@@ -78,7 +78,7 @@ pub(super) fn stage_name_from_path(path: &str) -> String {
 /// file directly -- agree on one `StageSource` value. Falls back to the raw URL if there is no
 /// `ContentIndex` (e.g. a headless test) or the alias does not resolve, rather than losing the
 /// source entirely.
-fn resolve_source_path(path: &str, content_index: Option<&ContentIndex>) -> String {
+pub(super) fn resolve_source_path(path: &str, content_index: Option<&ContentIndex>) -> String {
     let Some(alias) = path.strip_prefix(&format!("{ALIAS_SOURCE}://")) else {
         return path.to_owned();
     };
@@ -115,14 +115,18 @@ pub(super) fn tag_stage_membership_on_ready(
             return;
         };
         let [root] = &children[..] else {
-            panic!(
-                "stage file at {path:?} did not have exactly one top-level entity \
-                 (the save-time invariant that guarantees this was violated)"
+            error!(
+                "stage file at {path:?} did not have exactly one top-level entity (the \
+                 save-time invariant that guarantees this was violated) -- discarding this load"
             );
+            commands.entity(container).despawn();
+            return;
         };
-        let id = *ids
-            .get(*root)
-            .unwrap_or_else(|_| panic!("stage root entity in {path:?} is missing StageId"));
+        let Ok(&id) = ids.get(*root) else {
+            error!("stage root entity in {path:?} is missing StageId -- discarding this load");
+            commands.entity(container).despawn();
+            return;
+        };
         let name = stage_name_from_path(path);
         let source = resolve_source_path(path, content_index.as_deref());
         commands
@@ -261,8 +265,19 @@ pub fn write_stage_file(path: &str, world: &mut World, id: StageId) -> Result<()
 
     let source = world
         .get_resource::<AssetRoot>()
-        .and_then(|root| std::path::Path::new(path).strip_prefix(&root.0).ok())
-        .map(|relative| relative.to_string_lossy().replace('\\', "/"))
+        .and_then(|root| {
+            // Canonicalize both sides before comparing, the same way `ename_editor::menu`'s
+            // `asset_relative_path` already does for opening: this project's own `assets/` is
+            // routinely a symlink (see docs/design.md), and a lexical `strip_prefix` against the
+            // un-resolved root would miss a path a native save dialog returned through it.
+            let canonical_root = std::fs::canonicalize(&root.0).unwrap_or_else(|_| root.0.clone());
+            let canonical_path =
+                std::fs::canonicalize(path).unwrap_or_else(|_| std::path::PathBuf::from(path));
+            canonical_path
+                .strip_prefix(&canonical_root)
+                .ok()
+                .map(|relative| relative.to_string_lossy().replace('\\', "/"))
+        })
         .unwrap_or_else(|| path.to_owned());
     if world
         .get::<StageSource>(root)
@@ -271,4 +286,51 @@ pub fn write_stage_file(path: &str, world: &mut World, id: StageId) -> Result<()
         world.entity_mut(root).insert(StageSource(source));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ContentIndex, resolve_source_path};
+
+    // Fix B's regression coverage is a unit test of `resolve_source_path` alone rather than a full
+    // `open_stage_additive` end-to-end test: exercising the real `alias://` load path needs
+    // `AliasSourcePlugin` registered *before* `AssetPlugin` builds (it registers a live asset
+    // source into `AssetSourceBuilders`, which `AssetPlugin::build` consumes exactly once), but
+    // this crate's `test_app` helper (in `tests/stage_workflow.rs`) already constructs `AssetPlugin`
+    // directly, with no such source. Retrofitting that ordering into every existing test in that
+    // file -- to exercise a fix that lives entirely inside `resolve_source_path`'s normalization --
+    // was judged more invasive than the bug it covers; testing the normalization function directly
+    // proves the same fact `despawn_stage_members` now relies on: an `alias://` URL and its
+    // resolved concrete path normalize to the same `StageSource` string.
+    #[test]
+    fn resolve_source_path_normalizes_an_alias_url_through_content_index() {
+        let mut index = ContentIndex::default();
+        index
+            .insert("test::target", "target.scn.ron")
+            .expect("valid alias");
+
+        assert_eq!(
+            resolve_source_path("alias://test::target", Some(&index)),
+            "target.scn.ron",
+            "an alias:// URL must normalize to the concrete path it resolves to"
+        );
+        assert_eq!(
+            resolve_source_path("target.scn.ron", Some(&index)),
+            "target.scn.ron",
+            "a plain path must round-trip unchanged, so both ways of addressing the same file \
+             agree on one StageSource value"
+        );
+        assert_eq!(
+            resolve_source_path("alias://test::missing", Some(&index)),
+            "alias://test::missing",
+            "an alias that does not resolve must fall back to the raw URL rather than losing the \
+             source entirely"
+        );
+        assert_eq!(
+            resolve_source_path("alias://test::target", None),
+            "alias://test::target",
+            "with no ContentIndex resource at all (e.g. a headless test), the raw URL must be \
+             kept rather than losing the source"
+        );
+    }
 }
