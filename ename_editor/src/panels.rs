@@ -262,7 +262,15 @@ fn show_ui_system(world: &mut World) {
             .max_rect(ctx.viewport_rect()),
     );
 
-    world.resource_scope::<UiState, _>(|world, mut ui_state| ui_state.ui(world, &mut ui));
+    world.resource_scope::<UiState, _>(|world, mut ui_state| {
+        // Claims a horizontal strip at the top of `ui` and advances `ui`'s own cursor past it,
+        // the same way `console.rs`'s `egui::Panel::bottom(...)` claims the detail pane's slice
+        // of its tab -- so the dock below only ever sees what's left.
+        egui::Panel::top("menu_bar").show_inside(&mut ui, |ui| {
+            crate::menu::ui(ui, world, &mut ui_state.selected_entities);
+        });
+        ui_state.ui(world, &mut ui);
+    });
 }
 
 fn spawn_egui_camera(mut commands: Commands, mut egui_global_settings: ResMut<EguiGlobalSettings>) {

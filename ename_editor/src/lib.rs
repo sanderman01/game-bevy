@@ -11,6 +11,7 @@
 mod camera;
 mod console;
 mod gizmo;
+mod menu;
 mod panels;
 mod selection;
 mod viewport;
