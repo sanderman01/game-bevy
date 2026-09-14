@@ -1,0 +1,38 @@
+ename_engine/tests/stage_membership.rs
+  s_5ea65b9864b56a::t_848beabeeb82c1 11
+  s_5ea65b9864b56a::t_4193af9ee997b4 58,83
+ename_engine/tests/stage_workflow.rs
+  s_5ea65b9864b56a::t_62c85e707e3530 1-242
+ename_engine/src/stage/identity.rs
+  s_5ea65b9864b56a::t_7193dfac3267c3 29-48
+  s_5ea65b9864b56a::t_0e25833e76e25a 7
+ename_engine/tests/stage_round_trip.rs
+  s_5ea65b9864b56a::t_221a666435d376 14-15
+  s_5ea65b9864b56a::t_304b3fbfbe2aba 77
+  s_5ea65b9864b56a::t_96aef4b2cb0a46 147
+  s_5ea65b9864b56a::t_9404e51d1697c8 183-184,187
+ename_engine/src/stage/mod.rs
+  s_5ea65b9864b56a::t_36e89253c58a9b 14,16,19-20,24-25,30-31
+ename_engine/src/stage/workflow.rs
+  s_5ea65b9864b56a::t_0e9f63689bd290 1-127
+ename_engine/src/stage/commands.rs
+  s_5ea65b9864b56a::t_84526ae2db4129 37
+  s_5ea65b9864b56a::t_5ddcf05f23951e 93-95
+  s_5ea65b9864b56a::t_26b6f3919eafa2 1-4,6-12,15,17,19-36,38-43,45-57,75-90,103,127,136-138,188,191-192,201-212,258,260-273
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ab8407453bad9623d4e93b900ccb9a6c50f2be7d",
+  "prompts": {},
+  "sessions": {
+    "s_5ea65b9864b56a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "07aef37e-9a88-48cd-b003-da41fc501a13",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
