@@ -1,0 +1,23 @@
+ename_engine/tests/stage_round_trip.rs
+  s_75e889357e0ca6::t_28eb8189dd77c7 167-171
+  s_75e889357e0ca6::t_dcbf36ca23ca18 113-119,127-166,172-185
+  s_75e889357e0ca6::t_1e68117fe392a4 186
+ename_engine/src/stage/commands.rs
+  s_75e889357e0ca6::t_0d50076acf1bc0 77,80-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6932b234b2d981c990070d09e834582a40551317",
+  "prompts": {},
+  "sessions": {
+    "s_75e889357e0ca6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8be2ab39-cc11-40dd-92b1-a012c44871a2",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
