@@ -1,0 +1,14 @@
+ename_editor/src/camera.rs
+  h_72decab43bbb75 88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dd04c9c8e86b4a60bed4a07e5f50d4ed61164ff8",
+  "prompts": {},
+  "humans": {
+    "h_72decab43bbb75": {
+      "author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
