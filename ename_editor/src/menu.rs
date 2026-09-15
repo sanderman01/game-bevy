@@ -1,12 +1,13 @@
-//! The top menu bar's `File` dropdown: new/open/open-additive/save for stages. The four
-//! operations themselves live in `ename_engine::stage`; this module only draws the buttons,
-//! resolves "the currently selected stage" from the Hierarchy panel's selection, and asks the OS
-//! for a file when one is needed.
+//! The top menu bar: `File` dropdown for stage operations (new/open/open-additive/save), and
+//! `View` dropdown for camera/viewport toggles (freeze origin). The stage operations themselves
+//! live in `ename_engine::stage`; this module only draws the buttons, resolves the currently
+//! selected stage from the Hierarchy panel's selection, and asks the OS for a file when needed.
 
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 use bevy_inspector_egui::bevy_inspector::hierarchy::SelectedEntities;
+use ename_engine::bigspace::{CellCoord, FrozenOrigin, set_origin_frozen};
 use ename_engine::stage::{
     AssetRoot, SaveStageError, StageFormats, StageId, new_stage, open_stage, open_stage_additive,
     save_stage, stage_of, write_stage_file,
@@ -41,6 +42,31 @@ pub(crate) fn ui(ui: &mut egui::Ui, world: &mut World, selected: &mut SelectedEn
                 {
                     ui.close();
                     save_current_stage(world, id);
+                }
+            });
+        });
+        ui.menu_button("View", |ui| {
+            let Ok(camera) = world
+                .query_filtered::<Entity, With<crate::camera::EditorCamera>>()
+                .single(world)
+            else {
+                return;
+            };
+            let frozen = world.get::<FrozenOrigin>(camera).is_some();
+            let has_grid = world.get::<CellCoord>(camera).is_some();
+
+            ui.add_enabled_ui(has_grid, |ui| {
+                let mut checked = frozen;
+                if ui
+                    .checkbox(&mut checked, "Freeze Camera Origin")
+                    .on_hover_text(
+                        "Keep flying without recentering the world around the camera. \
+                         Disabled with no Grid loaded -- there is nothing to freeze.",
+                    )
+                    .changed()
+                {
+                    set_origin_frozen(world, camera, checked);
+                    ui.close();
                 }
             });
         });
