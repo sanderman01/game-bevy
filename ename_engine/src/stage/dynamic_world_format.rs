@@ -43,6 +43,13 @@ impl StageFormat for DynamicWorldFormat {
             .deny_component::<bevy::camera::Exposure>()
             // Camera requirements recreate this runtime-interned render graph selection on load.
             .deny_component::<bevy::render::camera::CameraRenderGraph>()
+            // `Children` is a derived list `ChildOf`'s insert hook rebuilds on load; serializing
+            // it verbatim writes entity ids that may not be in `entities` (e.g. a non-StageMember
+            // entity, like the editor's GridFollowCamera, temporarily parented under a stage's
+            // Grid) with no corresponding entry in the file's own entity map -- a dangling
+            // reference that resolves to a phantom entity on load. Denying it loses no
+            // information.
+            .deny_component::<Children>()
             .extract_entities(entities.iter().copied())
             .build();
         let bytes = dynamic_world.serialize(&type_registry)?.into_bytes();

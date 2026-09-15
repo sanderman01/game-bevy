@@ -5,6 +5,7 @@
 use bevy::{
     input::mouse::{MouseMotion, MouseWheel},
     prelude::*,
+    transform::TransformSystems,
 };
 use ename_engine::bigspace::{
     BigSpaceCameraController, BigSpaceCameraInput, CellCoord, GridCameraSystems, GridFollowCamera,
@@ -77,7 +78,8 @@ impl Plugin for EditorCameraPlugin {
                     apply_grid_flight.in_set(GridCameraSystems::Apply),
                     apply_free_flight,
                 )
-                    .chain(),
+                    .chain()
+                    .before(TransformSystems::Propagate),
             );
     }
 }

@@ -129,9 +129,7 @@ fn despawn_pending_container(world: &mut World, path: &str) {
 /// stage's `Grid` when the stage unloads -- rescuing any such descendant has to happen in a pass
 /// before the despawn loop below, not react to it afterward.
 fn despawn_all(world: &mut World, entities: Vec<Entity>) {
-    for &entity in &entities {
-        rescue_grid_follow_camera_descendants(world, entity);
-    }
+    rescue_grid_follow_camera_descendants(world, &entities);
     for entity in entities {
         // A parent's despawn cascades to its children (Bevy's linked-spawn hierarchy
         // relationship), so a descendant collected above may already be gone by its turn.
@@ -141,18 +139,37 @@ fn despawn_all(world: &mut World, entities: Vec<Entity>) {
     }
 }
 
-/// Detaches any `GridFollowCamera` among `root`'s descendants before `root` (or one of its
-/// ancestors in `entities`) is despawned -- despawning cascades to children immediately, with no
-/// interception point, so this has to run *before* the despawn call, not react to it afterward.
-fn rescue_grid_follow_camera_descendants(world: &mut World, root: Entity) {
-    let mut children_query = world.query::<&Children>();
-    let followers: Vec<Entity> = children_query
-        .query(world)
-        .iter_descendants(root)
-        .filter(|&entity| world.get::<GridFollowCamera>(entity).is_some())
+/// Detaches any `GridFollowCamera` whose ancestor chain includes one of `despawning`, before any
+/// of them are despawned -- despawning cascades to children immediately, with no interception
+/// point, so this must run *before* the despawn call, not react to it afterward.
+///
+/// Walks up from each `GridFollowCamera` (there are normally zero or one in the whole world)
+/// through its ancestors, rather than walking down into every entity about to be despawned -- the
+/// previous approach did a full descendant walk per despawned entity, O(n) work per entity for an
+/// O(n)-sized despawn set.
+fn rescue_grid_follow_camera_descendants(world: &mut World, despawning: &[Entity]) {
+    let despawn_set: bevy::platform::collections::HashSet<Entity> =
+        despawning.iter().copied().collect();
+    let followers: Vec<Entity> = world
+        .query_filtered::<Entity, With<GridFollowCamera>>()
+        .iter(world)
         .collect();
+
+    let mut parents = world.query::<&ChildOf>();
     for follower in followers {
-        detach_from_grid(world, follower);
+        let mut ancestor = follower;
+        let mut affected = false;
+        while let Ok(child_of) = parents.get(world, ancestor) {
+            let parent = child_of.parent();
+            if despawn_set.contains(&parent) {
+                affected = true;
+                break;
+            }
+            ancestor = parent;
+        }
+        if affected {
+            detach_from_grid(world, follower);
+        }
     }
 }
 

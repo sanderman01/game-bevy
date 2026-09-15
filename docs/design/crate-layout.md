@@ -83,10 +83,14 @@ ordering structural rather than a rule in `main.rs` that every future target has
 `cargo tree --no-default-features`, so it also proves that the editor crate and `ename_remote`
 are absent from a shipping build.
 
-`EditorCamera` is a historical example of the cost of getting a layer wrong. It existed because
-`engine` depended on `editor` and the editor could not name
-`engine::camera::MainCamera`. It is deleted. The editor now keys off `MainCamera` and attaches
-`TransformGizmoCamera` itself, which keeps the gizmo requirement in the crate that has the gizmo.
+An earlier `EditorCamera` was a historical example of the cost of getting a layer wrong. It lived
+in the engine because `engine` depended on `editor` and the editor could not name
+`engine::camera::MainCamera`. That one was deleted. `ename_editor::camera::EditorCamera` now
+exists again, but as a different thing living in the right crate: the editor's own
+always-present scene-view camera, distinct from `ename_engine::camera::MainCamera` (whatever
+camera a loaded stage defines for the Game View, which may not exist at all). The gizmo keys off
+this `EditorCamera` and attaches `TransformGizmoCamera` itself, which keeps the gizmo requirement
+in the crate that has the gizmo.
 
 ## Composition happens in the binary
 

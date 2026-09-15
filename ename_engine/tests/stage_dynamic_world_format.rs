@@ -71,3 +71,36 @@ fn serialize_round_trips_a_component_through_ron() {
         "serialized RON should carry the component's data: {text}"
     );
 }
+
+/// Regression test: a stage's root can have a child that is not part of the extracted entity set
+/// (e.g. the editor's always-present `GridFollowCamera`, parented under a stage's `Grid` while
+/// attached, but never itself a `StageMember`). `bevy_world_serialization` serializes `Children`
+/// verbatim, with no filtering to the extracted set, so before this fix such a child's entity id
+/// would be written into the root's `Children` list with no corresponding entry in the file's own
+/// entity map -- a dangling reference that resolves to a phantom entity on load (see
+/// `dynamic_world_format.rs`'s `serialize`). Denying `Children` from serialization avoids this
+/// entirely: every child already carries `ChildOf`, whose insert hook rebuilds `Children` on load.
+#[test]
+fn serialize_denies_children_so_an_entity_outside_the_extracted_set_leaves_no_dangling_reference() {
+    let mut app = test_app();
+    app.register_type::<ChildOf>().register_type::<Children>();
+
+    let root = app.world_mut().spawn(Marker(1)).id();
+    let extracted_child = app.world_mut().spawn((Marker(2), ChildOf(root))).id();
+    // Not passed to `serialize` below -- mirrors a `GridFollowCamera` that is parented under the
+    // stage's Grid but carries no `StageMember`, so it is never part of the extracted set.
+    let _unextracted_child = app.world_mut().spawn((Marker(3), ChildOf(root))).id();
+
+    let format = DynamicWorldFormat;
+    let bytes = format
+        .serialize(app.world(), &[root, extracted_child])
+        .expect("serialize succeeds");
+    let text = String::from_utf8(bytes).expect("ron is valid utf8");
+
+    assert!(
+        !text.contains("bevy_ecs::hierarchy::Children"),
+        "Children must be denied from stage serialization -- otherwise the root's Children list \
+         can reference an entity outside the file's own entity map, a dangling reference that \
+         resolves to a phantom entity on load: {text}"
+    );
+}

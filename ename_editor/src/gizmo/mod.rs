@@ -85,7 +85,7 @@ fn gizmo_keyboard_shortcuts(
     keys: Res<ButtonInput<KeyCode>>,
     mut settings: ResMut<TransformGizmoSettings>,
 ) {
-    if !ui_state.pointer_in_viewport {
+    if ui_state.active_viewport != ActiveViewport::Scene || !ui_state.pointer_in_viewport {
         return;
     }
 
