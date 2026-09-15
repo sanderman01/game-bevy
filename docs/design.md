@@ -21,17 +21,22 @@ acting on it.
 
 ## Input is intent
 
-`ename_engine` owns the big_space glue and exposes `FlyCameraIntent`: forward, right, up, roll,
-pitch, yaw, boost, with no `KeyCode` in it. Whichever layer owns the bindings writes the intent.
-The editor writes it today; a spectator mode could write it later. Two crates each half-knowing one
-key binding is what produced the W/E clash between the gizmo shortcuts and the fly camera.
+`ename_editor::camera` owns its own scene camera end to end: the Unreal-style key/mouse bindings
+and how they are applied, both. `ename_engine::bigspace::camera` no longer owns any binding or
+intent type; it owns only the generic mechanic of keeping an entity attached to the nearest
+big_space `Grid` (`GridFollowCamera`, `GridFollowPlugin`) and the `GridCameraSystems::Apply`
+ordering point that a layer above orders its own grid-attached input-writing system against, so it
+runs before big_space's `camera_controller` consumes the same frame's input. Two crates each
+half-knowing one key binding is what produced the W/E clash between the gizmo shortcuts and the
+fly camera; owning both halves in one crate is what fixed it.
 
-The editor writes the intent in `FlyCameraSystems::Intent`. The engine applies and clears it in
-`FlyCameraSystems::Apply`, before big_space's `camera_controller`, and switches big_space's own
-bindings off there. With no editor linked in, nothing writes the intent and the fly camera does not
-move, which is right for a shipping build. `fly_camera_active` in `ename_editor::camera` is the one
-place the rule is written down. While the right mouse button is held the fly camera claims the
-keyboard and the gizmo's W/E/R/X shortcuts stand down.
+`EditorCamera` is a `GridFollowCamera`, so it rides whichever grid is nearest while one exists, and
+flies free (a plain `Transform`, no `CellCoord`) when none does. `ename_editor::camera` picks
+between big_space's own grid-relative `camera_controller` and its own free-flight integrator each
+frame based on which is true, ordering the two apply systems in one `.chain()` so exactly one of
+them ever observes and clears that frame's intent. `fly_camera_active` in `ename_editor::camera` is
+the one place the W/E-claiming rule is written down. While the right mouse button is held the fly
+camera claims the keyboard and the gizmo's W/E/R/X shortcuts stand down.
 
 ## Bevy dependencies
 

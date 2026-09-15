@@ -9,7 +9,6 @@
 
 pub mod bigspace;
 pub mod camera;
-pub mod input;
 pub mod log;
 pub mod physics;
 pub mod stage;
@@ -127,7 +126,6 @@ impl PluginGroup for EnginePlugins {
             .add(bigspace::BigSpacePlugin)
             .add(camera::VirtualCameraPlugin)
             .add(stage::StagePlugin)
-            .add(input::FlyCameraPlugin)
             .add(physics::PhysicsIntegrationPlugin)
             .add(time::TimeControlPlugin)
             // After `DefaultPlugins`, because it resizes the buffer `LogPlugin` just built.

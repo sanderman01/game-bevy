@@ -104,8 +104,9 @@ propagation with no compile error.
 
 An ordering constraint that crosses a crate boundary is a public `SystemSet` exported by the lower
 crate. `ename_engine::bigspace::GridSystems::Recentered` means "big_space has finished recentering
-and transforms have propagated"; `ename_engine::input::FlyCameraSystems` orders intent production
-against intent application.
+and transforms have propagated"; `ename_engine::bigspace::GridCameraSystems::Apply` orders a
+grid-attached camera's input-writing system before big_space's own `camera_controller` consumes
+it, so a layer above the engine never has to name that big_space system itself.
 
 A third-party type that crosses a boundary is re-exported by the crate that owns the dependency.
 `ename_engine::bigspace` re-exports the `big_space` `Grid` and `CellCoord` the editor needs, so
