@@ -1,0 +1,25 @@
+docs/design/crate-layout.md
+  s_5ea65b9864b56a::t_e047683c276f18 107-109
+ename_editor/src/camera.rs
+  s_5ea65b9864b56a::t_40821370a83bea 1-3,5-50,53-54,57-60,62,67-68,73-81,85-113,117,134-135,140-201,203-206,212-242,246-335,344-354,363-369
+  s_5ea65b9864b56a::t_d56425d7486ea1 69-72,207-211,243-245,336-343,355-362
+  s_5ea65b9864b56a::t_ba7b8750549177 202
+docs/design.md
+  s_5ea65b9864b56a::t_2bea1dff8fd464 24-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3df4d930e10936b22ac93038e09d742f3450ac49",
+  "prompts": {},
+  "sessions": {
+    "s_5ea65b9864b56a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "07aef37e-9a88-48cd-b003-da41fc501a13",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
