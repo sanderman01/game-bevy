@@ -40,9 +40,23 @@ enum InspectorSelection {
     Asset(TypeId, String, UntypedAssetId),
 }
 
+/// Which of Scene View / Game View is the currently active tab in their shared dock leaf.
+/// `TabViewer::ui` only runs for the active tab, so `UiState::viewport_rect`/`pointer_in_viewport`
+/// are only ever fresh for whichever this says is current -- `viewport.rs` uses it to decide
+/// which camera is live, and `gizmo`/`selection` use it to confirm the pointer is over Scene
+/// View specifically, not merely over whatever rect Scene View last had before Game View was
+/// selected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum ActiveViewport {
+    #[default]
+    Scene,
+    Game,
+}
+
 #[derive(Resource)]
 pub(crate) struct UiState {
     state: DockState<EguiWindow>,
+    pub(crate) active_viewport: ActiveViewport,
     pub(crate) viewport_rect: egui::Rect,
     pub(crate) selected_entities: SelectedEntities,
     selection: InspectorSelection,
@@ -52,7 +66,7 @@ pub(crate) struct UiState {
 
 impl UiState {
     fn new() -> Self {
-        let mut state = DockState::new(vec![EguiWindow::GameView]);
+        let mut state = DockState::new(vec![EguiWindow::SceneView, EguiWindow::GameView]);
         let tree = state.main_surface_mut();
         let [game, _inspector] =
             tree.split_right(NodeIndex::root(), 0.75, vec![EguiWindow::Inspector]);
@@ -70,6 +84,7 @@ impl UiState {
 
         Self {
             state,
+            active_viewport: ActiveViewport::default(),
             selected_entities: SelectedEntities::default(),
             selection: InspectorSelection::Entities,
             viewport_rect: egui::Rect::NOTHING,
@@ -81,6 +96,7 @@ impl UiState {
     fn ui(&mut self, world: &mut World, ui: &mut egui::Ui) {
         let mut tab_viewer = TabViewer {
             world,
+            active_viewport: &mut self.active_viewport,
             viewport_rect: &mut self.viewport_rect,
             selected_entities: &mut self.selected_entities,
             selection: &mut self.selection,
@@ -95,6 +111,7 @@ impl UiState {
 
 #[derive(Debug)]
 enum EguiWindow {
+    SceneView,
     GameView,
     Console,
     Hierarchy,
@@ -107,6 +124,7 @@ struct TabViewer<'a> {
     world: &'a mut World,
     selected_entities: &'a mut SelectedEntities,
     selection: &'a mut InspectorSelection,
+    active_viewport: &'a mut ActiveViewport,
     viewport_rect: &'a mut egui::Rect,
     pointer_in_viewport: &'a mut bool,
     console: &'a mut ConsoleState,
@@ -120,7 +138,14 @@ impl egui_dock::TabViewer for TabViewer<'_> {
         let type_registry = type_registry.read();
 
         match window {
-            EguiWindow::GameView => *self.viewport_rect = ui.clip_rect(),
+            EguiWindow::SceneView => {
+                *self.active_viewport = ActiveViewport::Scene;
+                *self.viewport_rect = ui.clip_rect();
+            }
+            EguiWindow::GameView => {
+                *self.active_viewport = ActiveViewport::Game;
+                *self.viewport_rect = ui.clip_rect();
+            }
             EguiWindow::Hierarchy => {
                 let selected = hierarchy_ui(self.world, ui, self.selected_entities);
                 if selected {
@@ -168,7 +193,7 @@ impl egui_dock::TabViewer for TabViewer<'_> {
     }
 
     fn clear_background(&self, window: &Self::Tab) -> bool {
-        !matches!(window, EguiWindow::GameView)
+        !matches!(window, EguiWindow::GameView | EguiWindow::SceneView)
     }
 }
 

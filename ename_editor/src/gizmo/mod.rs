@@ -3,9 +3,13 @@
 mod grid_anchor;
 
 use bevy::{gizmos::transform_gizmo::TransformGizmoMeshMarker, picking::Pickable, prelude::*};
-use ename_engine::{bigspace::GridSystems, camera::MainCamera};
+use ename_engine::bigspace::GridSystems;
 
-use crate::{EditorSystems, panels::UiState};
+use crate::{
+    EditorSystems,
+    camera::EditorCamera,
+    panels::{ActiveViewport, UiState},
+};
 
 /// Everything the transform gizmo needs: which camera it draws through, when it stands down,
 /// its keyboard bindings, what it is focused on, and staying anchored across grid cells.
@@ -21,7 +25,7 @@ impl Plugin for GizmoPlugin {
                 Update,
                 (
                     ignore_gizmo_mesh_picking,
-                    tag_main_camera_for_gizmo,
+                    tag_editor_camera_for_gizmo,
                     gizmo_keyboard_shortcuts.run_if(not(crate::camera::fly_camera_active)),
                 ),
             )
@@ -39,11 +43,12 @@ impl Plugin for GizmoPlugin {
     }
 }
 
-/// The gizmo renders through a camera tagged `TransformGizmoCamera`, and the game's main camera
-/// is the one the editor draws into. Tagging it here rather than requiring it on `MainCamera`
-/// keeps the requirement in the crate that has the gizmo: a shipping build has no gizmo at all.
-fn tag_main_camera_for_gizmo(
-    cameras: Query<Entity, (With<MainCamera>, Without<TransformGizmoCamera>)>,
+/// The gizmo renders through a camera tagged `TransformGizmoCamera`, and the editor's own scene
+/// camera is the one the editor draws into. Tagging it here rather than requiring it on
+/// `EditorCamera` keeps the requirement in the crate that has the gizmo: a shipping build has no
+/// gizmo at all.
+fn tag_editor_camera_for_gizmo(
+    cameras: Query<Entity, (With<EditorCamera>, Without<TransformGizmoCamera>)>,
     mut commands: Commands,
 ) {
     for entity in &cameras {
@@ -51,12 +56,13 @@ fn tag_main_camera_for_gizmo(
     }
 }
 
-/// The gizmo takes `window.cursor_position()` directly and knows nothing about the egui
-/// panels covering part of the window, so it only runs while the pointer is over the Game
-/// View. A drag already in progress keeps running wherever the cursor goes: cutting it off
-/// mid-drag would strand `TransformGizmoState::active` and leave the cursor confined.
+/// The gizmo takes `window.cursor_position()` directly and knows nothing about the egui panels
+/// covering part of the window, so it only runs while the pointer is over Scene View and Scene
+/// View is the tab currently showing (not merely over where Scene View's rect was before Game
+/// View was selected).
 fn gizmo_should_run(ui_state: Res<UiState>, gizmo: Res<TransformGizmoState>) -> bool {
-    ui_state.pointer_in_viewport || gizmo.active
+    (ui_state.active_viewport == ActiveViewport::Scene && ui_state.pointer_in_viewport)
+        || gizmo.active
 }
 
 /// The gizmo renders through an always-on-top overlay camera on its own render layer, and

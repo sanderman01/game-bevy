@@ -1,12 +1,15 @@
-//! Confines the game camera to the part of the window the dock is not covering.
+//! Confines the editor's scene camera to the Scene View tab, and the game's camera (if any) to
+//! the Game View tab -- activating only whichever one the currently-selected dock tab shows.
 
 use bevy::{app::TransformGizmoRenderStep, camera::Viewport, prelude::*, window::PrimaryWindow};
 use bevy_egui::{EguiPostUpdateSet, EguiZoomFactor, PrimaryEguiContext};
 use ename_engine::camera::MainCamera;
 
-use crate::panels::UiState;
+use crate::{
+    camera::EditorCamera,
+    panels::{ActiveViewport, UiState},
+};
 
-/// Keeps the game camera rendering only into the Game View tab.
 pub(crate) struct ViewportPlugin;
 
 impl Plugin for ViewportPlugin {
@@ -16,7 +19,7 @@ impl Plugin for ViewportPlugin {
         // the same frame.
         app.add_systems(
             PostUpdate,
-            set_camera_viewport
+            (set_scene_camera_viewport, set_game_camera_viewport)
                 .after(EguiPostUpdateSet::EndPass)
                 .before(TransformGizmoRenderStep),
         );
@@ -47,12 +50,38 @@ fn viewport_for(rect: egui::Rect, scale_factor: f32, window_size: UVec2) -> Opti
     })
 }
 
-fn set_camera_viewport(
+/// The scene camera always exists, so this is a plain `Single`.
+fn set_scene_camera_viewport(
+    ui_state: Res<UiState>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    mut cam: Single<&mut Camera, With<EditorCamera>>,
+    zoom_factor: Single<&EguiZoomFactor, With<PrimaryEguiContext>>,
+) {
+    cam.is_active = ui_state.active_viewport == ActiveViewport::Scene;
+    if !cam.is_active {
+        return;
+    }
+    let scale_factor = window.scale_factor() * zoom_factor.zoom_factor;
+    if let Some(viewport) =
+        viewport_for(ui_state.viewport_rect, scale_factor, window.physical_size())
+    {
+        cam.viewport = Some(viewport);
+    }
+}
+
+/// `MainCamera` may not exist at all (no stage loaded, or a loaded stage that defines no
+/// camera). `Single` simply skips this system in that case -- the Game View tab stays blank,
+/// which is the intended behavior.
+fn set_game_camera_viewport(
     ui_state: Res<UiState>,
     window: Single<&Window, With<PrimaryWindow>>,
     mut cam: Single<&mut Camera, With<MainCamera>>,
     zoom_factor: Single<&EguiZoomFactor, With<PrimaryEguiContext>>,
 ) {
+    cam.is_active = ui_state.active_viewport == ActiveViewport::Game;
+    if !cam.is_active {
+        return;
+    }
     let scale_factor = window.scale_factor() * zoom_factor.zoom_factor;
     if let Some(viewport) =
         viewport_for(ui_state.viewport_rect, scale_factor, window.physical_size())

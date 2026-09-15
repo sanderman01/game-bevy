@@ -6,7 +6,10 @@ use bevy::{
     prelude::*,
 };
 
-use crate::{EditorSystems, panels::UiState};
+use crate::{
+    EditorSystems,
+    panels::{ActiveViewport, UiState},
+};
 
 /// Turns viewport clicks into a selection.
 pub(crate) struct SelectionPlugin;
@@ -39,7 +42,7 @@ fn handle_pick_events(
     pointers: Query<&PointerInteraction>,
     gizmo: Res<TransformGizmoState>,
 ) {
-    if !ui_state.pointer_in_viewport {
+    if ui_state.active_viewport != ActiveViewport::Scene || !ui_state.pointer_in_viewport {
         return;
     }
 
