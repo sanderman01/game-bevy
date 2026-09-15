@@ -3,6 +3,7 @@
 //! this one is entirely the editor's: it owns both the input bindings and how they're applied.
 
 use bevy::{
+    camera::primitives::Aabb,
     input::mouse::{MouseMotion, MouseWheel},
     prelude::*,
     transform::TransformSystems,
@@ -10,6 +11,8 @@ use bevy::{
 use ename_engine::bigspace::{
     BigSpaceCameraController, BigSpaceCameraInput, CellCoord, GridCameraSystems, GridFollowCamera,
 };
+
+use crate::panels::{ActiveViewport, UiState};
 
 /// Tags the editor's own scene-view camera. Distinct from `ename_engine::camera::MainCamera`,
 /// which tags whatever camera a loaded stage defines for the Game View -- that one may not exist
@@ -28,6 +31,16 @@ pub(crate) struct EditorCamera;
 pub(crate) struct FreeFlightState {
     vel_translation: Vec3,
     vel_rotation: Quat,
+}
+
+/// The camera's current orbit pivot: the point orbiting rotates around, and how far the camera
+/// sits from it. Set explicitly by F-focus; read (and its `distance` adjusted) while orbiting.
+/// Initialized at spawn to a point some distance ahead of the camera, so orbiting works even
+/// before anything has ever been focused.
+#[derive(Component, Debug, Clone, Copy)]
+pub(crate) struct OrbitFocus {
+    point: Vec3,
+    distance: f32,
 }
 
 /// Frame-local flight input, in the same aircraft axes as `BigSpaceCameraInput`. Captured by
@@ -60,6 +73,33 @@ const SPEED_SCROLL_STEP: f64 = 5.0;
 /// Multiplicative factor applied per scroll tick instead, while Shift is held.
 const SPEED_SCROLL_MULTIPLIER: f64 = 2.0;
 
+/// `EditorCamera`'s spawn-time `OrbitFocus` sits this far in front of it, so orbiting has
+/// something to pivot around before anything has ever been F-focused.
+const DEFAULT_FOCUS_DISTANCE: f32 = 10.0;
+/// Fallback radius used to size an F-focus dolly when the target has no `Aabb`.
+const DEFAULT_FOCUS_RADIUS: f32 = 2.0;
+/// Fallback FOV (radians) used to size an F-focus dolly when `EditorCamera` has no `Projection`,
+/// or a non-perspective one. Matches `PerspectiveProjection::default()`'s own 45 degrees.
+const DEFAULT_FOCUS_FOV: f32 = core::f32::consts::FRAC_PI_4;
+/// Headroom multiplier applied to an F-focus target's radius, so the dolly doesn't frame it
+/// edge-to-edge.
+const FOCUS_PADDING: f32 = 1.5;
+/// Floor on F-focus distance, so a tiny/zero-size target doesn't put the camera on top of it.
+const MIN_FOCUS_DISTANCE: f32 = 0.5;
+
+/// Orbit's own per-pixel mouse sensitivity, in degrees. Unlike the fly paths' `-0.1` (a
+/// velocity-like accumulator that only becomes an angle once multiplied by `dt * speed_{pitch,
+/// yaw}` downstream, so its bare magnitude carries no unit on its own), orbit's `(yaw, pitch)` is
+/// an absolute angle updated directly frame to frame with no further scaling -- so the conversion
+/// to radians has to happen where this is used, and the sign is independently derived there (see
+/// [`apply_orbit`]) rather than copied from the fly paths' constant.
+const ORBIT_MOUSE_SENSITIVITY_DEG_PER_PIXEL: f32 = 0.1;
+/// Orbit pitch is clamped to within this many radians of level, so it can't flip over the top or
+/// bottom.
+const MAX_ORBIT_PITCH: f32 = 89.0 * core::f32::consts::PI / 180.0;
+/// Floor on `OrbitFocus::distance`, so scrolling in can't pull the camera through the pivot.
+const MIN_ORBIT_DISTANCE: f32 = 0.1;
+
 /// Spawns `EditorCamera` and drives it from Unreal-style bindings.
 pub(crate) struct EditorCameraPlugin;
 
@@ -75,10 +115,18 @@ impl Plugin for EditorCameraPlugin {
                 (
                     write_editor_camera_intent,
                     adjust_fly_speed,
+                    apply_orbit,
                     apply_grid_flight.in_set(GridCameraSystems::Apply),
                     apply_free_flight,
+                    correct_camera_roll,
                 )
                     .chain()
+                    .before(TransformSystems::Propagate),
+            )
+            .add_systems(
+                PostUpdate,
+                apply_focus_on_f_key
+                    .in_set(crate::EditorSystems::ApplySelection)
                     .before(TransformSystems::Propagate),
             );
     }
@@ -91,13 +139,25 @@ pub(crate) fn fly_camera_active(mouse: Res<ButtonInput<MouseButton>>) -> bool {
     mouse.pressed(FLY_CAMERA_BUTTON)
 }
 
+/// True while orbit is claiming the fly button: RMB *and* either Alt held. Orbit and plain fly
+/// are mutually exclusive -- see [`write_editor_camera_intent`]'s guard and [`apply_orbit`].
+fn orbit_active(mouse: &ButtonInput<MouseButton>, keyboard: &ButtonInput<KeyCode>) -> bool {
+    mouse.pressed(FLY_CAMERA_BUTTON)
+        && (keyboard.pressed(KeyCode::AltLeft) || keyboard.pressed(KeyCode::AltRight))
+}
+
 fn spawn_editor_camera(mut commands: Commands) {
+    let spawn_transform = Transform::from_xyz(0.0, 2.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y);
     commands.spawn((
         EditorCamera,
         GridFollowCamera,
         FreeFlightState::default(),
+        OrbitFocus {
+            point: spawn_transform.translation + spawn_transform.forward() * DEFAULT_FOCUS_DISTANCE,
+            distance: DEFAULT_FOCUS_DISTANCE,
+        },
         Camera3d::default(),
-        Transform::from_xyz(0.0, 2.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        spawn_transform,
         Name::new("Editor Camera"),
     ));
 }
@@ -118,9 +178,10 @@ fn write_editor_camera_intent(
     mut mouse_move: MessageReader<MouseMotion>,
     mut intent: ResMut<EditorCameraIntent>,
 ) {
-    if !mouse_button.pressed(FLY_CAMERA_BUTTON) {
-        // Drop the motion accumulated while not flying, or the first frame of the next drag
-        // gets all of it at once.
+    if !mouse_button.pressed(FLY_CAMERA_BUTTON) || orbit_active(&mouse_button, &keyboard) {
+        // Drop the motion accumulated while not flying (or while orbiting has claimed the mouse
+        // instead -- see `apply_orbit`), or the first frame of the next drag gets all of it at
+        // once.
         mouse_move.clear();
         return;
     }
@@ -172,6 +233,79 @@ fn adjust_fly_speed(
         controller.speed + ticks * SPEED_SCROLL_STEP
     }
     .clamp(min, max);
+}
+
+/// Orbits `EditorCamera` around its `OrbitFocus` while RMB+Alt are held: drag to rotate around the
+/// pivot, scroll to change distance from it. Mutually exclusive with the fly paths --
+/// `write_editor_camera_intent` bails out and produces no intent whenever [`orbit_active`] is
+/// true, so WASD is a no-op during orbit (the fly paths just apply a no-op intent that frame) and
+/// this owns mouse-look input entirely while active, via its own `MessageReader`s so clearing the
+/// fly path's readers doesn't consume events this system would otherwise see.
+///
+/// `orbiting` holds `(yaw, pitch)` in radians while an orbit drag is in progress, `None` when it
+/// isn't. The first frame RMB+Alt are both held, it initializes from the camera's *current* facing
+/// (the inverse of the spherical mapping below), so orbit continues smoothly from wherever the
+/// camera already points instead of snapping; it resets to `None` the frame orbit stops, so the
+/// next orbit-start re-initializes cleanly.
+fn apply_orbit(
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut mouse_move: MessageReader<MouseMotion>,
+    mut wheel: MessageReader<MouseWheel>,
+    mut orbiting: Local<Option<(f32, f32)>>,
+    mut cams: Query<(&mut Transform, &mut OrbitFocus), With<EditorCamera>>,
+) {
+    if !orbit_active(&mouse_button, &keyboard) {
+        *orbiting = None;
+        mouse_move.clear();
+        wheel.clear();
+        return;
+    }
+
+    let Ok((mut transform, mut focus)) = cams.single_mut() else {
+        mouse_move.clear();
+        wheel.clear();
+        return;
+    };
+
+    let (yaw, pitch) = orbiting.get_or_insert_with(|| {
+        let forward = transform.forward();
+        (
+            forward.x.atan2(-forward.z),
+            forward.y.clamp(-1.0, 1.0).asin(),
+        )
+    });
+
+    if let Some(total) = mouse_move.read().map(|e| e.delta).reduce(|sum, i| sum + i) {
+        // Opposite sign from `write_editor_camera_intent`'s `-0.1`: a fly-yaw rotation of angle
+        // `theta` about world-Y leaves `forward.x == -sin(theta)`, but the spherical convention
+        // below has `forward.x == sin(yaw)`, i.e. `yaw == -theta` -- so a *positive* per-pixel
+        // factor here reproduces the same on-screen turning direction fly-look's negative one
+        // does. Pitch keeps the fly paths' sign: both this convention's `forward.y == sin(pitch)`
+        // and a fly-pitch rotation's `forward.y == sin(theta)` agree without a flip.
+        *yaw += total.x * ORBIT_MOUSE_SENSITIVITY_DEG_PER_PIXEL.to_radians();
+        *pitch += total.y * -ORBIT_MOUSE_SENSITIVITY_DEG_PER_PIXEL.to_radians();
+    }
+    *pitch = pitch.clamp(-MAX_ORBIT_PITCH, MAX_ORBIT_PITCH);
+
+    let ticks: f64 = wheel.read().map(|event| event.y as f64).sum();
+    if ticks != 0.0 {
+        let distance = focus.distance as f64;
+        focus.distance = if keyboard.pressed(KeyCode::ShiftLeft) {
+            distance * SPEED_SCROLL_MULTIPLIER.powf(ticks)
+        } else {
+            distance + ticks * SPEED_SCROLL_STEP
+        }
+        .max(MIN_ORBIT_DISTANCE as f64) as f32;
+    }
+
+    let forward = Vec3::new(
+        yaw.sin() * pitch.cos(),
+        pitch.sin(),
+        -(yaw.cos() * pitch.cos()),
+    );
+    transform.translation = focus.point - forward * focus.distance;
+    transform.look_to(forward, Vec3::Y);
 }
 
 /// Grid-attached path: hands the intent to big_space's own `camera_controller`, the same way the
@@ -255,6 +389,111 @@ fn apply_free_flight(
     transform.translation += state.vel_translation;
     transform.rotation *= state.vel_rotation;
     intent.clear();
+}
+
+/// Neutralizes roll drift. Both flight paths accumulate rotation incrementally
+/// (`transform.rotation *= step`, or big_space's equivalent inside `camera_controller` for the
+/// grid-attached path, which this crate doesn't own and can't fix directly) -- the classic
+/// FPS-camera bug where mixed pitch+yaw drifts roll over time, because each frame's yaw is applied
+/// in the camera's *current*, possibly already-pitched, local frame rather than around true
+/// world-Y. Rebuilding the rotation from the resulting forward vector each frame, with world-Y as
+/// up, is roll-free by construction and needs no bookkeeping across frames. Runs last in the
+/// chain, after both flight paths and after orbit (whose `look_to` output this is a harmless
+/// no-op for, since orbit is already roll-free) -- the single place roll gets neutralized,
+/// regardless of source.
+fn correct_camera_roll(mut cams: Query<&mut Transform, With<EditorCamera>>) {
+    let Ok(mut transform) = cams.single_mut() else {
+        return;
+    };
+    let mut forward = transform.forward().as_vec3();
+    // Clamp the vertical component away from the poles so `look_to` never receives a direction
+    // parallel to world-up, which would be degenerate (NaN rotation).
+    const MAX_VERTICAL: f32 = 0.9998; // a few degrees short of straight up/down
+    forward.y = forward.y.clamp(-MAX_VERTICAL, MAX_VERTICAL);
+    let Ok(forward) = Dir3::new(forward) else {
+        return;
+    };
+    transform.look_to(forward, Vec3::Y);
+}
+
+/// Radius used to size an F-focus dolly: the target's `Aabb` half-extents scaled by its world
+/// scale, vector length -- [`DEFAULT_FOCUS_RADIUS`] when it has no `Aabb` at all.
+fn focus_radius(aabb: Option<&Aabb>, world_scale: Vec3) -> f32 {
+    match aabb {
+        Some(aabb) => (aabb.half_extents * Vec3A::from(world_scale)).length(),
+        None => DEFAULT_FOCUS_RADIUS,
+    }
+}
+
+/// Distance at which a `fov`-radians perspective camera frames a sphere of `radius`, with
+/// [`FOCUS_PADDING`] headroom, floored at [`MIN_FOCUS_DISTANCE`].
+fn focus_distance(radius: f32, fov: f32) -> f32 {
+    (radius / (fov / 2.0).tan() * FOCUS_PADDING).max(MIN_FOCUS_DISTANCE)
+}
+
+/// The pure geometry behind F-focus, split out from [`apply_focus_on_f_key`] so it can be unit
+/// tested without a `UiState`: dollies `transform` to frame a target at `target_position` with the
+/// given `radius`/`fov`, keeping the camera's current facing (Unreal's F-key reframes without
+/// reorienting), and points `focus` at the target so a following orbit drag pivots around what was
+/// just focused.
+fn apply_focus(
+    transform: &mut Transform,
+    focus: &mut OrbitFocus,
+    target_position: Vec3,
+    radius: f32,
+    fov: f32,
+) {
+    let distance = focus_distance(radius, fov);
+    focus.point = target_position;
+    focus.distance = distance;
+    let current_forward = transform.forward().as_vec3();
+    transform.translation = target_position - current_forward * distance;
+}
+
+/// Unreal-style F-key focus. Gated the same way `gizmo::gizmo_keyboard_shortcuts` is -- only while
+/// the pointer is over Scene View and it's the active tab -- and only while exactly one entity is
+/// selected.
+///
+/// `UiState` is `Option`al here (unlike the gizmo's own `Res<UiState>`) purely so this system
+/// doesn't panic in this module's tests, which build a minimal `App` without `PanelsPlugin`;
+/// `PanelsPlugin` always inserts it in the real editor, so `None` never happens outside tests.
+fn apply_focus_on_f_key(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    ui_state: Option<Res<UiState>>,
+    targets: Query<(&GlobalTransform, Option<&Aabb>)>,
+    mut cams: Query<(&mut Transform, &mut OrbitFocus, Option<&Projection>), With<EditorCamera>>,
+) {
+    if !keyboard.just_pressed(KeyCode::KeyF) {
+        return;
+    }
+    let Some(ui_state) = ui_state else {
+        return;
+    };
+    if ui_state.active_viewport != ActiveViewport::Scene || !ui_state.pointer_in_viewport {
+        return;
+    }
+    let &[target] = ui_state.selected_entities.as_slice() else {
+        return;
+    };
+    let Ok((target_transform, aabb)) = targets.get(target) else {
+        return;
+    };
+    let Ok((mut transform, mut focus, projection)) = cams.single_mut() else {
+        return;
+    };
+
+    let radius = focus_radius(aabb, target_transform.scale());
+    let fov = match projection {
+        Some(Projection::Perspective(perspective)) => perspective.fov,
+        _ => DEFAULT_FOCUS_FOV,
+    };
+    apply_focus(
+        &mut transform,
+        &mut focus,
+        target_transform.translation(),
+        radius,
+        fov,
+    );
 }
 
 #[cfg(test)]
@@ -456,5 +695,215 @@ mod tests {
             .unwrap()
             .speed;
         assert!(after_multiplied > after_linear * 1.9);
+    }
+
+    #[test]
+    fn correct_camera_roll_holds_roll_at_zero_through_mixed_pitch_and_yaw_drag() {
+        let mut app = test_app();
+        app.update();
+        let camera = app
+            .world_mut()
+            .query_filtered::<Entity, With<EditorCamera>>()
+            .single(app.world())
+            .unwrap();
+
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Right);
+        for _ in 0..120 {
+            app.world_mut().write_message(MouseMotion {
+                delta: Vec2::new(3.0, 1.5),
+            });
+            app.update();
+        }
+
+        // A roll-free camera's `right()` is always horizontal (perpendicular to world-up), no
+        // matter its pitch or yaw. Roll drift would tilt it out of the horizontal plane.
+        let right = app.world().get::<Transform>(camera).unwrap().right();
+        assert!(
+            right.y.abs() < 1e-4,
+            "expected a horizontal right vector (no roll), got right.y = {}",
+            right.y
+        );
+    }
+
+    #[test]
+    fn orbit_keeps_constant_distance_from_focus_point_while_dragging() {
+        let mut app = test_app();
+        app.update();
+        let camera = app
+            .world_mut()
+            .query_filtered::<Entity, With<EditorCamera>>()
+            .single(app.world())
+            .unwrap();
+        let focus = *app.world().get::<OrbitFocus>(camera).unwrap();
+
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Right);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::AltLeft);
+        for _ in 0..30 {
+            app.world_mut().write_message(MouseMotion {
+                delta: Vec2::new(4.0, -2.0),
+            });
+            app.update();
+        }
+
+        let translation = app.world().get::<Transform>(camera).unwrap().translation;
+        let distance = translation.distance(focus.point);
+        assert!(
+            (distance - focus.distance).abs() < 1e-3,
+            "expected distance to stay {}, got {distance}",
+            focus.distance
+        );
+        // No scroll happened, so `OrbitFocus::distance` itself must be unchanged too.
+        let after = app.world().get::<OrbitFocus>(camera).unwrap();
+        assert!((after.distance - focus.distance).abs() < 1e-5);
+    }
+
+    #[test]
+    fn orbit_and_fly_are_mutually_exclusive_holding_w_applies_no_thrust() {
+        let mut app = test_app();
+        app.update();
+        let camera = app
+            .world_mut()
+            .query_filtered::<Entity, With<EditorCamera>>()
+            .single(app.world())
+            .unwrap();
+
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Right);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::AltLeft);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyW);
+        app.update();
+        let after_first_frame = app.world().get::<Transform>(camera).unwrap().translation;
+
+        // No mouse motion from here, so orbit's own (yaw, pitch) is unchanged too -- if W's
+        // "forward" thrust were leaking through, the camera would keep moving every frame despite
+        // that.
+        for _ in 0..30 {
+            app.update();
+        }
+        let after_many_frames = app.world().get::<Transform>(camera).unwrap().translation;
+
+        assert!(
+            after_first_frame.distance(after_many_frames) < 1e-4,
+            "expected W to be a no-op during orbit, camera moved from {after_first_frame:?} to \
+             {after_many_frames:?}"
+        );
+    }
+
+    #[test]
+    fn focus_frames_target_using_its_aabb_and_camera_fov_while_preserving_facing() {
+        let aabb = Aabb {
+            center: Vec3A::ZERO,
+            half_extents: Vec3A::new(1.0, 1.0, 1.0),
+        };
+        let radius = focus_radius(Some(&aabb), Vec3::ONE);
+        assert!(
+            (radius - 3.0_f32.sqrt()).abs() < 1e-5,
+            "radius should be the length of the (1,1,1) half-extents vector, got {radius}"
+        );
+
+        let fov = core::f32::consts::FRAC_PI_2; // 90 degrees: tan(fov/2) == 1
+        let expected_distance = radius / (fov / 2.0).tan() * FOCUS_PADDING;
+        let distance = focus_distance(radius, fov);
+        assert!((distance - expected_distance).abs() < 1e-5);
+
+        let mut transform = Transform::from_xyz(0.0, 0.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y);
+        let forward_before = transform.forward().as_vec3();
+        let mut focus = OrbitFocus {
+            point: Vec3::ZERO,
+            distance: 999.0,
+        };
+        let target_position = Vec3::new(5.0, 0.0, 0.0);
+
+        apply_focus(&mut transform, &mut focus, target_position, radius, fov);
+
+        assert_eq!(focus.point, target_position);
+        assert!((focus.distance - expected_distance).abs() < 1e-5);
+        assert!(
+            transform.forward().as_vec3().distance(forward_before) < 1e-5,
+            "F-focus must preserve the camera's current facing"
+        );
+        let expected_translation = target_position - forward_before * expected_distance;
+        assert!(
+            transform.translation.distance(expected_translation) < 1e-4,
+            "expected translation {expected_translation:?}, got {:?}",
+            transform.translation
+        );
+    }
+
+    #[test]
+    fn focus_falls_back_to_default_radius_without_an_aabb() {
+        assert_eq!(focus_radius(None, Vec3::ONE), DEFAULT_FOCUS_RADIUS);
+    }
+
+    #[test]
+    fn orbit_turns_the_same_direction_plain_fly_look_does() {
+        // `apply_orbit`'s spherical yaw sign is derived, not copied verbatim from
+        // `write_editor_camera_intent`'s `-0.1` (see the comment in `apply_orbit`) -- this locks
+        // in that a rightward drag rotates the view the same way whichever path is running.
+        fn forward_x_after_rightward_drag(hold_alt: bool) -> f32 {
+            let mut app = test_app();
+            app.update();
+            let camera = app
+                .world_mut()
+                .query_filtered::<Entity, With<EditorCamera>>()
+                .single(app.world())
+                .unwrap();
+
+            app.world_mut()
+                .resource_mut::<ButtonInput<MouseButton>>()
+                .press(MouseButton::Right);
+            if hold_alt {
+                app.world_mut()
+                    .resource_mut::<ButtonInput<KeyCode>>()
+                    .press(KeyCode::AltLeft);
+            }
+            for _ in 0..10 {
+                app.world_mut().write_message(MouseMotion {
+                    delta: Vec2::new(10.0, 0.0),
+                });
+                app.update();
+            }
+            app.world().get::<Transform>(camera).unwrap().forward().x
+        }
+
+        let start_x = {
+            let mut app = test_app();
+            app.update();
+            let camera = app
+                .world_mut()
+                .query_filtered::<Entity, With<EditorCamera>>()
+                .single(app.world())
+                .unwrap();
+            app.world().get::<Transform>(camera).unwrap().forward().x
+        };
+
+        let fly_delta = forward_x_after_rightward_drag(false) - start_x;
+        let orbit_delta = forward_x_after_rightward_drag(true) - start_x;
+
+        assert!(
+            fly_delta.abs() > 1e-3,
+            "fly-look didn't turn at all: {fly_delta}"
+        );
+        assert!(
+            orbit_delta.abs() > 1e-3,
+            "orbit didn't turn at all: {orbit_delta}"
+        );
+        assert_eq!(
+            fly_delta.signum(),
+            orbit_delta.signum(),
+            "fly-look and orbit turned opposite ways for the same rightward drag: fly {fly_delta}, \
+             orbit {orbit_delta}"
+        );
     }
 }
