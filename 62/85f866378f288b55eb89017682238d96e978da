@@ -1,0 +1,21 @@
+ename_editor/src/menu.rs
+  s_5ea65b9864b56a::t_9e4aebc8de9a1d 1-4
+  s_5ea65b9864b56a::t_029c400fad38fc 10
+  s_5ea65b9864b56a::t_02bf350e2e2298 48-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6285f866378f288b55eb89017682238d96e978da",
+  "prompts": {},
+  "sessions": {
+    "s_5ea65b9864b56a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "07aef37e-9a88-48cd-b003-da41fc501a13",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
