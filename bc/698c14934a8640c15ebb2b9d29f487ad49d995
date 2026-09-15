@@ -1,0 +1,27 @@
+ename_editor/src/camera.rs
+  s_5ea65b9864b56a::t_5f051a3810efac 293
+  s_5ea65b9864b56a::t_ffa0abe3265dac 214-215,222
+  s_5ea65b9864b56a::t_f6683c50196def 412-425,431
+  s_5ea65b9864b56a::t_fa45366a669f2d 426-430
+  s_5ea65b9864b56a::t_6e592174b9b1e1 749-781
+  s_5ea65b9864b56a::t_fa2bccfe3a6a9d 97-102
+  s_5ea65b9864b56a::t_00e3710474696e 819-866
+  s_5ea65b9864b56a::t_cdb07e96a351f4 748
+  s_5ea65b9864b56a::t_b7aa67b9fdc8db 818
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bc698c14934a8640c15ebb2b9d29f487ad49d995",
+  "prompts": {},
+  "sessions": {
+    "s_5ea65b9864b56a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "07aef37e-9a88-48cd-b003-da41fc501a13",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
