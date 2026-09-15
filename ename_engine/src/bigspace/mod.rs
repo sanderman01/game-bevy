@@ -1,14 +1,18 @@
 //! big_space integration: grid helpers, and the ordering point layers above the engine hang
 //! grid-sensitive work on.
 
+pub mod camera;
 pub mod grid;
 
 use bevy::{prelude::*, transform::TransformSystems};
 use big_space::prelude::BigSpaceSystems;
 
-/// Grid types re-exported so layers above the engine can name them without taking the
-/// `big_space` git dependency themselves.
-pub use big_space::prelude::{CellCoord, Grid};
+pub use big_space::camera::BigSpaceCameraInput;
+pub use big_space::plugin::BigSpaceDefaultPlugins;
+pub use big_space::prelude::{BigSpaceCameraController, CellCoord, Grid};
+pub use camera::{
+    FrozenOrigin, GridCameraSystems, GridFollowCamera, detach_from_grid, set_origin_frozen,
+};
 
 /// Ordering points for work that depends on big_space having finished with an entity.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
@@ -30,6 +34,7 @@ impl Plugin for BigSpacePlugin {
             GridSystems::Recentered
                 .after(BigSpaceSystems::RecenterLargeTransforms)
                 .after(TransformSystems::Propagate),
-        );
+        )
+        .add_plugins(camera::GridFollowPlugin);
     }
 }
