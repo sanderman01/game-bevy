@@ -97,7 +97,7 @@ const DEFAULT_FOCUS_RADIUS: f32 = 2.0;
 const DEFAULT_FOCUS_FOV: f32 = core::f32::consts::FRAC_PI_4;
 /// Headroom multiplier applied to an F-focus target's radius, so the dolly doesn't frame it
 /// edge-to-edge.
-const FOCUS_PADDING: f32 = 1.5;
+const FOCUS_PADDING: f32 = 0.8;
 /// Floor on F-focus distance, so a tiny/zero-size target doesn't put the camera on top of it.
 const MIN_FOCUS_DISTANCE: f32 = 0.5;
 
