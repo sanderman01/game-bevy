@@ -128,9 +128,16 @@ impl Plugin for EditorCameraPlugin {
             )
             .add_systems(
                 PostUpdate,
-                apply_focus_on_f_key
-                    .in_set(crate::EditorSystems::ApplySelection)
-                    .before(TransformSystems::Propagate),
+                // No `.before(TransformSystems::Propagate)` here: `ApplySelection` is already
+                // transitively ordered relative to propagation (it follows `Select`, which
+                // follows `TransformGizmoSystems`, itself ordered after propagation by the real
+                // `TransformGizmoPlugin`), so adding that constraint here is unsolvable -- a
+                // system cannot be both in a set and ordered before/after that same set. F-focus
+                // is a discrete keypress action, not a continuous per-frame integrator; a
+                // one-frame propagation lag before its snap is visually complete is the same
+                // trade-off `GridSystems::Recentered`/`sync_grid_attachment` already accept
+                // elsewhere in this codebase.
+                apply_focus_on_f_key.in_set(crate::EditorSystems::ApplySelection),
             );
     }
 }

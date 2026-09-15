@@ -47,7 +47,7 @@ impl PluginGroup for EditorPlugins {
 
 /// Declares [`EditorSystems`] and where each of its sets sits relative to the gizmo and the
 /// egui pass. Registers no systems of its own.
-struct EditorSchedulePlugin;
+pub(crate) struct EditorSchedulePlugin;
 
 impl Plugin for EditorSchedulePlugin {
     fn build(&self, app: &mut App) {
