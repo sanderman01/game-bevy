@@ -1,0 +1,33 @@
+ename_engine/src/bigspace/mod.rs
+  s_5ea65b9864b56a::t_595f2dced55333 12
+ename_editor/src/camera.rs
+  s_5ea65b9864b56a::t_bb7266c8c7f4d7 176-178
+  s_5ea65b9864b56a::t_b5c8044fc0dc82 508-513,517-519,527-528
+  s_5ea65b9864b56a::t_1e548cf4d38653 902
+  s_5ea65b9864b56a::t_55851b58a6ba40 904
+  s_5ea65b9864b56a::t_11a695232c7398 340-341,345-367
+  s_5ea65b9864b56a::t_2f06d81e6ca83d 282-287,548-553,1027-1035,1043-1044,1046-1050
+  s_5ea65b9864b56a::t_7ff95fd956f81f 42-49,52
+  s_5ea65b9864b56a::t_c376610647b576 8,13-14
+  s_5ea65b9864b56a::t_b5553fd78d53b5 1019,1022-1026
+  s_5ea65b9864b56a::t_f84895de4f2fbe 543-547,554-555
+  s_5ea65b9864b56a::t_dba522c0e9fb7d 273,280-281,288-289,298
+  s_5ea65b9864b56a::t_70cea61535bb4b 538,542,556-565,579,582,586,591-600,604-606
+  s_5ea65b9864b56a::t_1c551c7c52ca4b 368-369
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "da4c00c026a75aa93c81d8f73150e01f3b4b0b0c",
+  "prompts": {},
+  "sessions": {
+    "s_5ea65b9864b56a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "07aef37e-9a88-48cd-b003-da41fc501a13",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
