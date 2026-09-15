@@ -2,6 +2,8 @@
 //! `FloatingOrigin` while one exists, and living parentless with a plain `Transform` when none
 //! does. See `docs/superpowers/plans/2026-09-15-editor-scene-camera.md`.
 
+use bevy::ecs::lifecycle::HookContext;
+use bevy::ecs::world::DeferredWorld;
 use bevy::prelude::*;
 use big_space::camera::camera_controller;
 use big_space::prelude::{BigSpaceCameraController, CellCoord, FloatingOrigin, Grid};
@@ -45,6 +47,9 @@ impl Plugin for GridFollowPlugin {
             PostUpdate,
             sync_grid_attachment.before(GridCameraSystems::Apply),
         );
+        app.world_mut()
+            .register_component_hooks::<Grid>()
+            .on_remove(rescue_children_on_grid_removed);
     }
 }
 
@@ -91,10 +96,7 @@ fn sync_grid_attachment(
             })
             .map(|(entity, _)| entity);
 
-        // Only skip if the entity is already in the correct attachment state. Don't skip if the
-        // entity was attached but its parent lost Grid (current_grid is None because the parent's
-        // Grid was removed, not because the entity was never attached).
-        if current_grid == nearest_grid && cell.is_none() {
+        if current_grid == nearest_grid {
             continue;
         }
 
@@ -155,6 +157,52 @@ fn grid_relative_position(grid: &Grid, cell: CellCoord, local: &Transform) -> (V
 
 fn dist_sq(a: &GlobalTransform, b: &GlobalTransform) -> f32 {
     a.translation().distance_squared(b.translation())
+}
+
+/// Runs while a `Grid` component is still present on `entity` but about to be removed (an
+/// explicit `remove::<Grid>()`, or as part of despawning `entity` itself) -- `RemovedComponents`
+/// only observes this a frame later, by which point the `Grid`'s data is already gone. Detaches
+/// any `GridFollowCamera` child immediately, using this still-live `Grid` to compute its correct
+/// position via `Grid::grid_position` synchronously, deferring only the structural change
+/// (component remove/insert) via `Commands`, since hooks can't make structural changes directly.
+fn rescue_children_on_grid_removed(mut world: DeferredWorld, context: HookContext) {
+    let grid_entity = context.entity;
+    let Some(grid) = world.get::<Grid>(grid_entity).cloned() else {
+        return;
+    };
+    let Some(children) = world.get::<Children>(grid_entity) else {
+        return;
+    };
+    let followers: Vec<Entity> = children
+        .iter()
+        .filter(|&child| world.get::<GridFollowCamera>(child).is_some())
+        .collect();
+
+    for follower in followers {
+        let Some(cell) = world.get::<CellCoord>(follower).copied() else {
+            continue;
+        };
+        let local = *world
+            .get::<Transform>(follower)
+            .expect("CellCoord requires Transform");
+        let position = grid.grid_position(&cell, &local);
+        let frozen_anchor = world
+            .get::<FrozenOrigin>(follower)
+            .map(|FrozenOrigin(a)| *a);
+
+        let mut commands = world.commands();
+        if let Some(anchor) = frozen_anchor {
+            commands.entity(anchor).try_despawn();
+        }
+        commands
+            .entity(follower)
+            .remove::<(CellCoord, FloatingOrigin, FrozenOrigin, ChildOf)>()
+            .insert(Transform {
+                translation: position,
+                rotation: local.rotation,
+                scale: Vec3::ONE,
+            });
+    }
 }
 
 /// Toggles floating-origin recentering for a [`GridFollowCamera`] entity that currently has a

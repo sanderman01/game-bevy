@@ -59,28 +59,35 @@ fn a_grid_follow_camera_detaches_when_its_grid_component_is_removed_preserving_p
         .world_mut()
         .spawn(big_space::bundles::BigSpaceRootBundle::default())
         .id();
+    // Use a position that crosses cell boundaries (cell (25,0,0) at default 2000 cell_edge_length)
+    // so the test can't pass by coincidence.
     let camera = app
         .world_mut()
-        .spawn((GridFollowCamera, Transform::from_xyz(5.0, 0.0, 0.0)))
+        .spawn((GridFollowCamera, Transform::from_xyz(50_000.0, 0.0, 0.0)))
         .id();
     app.update();
     app.update();
     assert!(app.world().entity(camera).contains::<CellCoord>());
 
     // Remove just the `Grid` component rather than despawning the entity: despawning would
-    // cascade-despawn the still-parented camera before `sync_grid_attachment` gets a chance to
+    // cascade-despawn the still-parented camera before the component hook gets a chance to
     // react at all -- exactly the hazard Task 2's stage-unload rescue exists to avoid on the
-    // real despawn path. This test isolates `sync_grid_attachment`'s own reaction to "my grid
-    // stopped being a grid".
+    // real despawn path. This test isolates the `on_remove` hook's reaction to Grid removal.
     app.world_mut().entity_mut(grid).remove::<Grid>();
-    app.update();
-    app.update();
+    // No app.update() needed: the hook runs synchronously during remove()
 
     let entity = app.world().entity(camera);
     assert!(!entity.contains::<CellCoord>());
     assert!(!entity.contains::<FloatingOrigin>());
     let transform = entity.get::<Transform>().unwrap();
-    assert!(transform.translation.distance(Vec3::new(5.0, 0.0, 0.0)) < 0.01);
+    assert!(
+        transform
+            .translation
+            .distance(Vec3::new(50_000.0, 0.0, 0.0))
+            < 0.01,
+        "position should be preserved at 50000.0, got {}",
+        transform.translation.x
+    );
 }
 
 #[test]
