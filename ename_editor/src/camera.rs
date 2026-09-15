@@ -85,7 +85,7 @@ const FLY_CAMERA_BUTTON: MouseButton = MouseButton::Right;
 /// Linear step applied to `BigSpaceCameraController::speed` per plain scroll tick.
 const SPEED_SCROLL_STEP: f64 = 5.0;
 /// Multiplicative factor applied per scroll tick instead, while Shift is held.
-const SPEED_SCROLL_MULTIPLIER: f64 = 2.0;
+const SPEED_SCROLL_MULTIPLIER: f64 = 1.2;
 
 /// `EditorCamera`'s spawn-time `OrbitFocus` sits this far in front of it, so orbiting has
 /// something to pivot around before anything has ever been F-focused.
