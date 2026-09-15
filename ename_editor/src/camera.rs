@@ -534,13 +534,41 @@ fn correct_camera_roll(mut cams: Query<&mut Transform, With<EditorCamera>>) {
     transform.look_to(forward, Vec3::Y);
 }
 
-/// Radius used to size an F-focus dolly: the target's `Aabb` half-extents scaled by its world
-/// scale, vector length -- [`DEFAULT_FOCUS_RADIUS`] when it has no `Aabb` at all.
-fn focus_radius(aabb: Option<&Aabb>, world_scale: Vec3) -> f32 {
-    match aabb {
-        Some(aabb) => (aabb.half_extents * Vec3A::from(world_scale)).length(),
-        None => DEFAULT_FOCUS_RADIUS,
+/// Radius used to size an F-focus dolly: the farthest an `Aabb` corner in `aabbs` sits from
+/// `target_position` once carried through that `Aabb`'s own `GlobalTransform` -- so a child mesh
+/// offset or rotated relative to the focused entity is still framed correctly, not just the
+/// target's own bounds. [`DEFAULT_FOCUS_RADIUS`] when `aabbs` is empty (the target and every
+/// descendant of it have no `Aabb` at all).
+fn combined_focus_radius<'a>(
+    target_position: Vec3,
+    aabbs: impl IntoIterator<Item = (&'a GlobalTransform, &'a Aabb)>,
+) -> f32 {
+    let mut max_distance_sq: Option<f32> = None;
+    for (global, aabb) in aabbs {
+        let affine = global.affine();
+        for corner in aabb_corners(aabb) {
+            let distance_sq =
+                (Vec3::from(affine.transform_point3a(corner)) - target_position).length_squared();
+            max_distance_sq = Some(max_distance_sq.map_or(distance_sq, |max| max.max(distance_sq)));
+        }
     }
+    max_distance_sq.map_or(DEFAULT_FOCUS_RADIUS, f32::sqrt)
+}
+
+/// The 8 corners of `aabb`, in the local space it's expressed in.
+fn aabb_corners(aabb: &Aabb) -> [Vec3A; 8] {
+    let min = aabb.min();
+    let max = aabb.max();
+    [
+        Vec3A::new(min.x, min.y, min.z),
+        Vec3A::new(max.x, min.y, min.z),
+        Vec3A::new(min.x, max.y, min.z),
+        Vec3A::new(max.x, max.y, min.z),
+        Vec3A::new(min.x, min.y, max.z),
+        Vec3A::new(max.x, min.y, max.z),
+        Vec3A::new(min.x, max.y, max.z),
+        Vec3A::new(max.x, max.y, max.z),
+    ]
 }
 
 /// Distance at which a `fov`-radians perspective camera frames a sphere of `radius`, with
@@ -581,7 +609,7 @@ fn apply_focus(
 /// `UiState` is `Option`al here (unlike the gizmo's own `Res<UiState>`) purely so this system
 /// doesn't panic in this module's tests, which build a minimal `App` without `PanelsPlugin`;
 /// `PanelsPlugin` always inserts it in the real editor, so `None` never happens outside tests.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn apply_focus_on_f_key(
     mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -601,6 +629,10 @@ fn apply_focus_on_f_key(
         ),
         Without<EditorCamera>,
     >,
+    // Walks the target's descendants to size the focus dolly off the whole hierarchy's bounds,
+    // not just whatever `Aabb` (if any) sits directly on the selected entity itself.
+    children_query: Query<&Children>,
+    aabbs: Query<(&GlobalTransform, &Aabb)>,
     mut cams: Query<
         (
             Entity,
@@ -633,7 +665,14 @@ fn apply_focus_on_f_key(
         return;
     };
 
-    let radius = focus_radius(aabb, target_global.scale());
+    let target_aabb = aabb.map(|aabb| (target_global, aabb));
+    let descendant_aabbs = children_query
+        .iter_descendants(target)
+        .filter_map(|descendant| aabbs.get(descendant).ok());
+    let radius = combined_focus_radius(
+        target_global.translation(),
+        target_aabb.into_iter().chain(descendant_aabbs),
+    );
     let fov = match projection {
         Some(Projection::Perspective(perspective)) => perspective.fov,
         _ => DEFAULT_FOCUS_FOV,
@@ -1133,10 +1172,11 @@ mod tests {
             center: Vec3A::ZERO,
             half_extents: Vec3A::new(1.0, 1.0, 1.0),
         };
-        let radius = focus_radius(Some(&aabb), Vec3::ONE);
+        let global = GlobalTransform::IDENTITY;
+        let radius = combined_focus_radius(Vec3::ZERO, [(&global, &aabb)]);
         assert!(
             (radius - 3.0_f32.sqrt()).abs() < 1e-5,
-            "radius should be the length of the (1,1,1) half-extents vector, got {radius}"
+            "radius should be the distance from the origin to a (1,1,1) corner, got {radius}"
         );
 
         let fov = core::f32::consts::FRAC_PI_2; // 90 degrees: tan(fov/2) == 1
@@ -1188,7 +1228,39 @@ mod tests {
 
     #[test]
     fn focus_falls_back_to_default_radius_without_an_aabb() {
-        assert_eq!(focus_radius(None, Vec3::ONE), DEFAULT_FOCUS_RADIUS);
+        assert_eq!(combined_focus_radius(Vec3::ZERO, []), DEFAULT_FOCUS_RADIUS);
+    }
+
+    #[test]
+    fn focus_radius_grows_to_cover_an_offset_childs_aabb() {
+        let unit_aabb = Aabb {
+            center: Vec3A::ZERO,
+            half_extents: Vec3A::ONE,
+        };
+        let target_position = Vec3::ZERO;
+        let target_global = GlobalTransform::IDENTITY;
+        let radius_target_only =
+            combined_focus_radius(target_position, [(&target_global, &unit_aabb)]);
+
+        // A child sitting far outside the target's own bounds must widen the combined radius past
+        // what the target's own `Aabb` alone would give.
+        let child_global = GlobalTransform::from(Transform::from_xyz(10.0, 0.0, 0.0));
+        let radius_with_child = combined_focus_radius(
+            target_position,
+            [(&target_global, &unit_aabb), (&child_global, &unit_aabb)],
+        );
+
+        assert!(
+            radius_with_child > radius_target_only,
+            "expected the child's Aabb (offset 10 units away) to grow the radius past \
+             {radius_target_only}, got {radius_with_child}"
+        );
+        // The farthest corner of the child's box sits at (10 + 1, 1, 1) from the target's origin.
+        let expected = Vec3::new(11.0, 1.0, 1.0).length();
+        assert!(
+            (radius_with_child - expected).abs() < 1e-5,
+            "expected {expected}, got {radius_with_child}"
+        );
     }
 
     #[test]
