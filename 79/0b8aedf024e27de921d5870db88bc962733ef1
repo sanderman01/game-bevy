@@ -1,0 +1,33 @@
+ename_editor/src/camera.rs
+  s_5ea65b9864b56a::t_aa41e60985ad67 848-908
+  s_5ea65b9864b56a::t_92cfa62d2d46c0 238-272,277-301,307-310
+  s_5ea65b9864b56a::t_78aaa1e36b9ea6 76-102
+  s_5ea65b9864b56a::t_e10a67ff226b49 456-459,462,469-471
+  s_5ea65b9864b56a::t_3776c6bb0ce676 156,273-276,302-306
+  s_5ea65b9864b56a::t_b1ab120897f3f5 394-455,460-461,463-468,472-498
+  s_5ea65b9864b56a::t_28535513602ac8 118,121,125-129
+  s_5ea65b9864b56a::t_6208ebcbda1e5a 142-148
+  s_5ea65b9864b56a::t_38bb05580bea54 6,15
+  s_5ea65b9864b56a::t_4b8bc3dfa45be5 36-45
+  s_5ea65b9864b56a::t_ca2498fa67b22a 150,155,157-158,160
+  s_5ea65b9864b56a::t_2e3b745062b8aa 181-184
+  s_5ea65b9864b56a::t_b69edf71711e6f 699-847
+  s_5ea65b9864b56a::t_63e83f772e002e 16
+  s_5ea65b9864b56a::t_52d08db5e58e47 130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "790b8aedf024e27de921d5870db88bc962733ef1",
+  "prompts": {},
+  "sessions": {
+    "s_5ea65b9864b56a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "07aef37e-9a88-48cd-b003-da41fc501a13",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
