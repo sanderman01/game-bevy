@@ -193,12 +193,18 @@ fn apply_grid_flight(
 
 /// Free path: there is no Grid to fly relative to, so big_space's `camera_controller` (which
 /// hard-requires `CellCoord`) never touches this entity. This integrates `Transform` directly
-/// instead, mirroring `camera_controller`'s own smoothing formulas in plain `f32`, with no cell
-/// bookkeeping and no nearest-object slowdown (there is no partition data to slow down against
-/// without a Grid). Runs unconditionally after [`apply_grid_flight`] in the same `.chain()`, and
-/// is itself responsible for clearing `EditorCameraIntent` whenever the grid path didn't (its
-/// query is empty exactly when the grid path's was not, since a camera is never both attached
-/// and unattached in the same frame).
+/// instead, mirroring `camera_controller`'s own smoothing and speed formulas in plain `f32`, with
+/// no cell bookkeeping. There is deliberately no nearest-object slowdown: `nearest_object` is
+/// private to big_space and only ever set by its `nearest_objects_in_grid` system, which
+/// hard-requires `CellCoord` and so never runs on a `CellCoord`-less entity -- meaning free mode
+/// can only ever be in `camera_controller`'s `nearest_object: None` branch, where its speed
+/// formula reduces to `controller.speed * (controller.speed + boost)`. The formula below
+/// reproduces exactly that branch, not merely an approximation of it: at any `controller.speed`
+/// other than `1.0`, a formula merely linear in `controller.speed` (as an earlier draft had) gives
+/// a real speed discontinuity crossing in and out of a Grid. Runs unconditionally after
+/// [`apply_grid_flight`] in the same `.chain()`, and is itself responsible for clearing
+/// `EditorCameraIntent` whenever the grid path didn't (its query is empty exactly when the grid
+/// path's was not, since a camera is never both attached and unattached in the same frame).
 #[allow(clippy::type_complexity)]
 fn apply_free_flight(
     time: Res<Time>,
@@ -216,7 +222,7 @@ fn apply_free_flight(
         return;
     };
 
-    let speed = (controller.speed + intent.boost as u32 as f64)
+    let speed = (controller.speed * (controller.speed + intent.boost as u32 as f64))
         .clamp(controller.speed_bounds[0], controller.speed_bounds[1]);
     let dt = time.delta_secs_f64().min(0.1);
     let lerp_translation = 1.0 - controller.smoothness.clamp(0.0, 0.999).powf(dt * 60.0);
@@ -312,6 +318,87 @@ mod tests {
             "expected the camera to move forward, stayed at {moved:?}"
         );
         assert!(!app.world().entity(camera).contains::<CellCoord>());
+    }
+
+    #[test]
+    fn free_flight_speed_matches_grid_paths_quadratic_speed_formula_after_scrolling() {
+        // big_space's own `camera_controller` (the grid-attached path) computes
+        // `speed = match (nearest_object, slow_near_objects) { (Some(n), true) => n.1.abs(), _ =>
+        // controller.speed } * (controller.speed + boost)`. `nearest_object` is private to
+        // big_space and only ever set by a system that hard-requires `CellCoord`, so a free-flight
+        // (`CellCoord`-less) entity is always in the `_ => controller.speed` branch, which reduces
+        // to `controller.speed * (controller.speed + boost)` -- quadratic in `controller.speed`,
+        // not linear. At the default `speed == 1.0` a linear formula and this quadratic one agree
+        // (1*1 == 1+0 == 1), which is why `holding_w_...` above doesn't catch a regression here;
+        // this test scrolls to a non-default speed first so the two formulas disagree.
+        let mut app = test_app();
+        app.update();
+        let camera = app
+            .world_mut()
+            .query_filtered::<Entity, With<EditorCamera>>()
+            .single(app.world())
+            .unwrap();
+        let start = app.world().get::<Transform>(camera).unwrap().translation;
+
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Right);
+        // One plain (non-shift) scroll tick: default speed 1.0 -> 1.0 + SPEED_SCROLL_STEP == 6.0,
+        // the same value the scroll-wheel test above also lands on after its first tick.
+        app.world_mut()
+            .write_message(bevy::input::mouse::MouseWheel {
+                unit: bevy::input::mouse::MouseScrollUnit::Line,
+                x: 0.0,
+                y: 1.0,
+                window: Entity::PLACEHOLDER,
+                phase: bevy::input::touch::TouchPhase::Moved,
+            });
+        app.update();
+        let controller_speed = app
+            .world()
+            .get::<BigSpaceCameraController>(camera)
+            .unwrap()
+            .speed;
+        assert_eq!(
+            controller_speed, 6.0,
+            "scroll tick didn't land on the expected speed"
+        );
+
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyW);
+        const FRAMES: i32 = 60;
+        for _ in 0..FRAMES {
+            app.update();
+        }
+        let moved = app.world().get::<Transform>(camera).unwrap().translation;
+        let actual_distance = moved.distance(start) as f64;
+
+        // Closed-form distance for a constant target velocity fed through the same exponential
+        // smoothing `apply_free_flight` itself uses (W and the right mouse button stay held for
+        // every one of the `FRAMES` frames above, and no mouse motion is fed, so both the target
+        // velocity and the smoothing factor are the same constant every frame): with `alpha` the
+        // per-frame lerp factor and `decay = 1 - alpha`, velocity after `i` frames from rest is
+        // `target * (1 - decay^i)`, and the summed displacement over `n` frames is
+        // `target * (n - decay * (1 - decay^n) / alpha)`. `target` here plugs in `speed` computed
+        // independently via `camera_controller`'s own quadratic formula -- exactly what the "Fix"
+        // changed `apply_free_flight` to compute -- so this assertion fails under the old, merely
+        // linear formula (which predicts roughly 1/6th the distance asserted here).
+        let dt = 1.0 / 60.0_f64;
+        let smoothness = 0.85_f64; // BigSpaceCameraController::default().smoothness
+        let alpha = 1.0 - smoothness.powf(dt * 60.0);
+        let decay = 1.0 - alpha;
+        let speed = controller_speed * (controller_speed + 0.0); // no boost held
+        let target_per_frame = speed * dt;
+        let predicted_distance =
+            target_per_frame * (f64::from(FRAMES) - decay * (1.0 - decay.powi(FRAMES)) / alpha);
+
+        let relative_error = (actual_distance - predicted_distance).abs() / predicted_distance;
+        assert!(
+            relative_error < 0.01,
+            "expected distance close to the quadratic-speed prediction {predicted_distance:.3}, \
+             got {actual_distance:.3} ({relative_error:.4} relative error)"
+        );
     }
 
     #[test]
