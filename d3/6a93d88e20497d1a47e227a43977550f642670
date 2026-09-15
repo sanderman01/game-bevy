@@ -1,0 +1,19 @@
+ename_game/tests/fixtures/packages/core/start_stage.scn.ron
+  s_5ea65b9864b56a::t_fcefedb1de6fc2 2-519
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d36a93d88e20497d1a47e227a43977550f642670",
+  "prompts": {},
+  "sessions": {
+    "s_5ea65b9864b56a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "07aef37e-9a88-48cd-b003-da41fc501a13",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
