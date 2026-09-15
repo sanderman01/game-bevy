@@ -94,9 +94,12 @@ const MIN_FOCUS_DISTANCE: f32 = 0.5;
 /// to radians has to happen where this is used, and the sign is independently derived there (see
 /// [`apply_orbit`]) rather than copied from the fly paths' constant.
 const ORBIT_MOUSE_SENSITIVITY_DEG_PER_PIXEL: f32 = 0.1;
-/// Orbit pitch is clamped to within this many radians of level, so it can't flip over the top or
-/// bottom.
-const MAX_ORBIT_PITCH: f32 = 89.0 * core::f32::consts::PI / 180.0;
+/// Shared pitch clamp, within this many radians of level: in [`apply_orbit`], so orbit can't flip
+/// over the top or bottom; in [`correct_camera_roll`], so it never rebuilds a `look_to` direction
+/// parallel to world-up (degenerate). Clamping the pitch *scalar* -- not a cartesian component of
+/// the forward vector, which `Dir3::new`'s renormalization would silently undo -- is what makes
+/// this an actual bound on the resulting angle.
+const MAX_CAMERA_PITCH: f32 = 89.0 * core::f32::consts::PI / 180.0;
 /// Floor on `OrbitFocus::distance`, so scrolling in can't pull the camera through the pivot.
 const MIN_ORBIT_DISTANCE: f32 = 0.1;
 
@@ -208,14 +211,15 @@ fn write_editor_camera_intent(
 
 /// Scroll wheel while flying adjusts `BigSpaceCameraController::speed`: plain ticks step it
 /// linearly, Shift+tick scales it multiplicatively (`speed *= 2` per tick up, `/= 2` per tick
-/// down).
+/// down). Stands down while orbiting -- scrolling then adjusts `OrbitFocus::distance` instead (see
+/// [`apply_orbit`]), and must not also drift the persistent fly speed.
 fn adjust_fly_speed(
     mouse_button: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     mut wheel: MessageReader<MouseWheel>,
     mut cams: Query<&mut BigSpaceCameraController, With<EditorCamera>>,
 ) {
-    if !mouse_button.pressed(FLY_CAMERA_BUTTON) {
+    if !mouse_button.pressed(FLY_CAMERA_BUTTON) || orbit_active(&mouse_button, &keyboard) {
         wheel.clear();
         return;
     }
@@ -286,7 +290,7 @@ fn apply_orbit(
         *yaw += total.x * ORBIT_MOUSE_SENSITIVITY_DEG_PER_PIXEL.to_radians();
         *pitch += total.y * -ORBIT_MOUSE_SENSITIVITY_DEG_PER_PIXEL.to_radians();
     }
-    *pitch = pitch.clamp(-MAX_ORBIT_PITCH, MAX_ORBIT_PITCH);
+    *pitch = pitch.clamp(-MAX_CAMERA_PITCH, MAX_CAMERA_PITCH);
 
     let ticks: f64 = wheel.read().map(|event| event.y as f64).sum();
     if ticks != 0.0 {
@@ -405,12 +409,26 @@ fn correct_camera_roll(mut cams: Query<&mut Transform, With<EditorCamera>>) {
     let Ok(mut transform) = cams.single_mut() else {
         return;
     };
-    let mut forward = transform.forward().as_vec3();
-    // Clamp the vertical component away from the poles so `look_to` never receives a direction
-    // parallel to world-up, which would be degenerate (NaN rotation).
-    const MAX_VERTICAL: f32 = 0.9998; // a few degrees short of straight up/down
-    forward.y = forward.y.clamp(-MAX_VERTICAL, MAX_VERTICAL);
-    let Ok(forward) = Dir3::new(forward) else {
+    let forward = transform.forward().as_vec3();
+    // Decompose into the same yaw/pitch spherical convention `apply_orbit` uses, clamp the pitch
+    // *scalar*, then rebuild the forward vector from the clamped angles. Clamping a cartesian
+    // component of an already-unit vector and renormalizing (an earlier version of this function
+    // did exactly that) doesn't work: renormalization rescales the whole vector back up, undoing
+    // the clamp and leaving the angle to world-up virtually unchanged. Clamping the angle itself
+    // is the only way to guarantee a real minimum horizontal magnitude, so `look_to` never
+    // receives a direction parallel to world-up (which would be degenerate).
+    let yaw = forward.x.atan2(-forward.z);
+    let pitch = forward
+        .y
+        .clamp(-1.0, 1.0)
+        .asin()
+        .clamp(-MAX_CAMERA_PITCH, MAX_CAMERA_PITCH);
+    let corrected_forward = Vec3::new(
+        yaw.sin() * pitch.cos(),
+        pitch.sin(),
+        -(yaw.cos() * pitch.cos()),
+    );
+    let Ok(forward) = Dir3::new(corrected_forward) else {
         return;
     };
     transform.look_to(forward, Vec3::Y);
@@ -728,6 +746,40 @@ mod tests {
     }
 
     #[test]
+    fn correct_camera_roll_clamps_pitch_away_from_the_poles() {
+        let mut app = test_app();
+        app.update();
+        let camera = app
+            .world_mut()
+            .query_filtered::<Entity, With<EditorCamera>>()
+            .single(app.world())
+            .unwrap();
+
+        // Point the camera almost straight up -- forward.y very close to 1, the degenerate case
+        // the pitch clamp exists to avoid. `Quat::from_rotation_arc` sets `forward()` directly,
+        // with no "up" reference to go degenerate on, unlike `look_to` would here.
+        let near_pole_forward = Vec3::new(0.001, 0.9999995, 0.0).normalize();
+        {
+            let mut transform = app.world_mut().get_mut::<Transform>(camera).unwrap();
+            transform.rotation = Quat::from_rotation_arc(Vec3::NEG_Z, near_pole_forward);
+        }
+        assert!(
+            app.world().get::<Transform>(camera).unwrap().forward().y > 0.999,
+            "test setup didn't actually place the camera near the pole"
+        );
+
+        app.update();
+
+        let forward_y = app.world().get::<Transform>(camera).unwrap().forward().y;
+        let max_sin = MAX_CAMERA_PITCH.sin();
+        assert!(
+            forward_y <= max_sin + 1e-4,
+            "expected pitch clamped to within {MAX_CAMERA_PITCH} rad of level (forward.y <= \
+             {max_sin}), got forward.y = {forward_y}"
+        );
+    }
+
+    #[test]
     fn orbit_keeps_constant_distance_from_focus_point_while_dragging() {
         let mut app = test_app();
         app.update();
@@ -761,6 +813,55 @@ mod tests {
         // No scroll happened, so `OrbitFocus::distance` itself must be unchanged too.
         let after = app.world().get::<OrbitFocus>(camera).unwrap();
         assert!((after.distance - focus.distance).abs() < 1e-5);
+    }
+
+    #[test]
+    fn scrolling_while_orbiting_changes_distance_but_not_fly_speed() {
+        let mut app = test_app();
+        app.update();
+        let camera = app
+            .world_mut()
+            .query_filtered::<Entity, With<EditorCamera>>()
+            .single(app.world())
+            .unwrap();
+        let starting_speed = app
+            .world()
+            .get::<BigSpaceCameraController>(camera)
+            .unwrap()
+            .speed;
+        let starting_distance = app.world().get::<OrbitFocus>(camera).unwrap().distance;
+
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Right);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::AltLeft);
+        app.world_mut()
+            .write_message(bevy::input::mouse::MouseWheel {
+                unit: bevy::input::mouse::MouseScrollUnit::Line,
+                x: 0.0,
+                y: 1.0,
+                window: Entity::PLACEHOLDER,
+                phase: bevy::input::touch::TouchPhase::Moved,
+            });
+        app.update();
+
+        let distance = app.world().get::<OrbitFocus>(camera).unwrap().distance;
+        let speed = app
+            .world()
+            .get::<BigSpaceCameraController>(camera)
+            .unwrap()
+            .speed;
+
+        assert!(
+            (distance - starting_distance).abs() > 1e-3,
+            "expected scrolling during orbit to change OrbitFocus::distance, stayed at {distance}"
+        );
+        assert_eq!(
+            speed, starting_speed,
+            "scrolling during orbit must not also drift BigSpaceCameraController::speed"
+        );
     }
 
     #[test]
