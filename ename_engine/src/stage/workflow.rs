@@ -6,6 +6,8 @@ use bevy::prelude::*;
 use ename_asset_alias::ContentIndex;
 use uuid::Uuid;
 
+use crate::bigspace::{GridFollowCamera, detach_from_grid};
+
 use super::{
     AssetRoot, SaveStageError, SourcePath, StageId, StageMember, StageSource,
     commands::{resolve_source_path, spawn_stage_root, write_stage_file},
@@ -121,13 +123,36 @@ fn despawn_pending_container(world: &mut World, path: &str) {
     despawn_all(world, stale);
 }
 
+/// Despawns every one of `entities`. A parent's despawn cascades to its children (Bevy's
+/// linked-spawn hierarchy relationship) with no interception point, so that cascade would also
+/// destroy an editor's always-present [`GridFollowCamera`] if one happened to be parented under a
+/// stage's `Grid` when the stage unloads -- rescuing any such descendant has to happen in a pass
+/// before the despawn loop below, not react to it afterward.
 fn despawn_all(world: &mut World, entities: Vec<Entity>) {
+    for &entity in &entities {
+        rescue_grid_follow_camera_descendants(world, entity);
+    }
     for entity in entities {
         // A parent's despawn cascades to its children (Bevy's linked-spawn hierarchy
         // relationship), so a descendant collected above may already be gone by its turn.
         if world.entities().contains(entity) {
             world.despawn(entity);
         }
+    }
+}
+
+/// Detaches any `GridFollowCamera` among `root`'s descendants before `root` (or one of its
+/// ancestors in `entities`) is despawned -- despawning cascades to children immediately, with no
+/// interception point, so this has to run *before* the despawn call, not react to it afterward.
+fn rescue_grid_follow_camera_descendants(world: &mut World, root: Entity) {
+    let mut children_query = world.query::<&Children>();
+    let followers: Vec<Entity> = children_query
+        .query(world)
+        .iter_descendants(root)
+        .filter(|&entity| world.get::<GridFollowCamera>(entity).is_some())
+        .collect();
+    for follower in followers {
+        detach_from_grid(world, follower);
     }
 }
 

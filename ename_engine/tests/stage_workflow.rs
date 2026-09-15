@@ -7,6 +7,9 @@ use bevy::{
     prelude::*,
     world_serialization::{DynamicWorldBuilder, WorldSerializationPlugin},
 };
+use big_space::plugin::BigSpaceDefaultPlugins;
+use big_space::prelude::CellCoord;
+use ename_engine::bigspace::{BigSpacePlugin, GridFollowCamera};
 use ename_engine::stage::{
     AssetRoot, DynamicWorldFormat, SaveStageError, StageAppExt, StageId, StageMember, StagePlugin,
     StageSource, new_stage, open_stage, open_stage_additive, save_stage, stage_of,
@@ -85,6 +88,54 @@ fn new_stage_unloads_everything_and_spawns_an_empty_tagged_root() {
         old.iter(app.world()).filter(|m| m.0 == old_id).count(),
         0,
         "the previously loaded stage's entities must be gone"
+    );
+}
+
+#[test]
+fn new_stage_rescues_a_grid_follow_camera_instead_of_despawning_it_with_the_old_stage() {
+    let dir = temp_stage_dir("rescue_grid_follow_camera");
+    let mut app = test_app(&dir);
+    // `BigSpaceDefaultPlugins`'s camera controller reads `Time` and keyboard input, neither of
+    // which `test_app`'s minimal plugin set otherwise provides.
+    app.add_plugins(bevy::time::TimePlugin)
+        .add_plugins(bevy::input::InputPlugin)
+        .add_plugins(BigSpaceDefaultPlugins)
+        .add_plugins(BigSpacePlugin);
+
+    // The old stage's own root doubles as a `Grid`, the way the editor's future always-present
+    // `GridFollowCamera` attaches to whichever stage happens to be loaded.
+    let old_root = new_stage(app.world_mut());
+    app.world_mut()
+        .entity_mut(old_root)
+        .insert(big_space::bundles::BigSpaceRootBundle::default());
+
+    let camera = app
+        .world_mut()
+        .spawn((GridFollowCamera, Transform::from_xyz(1.0, 2.0, 3.0)))
+        .id();
+    app.update();
+    app.update();
+    assert!(
+        app.world().entity(camera).contains::<CellCoord>(),
+        "camera must be attached to the old stage's grid before the unload this test exercises"
+    );
+
+    new_stage(app.world_mut());
+
+    assert!(
+        app.world().get_entity(camera).is_ok(),
+        "camera should not have been despawned along with the stage it was attached to"
+    );
+    let entity = app.world().entity(camera);
+    assert!(
+        !entity.contains::<CellCoord>(),
+        "camera must end up detached, not left dangling with a now-despawned parent"
+    );
+    let transform = entity.get::<Transform>().unwrap();
+    assert!(
+        transform.translation.distance(Vec3::new(1.0, 2.0, 3.0)) < 0.01,
+        "camera must be restored to its true position, got {}",
+        transform.translation
     );
 }
 
