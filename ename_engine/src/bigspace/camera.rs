@@ -159,12 +159,16 @@ fn dist_sq(a: &GlobalTransform, b: &GlobalTransform) -> f32 {
     a.translation().distance_squared(b.translation())
 }
 
-/// Runs while a `Grid` component is still present on `entity` but about to be removed (an
-/// explicit `remove::<Grid>()`, or as part of despawning `entity` itself) -- `RemovedComponents`
-/// only observes this a frame later, by which point the `Grid`'s data is already gone. Detaches
-/// any `GridFollowCamera` child immediately, using this still-live `Grid` to compute its correct
-/// position via `Grid::grid_position` synchronously, deferring only the structural change
-/// (component remove/insert) via `Commands`, since hooks can't make structural changes directly.
+/// Runs when a `Grid` component is explicitly removed via `remove::<Grid>()` while the `Grid`
+/// component is still present and readable. `RemovedComponents` only observes this a frame later,
+/// by which point the `Grid`'s data is already gone. Detaches any `GridFollowCamera` children
+/// immediately, using this still-live `Grid` to compute their correct world positions via
+/// `Grid::grid_position` synchronously, deferring only structural changes (remove/insert) via
+/// `Commands`.
+///
+/// Note: when a Grid entity is despawned (not just `.remove::<Grid>()`), its `Children`'s
+/// cascade-despawn runs before this hook, leaving no children to rescue. Task 2's explicit
+/// `detach_from_grid` call in stage unload handles that path and must remain in place.
 fn rescue_children_on_grid_removed(mut world: DeferredWorld, context: HookContext) {
     let grid_entity = context.entity;
     let Some(grid) = world.get::<Grid>(grid_entity).cloned() else {
