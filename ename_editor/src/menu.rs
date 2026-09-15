@@ -13,7 +13,8 @@ use ename_engine::stage::{
     save_stage, stage_of, write_stage_file,
 };
 
-/// Draws the `File` menu and dispatches its four entries.
+/// Draws the top menu bar's `File` and `View` menus: `File` for stage operations
+/// (new/open/open-additive/save), and `View` for the camera's Freeze Origin toggle.
 pub(crate) fn ui(ui: &mut egui::Ui, world: &mut World, selected: &mut SelectedEntities) {
     egui::MenuBar::new().ui(ui, |ui| {
         ui.menu_button("File", |ui| {
