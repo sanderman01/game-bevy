@@ -1,0 +1,31 @@
+ename_editor/src/gizmo/mod.rs
+  s_5ea65b9864b56a::t_adcfb5719fe685 88
+ename_editor/src/camera.rs
+  s_5ea65b9864b56a::t_349d54a18f3966 8
+  s_5ea65b9864b56a::t_724638580bd635 81-82
+ename_engine/src/stage/dynamic_world_format.rs
+  s_5ea65b9864b56a::t_01fa058165fcf0 46-51
+  s_5ea65b9864b56a::t_5360b1c568fe91 52
+docs/design/crate-layout.md
+  s_5ea65b9864b56a::t_86cd1100e7ffc1 86-93
+ename_engine/src/stage/workflow.rs
+  s_5ea65b9864b56a::t_fd0ecdcb317f05 132,142-155,157-158,160-172
+ename_engine/tests/stage_dynamic_world_format.rs
+  s_5ea65b9864b56a::t_1aa0cf098ce433 74-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "571bec721b815b7515a8f3e429b6fdd6b5aa46e0",
+  "prompts": {},
+  "sessions": {
+    "s_5ea65b9864b56a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "07aef37e-9a88-48cd-b003-da41fc501a13",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
