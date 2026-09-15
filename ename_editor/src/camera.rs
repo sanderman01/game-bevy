@@ -35,21 +35,25 @@ pub(crate) struct FreeFlightState {
     vel_rotation: Quat,
 }
 
-/// The camera's current orbit pivot: the point orbiting rotates around, and how far the camera
-/// sits from it. Set explicitly by F-focus; read (and its `distance` adjusted) while orbiting.
-/// Initialized at spawn to a point some distance ahead of the camera, so orbiting works even
-/// before anything has ever been focused.
-///
-/// `point` is double precision and, while `EditorCamera` is grid-attached, is expressed in that
-/// grid's own coordinate frame (the same frame [`Grid::grid_position_double`] and
-/// [`Grid::translation_to_grid`] use) rather than relative to wherever the floating origin
-/// currently sits. A single-precision point tied to the floating origin's frame would drift out
-/// from under an orbit the moment the origin recenters -- exactly what happens orbiting a target
-/// large enough to span several cells, since the camera itself then crosses cells mid-drag. When
-/// not grid-attached, `point` is just an absolute world position, matching `Transform`.
+/// Marker for the small standalone entity [`OrbitFocus`] points at: the actual anchor orbiting
+/// pivots around and F-focus dollies to. A real entity, not a raw point, so
+/// [`apply_focus_on_f_key`] can re-parent it as a *sibling of the focused target* -- same `Grid`,
+/// same `CellCoord` -- and every later frame reads its position back out through *that* grid (see
+/// [`grid_local_position`]), rather than through whichever `Grid` the editor camera itself happens
+/// to be attached to. The latter is what a raw `DVec3` computed once and reinterpreted later
+/// against the camera's current attachment amounts to, and it breaks whenever the two disagree:
+/// the camera hasn't auto-attached to a grid yet, or (in a scene with more than one root `Grid`)
+/// attaches to a different one than the target sits in.
+#[derive(Component, Debug, Default, Clone, Copy)]
+pub(crate) struct EditorCameraFocus;
+
+/// The camera's current orbit pivot: which [`EditorCameraFocus`] entity orbiting rotates around,
+/// and how far the camera sits from it. Re-pointed at a fresh position by F-focus; `distance` is
+/// also read (and adjusted) while orbiting. Set at spawn to a focus entity placed some distance
+/// ahead of the camera, so orbiting works even before anything has ever been focused.
 #[derive(Component, Debug, Clone, Copy)]
 pub(crate) struct OrbitFocus {
-    point: DVec3,
+    entity: Entity,
     distance: f32,
 }
 
@@ -168,14 +172,23 @@ fn orbit_active(mouse: &ButtonInput<MouseButton>, keyboard: &ButtonInput<KeyCode
 
 fn spawn_editor_camera(mut commands: Commands) {
     let spawn_transform = Transform::from_xyz(0.0, 2.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y);
+    let focus_position =
+        spawn_transform.translation + spawn_transform.forward() * DEFAULT_FOCUS_DISTANCE;
+    // Not grid-attached at spawn (no target has ever been focused yet): a plain root entity,
+    // matching `EditorCamera`'s own state before it first attaches.
+    let focus = commands
+        .spawn((
+            EditorCameraFocus,
+            Transform::from_translation(focus_position),
+            Name::new("Editor Camera Focus"),
+        ))
+        .id();
     commands.spawn((
         EditorCamera,
         GridFollowCamera,
         FreeFlightState::default(),
         OrbitFocus {
-            point: (spawn_transform.translation
-                + spawn_transform.forward() * DEFAULT_FOCUS_DISTANCE)
-                .as_dvec3(),
+            entity: focus,
             distance: DEFAULT_FOCUS_DISTANCE,
         },
         Camera3d::default(),
@@ -270,7 +283,7 @@ fn adjust_fly_speed(
 /// (the inverse of the spherical mapping below), so orbit continues smoothly from wherever the
 /// camera already points instead of snapping; it resets to `None` the frame orbit stops, so the
 /// next orbit-start re-initializes cleanly.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn apply_orbit(
     mouse_button: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -278,6 +291,14 @@ fn apply_orbit(
     mut wheel: MessageReader<MouseWheel>,
     mut orbiting: Local<Option<(f32, f32)>>,
     grids: Grids,
+    // `Without<EditorCamera>`: `cams` below mutably borrows `Transform`/`CellCoord` on
+    // `EditorCamera` entities, and this query reads `Transform`/`CellCoord` immutably --
+    // without this filter, Bevy can't statically prove the two queries never alias the same
+    // entity and panics at schedule build time.
+    focuses: Query<
+        (&Transform, Option<&CellCoord>),
+        (With<EditorCameraFocus>, Without<EditorCamera>),
+    >,
     mut cams: Query<
         (
             Entity,
@@ -300,6 +321,14 @@ fn apply_orbit(
         wheel.clear();
         return;
     };
+    // Read through the focus entity's *own* grid attachment, not the camera's -- see
+    // `EditorCameraFocus`'s doc comment for why that distinction is the whole point.
+    let Ok((focus_transform, focus_cell)) = focuses.get(focus.entity) else {
+        mouse_move.clear();
+        wheel.clear();
+        return;
+    };
+    let focus_point = grid_local_position(&grids, focus_transform, focus_cell, focus.entity);
 
     let (yaw, pitch) = orbiting.get_or_insert_with(|| {
         let forward = transform.forward();
@@ -337,9 +366,25 @@ fn apply_orbit(
         pitch.sin(),
         -(yaw.cos() * pitch.cos()),
     );
-    let absolute = focus.point - forward.as_dvec3() * focus.distance as f64;
+    let absolute = focus_point - forward.as_dvec3() * focus.distance as f64;
     place_camera(&mut transform, cell, grids.parent_grid(camera), absolute);
     transform.look_to(forward, Vec3::Y);
+}
+
+/// The absolute double-precision position of `entity`'s own `(cell, transform)`, expressed in
+/// whichever `Grid` `entity` itself is parented to -- or plain `transform.translation` when it
+/// isn't grid-attached at all. Deliberately keyed off `entity`'s *own* attachment, never the
+/// editor camera's: see [`EditorCameraFocus`] for why that distinction matters.
+fn grid_local_position(
+    grids: &Grids,
+    transform: &Transform,
+    cell: Option<&CellCoord>,
+    entity: Entity,
+) -> DVec3 {
+    match (cell, grids.parent_grid(entity)) {
+        (Some(cell), Some(grid)) => grid.grid_position_double(cell, transform),
+        _ => transform.translation.as_dvec3(),
+    }
 }
 
 /// Sets `transform` (and, while grid-attached, `cell`) so together they represent the absolute
@@ -507,10 +552,12 @@ fn focus_distance(radius: f32, fov: f32) -> f32 {
 /// The pure geometry behind F-focus, split out from [`apply_focus_on_f_key`] so it can be unit
 /// tested without a `UiState`: dollies `transform` (and, while grid-attached, `cell` -- see
 /// [`place_camera`]) to frame a target at `target_position` with the given `radius`/`fov`, keeping
-/// the camera's current facing (Unreal's F-key reframes without reorienting), and points `focus`
-/// at the target so a following orbit drag pivots around what was just focused. `target_position`
-/// is double precision and in the same coordinate frame [`place_camera`] expects `absolute` in --
-/// grid-local when `cell`/`grid` are given, plain world otherwise.
+/// the camera's current facing (Unreal's F-key reframes without reorienting), and records the
+/// resulting distance on `focus` so a following orbit drag matches the dolly. `focus.entity`
+/// itself is *not* touched here -- `apply_focus_on_f_key` re-parents and repositions it as a
+/// sibling of the focused target separately, before calling this. `target_position` is double
+/// precision and in the same coordinate frame [`place_camera`] expects `absolute` in -- grid-local
+/// when `cell`/`grid` are given, plain world otherwise.
 fn apply_focus(
     transform: &mut Transform,
     focus: &mut OrbitFocus,
@@ -521,7 +568,6 @@ fn apply_focus(
     fov: f32,
 ) {
     let distance = focus_distance(radius, fov);
-    focus.point = target_position;
     focus.distance = distance;
     let current_forward = transform.forward().as_vec3();
     let absolute = target_position - current_forward.as_dvec3() * distance as f64;
@@ -537,6 +583,7 @@ fn apply_focus(
 /// `PanelsPlugin` always inserts it in the real editor, so `None` never happens outside tests.
 #[allow(clippy::type_complexity)]
 fn apply_focus_on_f_key(
+    mut commands: Commands,
     keyboard: Res<ButtonInput<KeyCode>>,
     ui_state: Option<Res<UiState>>,
     grids: Grids,
@@ -549,6 +596,7 @@ fn apply_focus_on_f_key(
             &GlobalTransform,
             &Transform,
             Option<&CellCoord>,
+            Option<&ChildOf>,
             Option<&Aabb>,
         ),
         Without<EditorCamera>,
@@ -576,7 +624,9 @@ fn apply_focus_on_f_key(
     let &[target] = ui_state.selected_entities.as_slice() else {
         return;
     };
-    let Ok((target_global, target_transform, target_cell, aabb)) = targets.get(target) else {
+    let Ok((target_global, target_transform, target_cell, target_parent, aabb)) =
+        targets.get(target)
+    else {
         return;
     };
     let Ok((camera, mut transform, mut focus, projection, camera_cell)) = cams.single_mut() else {
@@ -588,25 +638,36 @@ fn apply_focus_on_f_key(
         Some(Projection::Perspective(perspective)) => perspective.fov,
         _ => DEFAULT_FOCUS_FOV,
     };
-    let grid = grids.parent_grid(camera);
-    // Read the target's position in the *camera's own* grid frame (not the target's own, in the
-    // rare case they differ, and not `GlobalTransform`'s floating-origin-relative one) so the
-    // result lines up with what `apply_focus` -> `place_camera` will do with it. Falls back to
-    // `GlobalTransform` when either side of that pairing is missing (no grid attached, or the
-    // target itself isn't grid-attached) -- the previous, single-precision behavior.
-    let target_position = match (grid, target_cell) {
-        (Some(grid), Some(target_cell)) => grid.grid_position_double(target_cell, target_transform),
-        _ => target_global.translation().as_dvec3(),
-    };
+    // Computed directly from the target's own components (not by reading `focus.entity` back)
+    // because the re-parent below goes through `Commands` and so hasn't landed yet -- reading the
+    // focus entity this same frame would see its *old* position. These are the exact values the
+    // focus entity is being set to, so this is what its `grid_local_position` will read as from
+    // next frame on (see `apply_orbit`).
+    let target_position = grid_local_position(&grids, target_transform, target_cell, target);
     apply_focus(
         &mut transform,
         &mut focus,
         camera_cell,
-        grid,
+        grids.parent_grid(camera),
         target_position,
         radius,
         fov,
     );
+
+    // Move the focus entity to sit where the target is: same `Grid` (as a sibling -- same
+    // `ChildOf` parent as the target itself, not wherever the camera happens to be attached),
+    // same `CellCoord`, same local `Transform`. From here on, `apply_orbit` reads the pivot back
+    // out through this entity's own grid attachment instead of the camera's.
+    let mut focus_entity = commands.entity(focus.entity);
+    focus_entity.insert(*target_transform);
+    match target_parent {
+        Some(parent) => focus_entity.insert(ChildOf(parent.parent())),
+        None => focus_entity.remove::<ChildOf>(),
+    };
+    match target_cell {
+        Some(&cell) => focus_entity.insert(cell),
+        None => focus_entity.remove::<CellCoord>(),
+    };
 }
 
 #[cfg(test)]
@@ -884,6 +945,12 @@ mod tests {
             .single(app.world())
             .unwrap();
         let focus = *app.world().get::<OrbitFocus>(camera).unwrap();
+        let focus_point = app
+            .world()
+            .get::<Transform>(focus.entity)
+            .unwrap()
+            .translation
+            .as_dvec3();
 
         app.world_mut()
             .resource_mut::<ButtonInput<MouseButton>>()
@@ -899,7 +966,7 @@ mod tests {
         }
 
         let translation = app.world().get::<Transform>(camera).unwrap().translation;
-        let distance = translation.as_dvec3().distance(focus.point);
+        let distance = translation.as_dvec3().distance(focus_point);
         assert!(
             (distance - focus.distance as f64).abs() < 1e-3,
             "expected distance to stay {}, got {distance}",
@@ -908,6 +975,70 @@ mod tests {
         // No scroll happened, so `OrbitFocus::distance` itself must be unchanged too.
         let after = app.world().get::<OrbitFocus>(camera).unwrap();
         assert!((after.distance - focus.distance).abs() < 1e-5);
+    }
+
+    #[test]
+    fn orbit_pivots_around_the_focus_entitys_own_grid_even_when_the_camera_never_attaches() {
+        // Regression test for the actual bug this design fixes: the focus entity's position must
+        // be read through *its own* grid attachment, not the camera's. This `Grid` deliberately
+        // carries no `BigSpace` marker, so `sync_grid_attachment` (which only considers
+        // `With<BigSpace>` roots) never auto-attaches the camera to it -- the camera stays
+        // `CellCoord`-less for the whole test, exactly the "camera hasn't attached to the target's
+        // grid" scenario `EditorCameraFocus` exists to handle.
+        let mut app = test_app();
+        app.update();
+        let camera = app
+            .world_mut()
+            .query_filtered::<Entity, With<EditorCamera>>()
+            .single(app.world())
+            .unwrap();
+        let focus_entity = app.world().get::<OrbitFocus>(camera).unwrap().entity;
+
+        let grid_entity = app.world_mut().spawn(Grid::default()).id();
+        let cell = CellCoord::new(2, 0, 0);
+        let local = Transform::from_xyz(1.0, 0.0, 0.0);
+        app.world_mut()
+            .entity_mut(focus_entity)
+            .insert((cell, local, ChildOf(grid_entity)));
+        let expected_focus_position = app
+            .world()
+            .get::<Grid>(grid_entity)
+            .unwrap()
+            .grid_position_double(&cell, &local);
+
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Right);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::AltLeft);
+        for _ in 0..10 {
+            app.world_mut().write_message(MouseMotion {
+                delta: Vec2::new(3.0, 1.0),
+            });
+            app.update();
+        }
+
+        assert!(
+            !app.world().entity(camera).contains::<CellCoord>(),
+            "test setup assumption broken: the camera auto-attached to the grid, so this no \
+             longer exercises the camera/focus grid mismatch"
+        );
+        let camera_translation = app
+            .world()
+            .get::<Transform>(camera)
+            .unwrap()
+            .translation
+            .as_dvec3();
+        let distance = camera_translation.distance(expected_focus_position);
+        let focus_distance = app.world().get::<OrbitFocus>(camera).unwrap().distance as f64;
+        let relative_error = (distance - focus_distance).abs() / focus_distance;
+        assert!(
+            relative_error < 1e-3,
+            "expected the camera to orbit at distance {focus_distance} from the grid-attached \
+             focus point {expected_focus_position:?}, got {distance} (camera at \
+             {camera_translation:?})"
+        );
     }
 
     #[test]
@@ -1015,8 +1146,11 @@ mod tests {
 
         let mut transform = Transform::from_xyz(0.0, 0.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y);
         let forward_before = transform.forward().as_vec3();
+        // `Entity::PLACEHOLDER`: `apply_focus` never reads or writes `focus.entity`, only
+        // `focus.distance` -- see its doc comment for why the entity itself is handled by the
+        // caller instead.
         let mut focus = OrbitFocus {
-            point: DVec3::ZERO,
+            entity: Entity::PLACEHOLDER,
             distance: 999.0,
         };
         let target_position = DVec3::new(5.0, 0.0, 0.0);
@@ -1034,7 +1168,6 @@ mod tests {
             fov,
         );
 
-        assert_eq!(focus.point, target_position);
         assert!((focus.distance - expected_distance).abs() < 1e-5);
         assert!(
             transform.forward().as_vec3().distance(forward_before) < 1e-5,
