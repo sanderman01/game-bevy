@@ -1,0 +1,50 @@
+example_game_editor_bin/Cargo.toml
+  s_0f5235c6cef167::t_90d1d3ba0785a4 2
+README.md
+  s_0f5235c6cef167::t_e328a459f98764 38
+scripts/check-layers.sh
+  s_0f5235c6cef167::t_58c4aed0a6f391 12-13
+  s_0f5235c6cef167::t_aaad74b4896822 50
+docs/design.md
+  s_0f5235c6cef167::t_f7f68706aa508f 47-51
+ename_asset_content/src/lib.rs
+  s_0f5235c6cef167::t_192752c956662b 91-92
+.cargo/config.toml
+  s_0f5235c6cef167::t_d181b37a22093f 15-18,20-23
+ename_asset_package/src/load_order.rs
+  s_0f5235c6cef167::t_2e42ac81812f7f 5-6
+.github/workflows/ci.yml
+  s_0f5235c6cef167::t_9e36b82c65c380 38
+docs/agent-tools.md
+  s_0f5235c6cef167::t_fd64257d92e10f 18
+docs/assets-packages.md
+  s_0f5235c6cef167::t_87b2299bbba0c9 9-10
+  s_0f5235c6cef167::t_d7992345f35391 60-61
+ename_xtask/src/policy.rs
+  s_0f5235c6cef167::t_ad3bb4f2748c53 19
+  s_0f5235c6cef167::t_49c783a7110833 15-16
+  s_0f5235c6cef167::t_bb8c7cab929636 1
+  s_0f5235c6cef167::t_6733ae2fa89e75 5-6
+  s_0f5235c6cef167::t_f804ed9bcb4f74 28
+docs/design/crate-layout.md
+  s_0f5235c6cef167::t_4b63f9e3159161 24-25,30-34,36-38
+  s_0f5235c6cef167::t_e0390b123f6778 11-12,15-18,23,26-29,35
+Cargo.lock
+  s_0f5235c6cef167::t_3fa38ccb201af0 3194-3205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "146e3d8020bbe15f8fbe9775af48b20827edee9d",
+  "prompts": {},
+  "sessions": {
+    "s_0f5235c6cef167": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0d39121c-8c99-45d6-937f-630107ce8422",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
