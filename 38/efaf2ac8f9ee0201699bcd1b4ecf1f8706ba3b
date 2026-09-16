@@ -1,0 +1,23 @@
+ename_game/src/stage.rs
+  s_0b6949603424f0::t_21be9b856d2224 6,13
+ename_game/tests/stage_addressing.rs
+  s_0b6949603424f0::t_ce0f794df97ad5 30
+ename_engine/src/stage/mod.rs
+  s_0b6949603424f0::t_c97a99c7ee8678 24-25,38-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "38efaf2ac8f9ee0201699bcd1b4ecf1f8706ba3b",
+  "prompts": {},
+  "sessions": {
+    "s_0b6949603424f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c09e7aaa-0be8-40d0-8c77-4f1be6d6a85b",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
