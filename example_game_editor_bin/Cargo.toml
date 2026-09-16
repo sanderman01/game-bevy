@@ -7,24 +7,16 @@ authors.workspace = true
 license.workspace = true
 
 [features]
-default = ["dev", "editor", "agent"]
+default = ["dev"]
 # Development-only Bevy features. Must be off for a shipping build.
 dev = ["bevy/dynamic_linking", "bevy/dev"]
-# Links the editor into the binary. Off for a shipping build: absence of the crate is what makes
-# "does this ship?" a question the dependency graph answers.
-editor = ["dep:ename_editor"]
-# Opens a BRP server on loopback for agent tooling. On by default so a `cargo run` is
-# immediately drivable from an agent. Never on in a shipping build: BRP is arbitrary read and
-# write access to the world, and localhost is not a trust boundary. `--no-default-features` is
-# what turns it off, and `scripts/check-layers.sh` is what proves it stayed off.
-agent = ["dep:ename_remote"]
 
 [dependencies]
 bevy = { workspace = true }
 dirs.workspace = true
-ename_editor = { workspace = true, optional = true }
+ename_editor = { workspace = true }
 ename_engine = { workspace = true }
-ename_remote = { workspace = true, optional = true }
+ename_remote = { workspace = true }
 example_game_lib = { workspace = true }
 
 [lints]
