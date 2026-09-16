@@ -88,7 +88,8 @@ impl AssetContentPlugin {
     /// file, not the game's content, so it is read with `std::fs` through a path the target
     /// supplies rather than through the asset reader.
     ///
-    /// Which directory that path lives in is platform policy and belongs to the binary. `ename`
+    /// Which directory that path lives in is platform policy and belongs to the binary.
+    /// `example_game_editor_bin`
     /// computes it from `dirs::config_dir()`; a test passes a fixture path.
     pub fn with_load_order_file(mut self, path: impl Into<PathBuf>) -> Self {
         self.load_order_file = Some(path.into());

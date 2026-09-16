@@ -35,7 +35,7 @@ jobs:
       # out. A shipping build must not contain bevy_dev_tools, the file watcher, a dependency
       # on bevy_dylib, or ename_editor and ename_game_editor.
       - name: Check without default features
-        run: cargo check -p ename --no-default-features
+        run: cargo check -p example_game_editor_bin --no-default-features
 
       # The two crates `ename_xtask` will link in phase 4, which have to build with no Bevy in
       # the graph at all. Nothing else in the workspace proves that: every other consumer turns

@@ -9,7 +9,8 @@ fail=0
 check() {
     local crate="$1" forbidden="$2" deps found
     # `--no-default-features` so this tests the shipping graph: the editor is an optional
-    # dependency of the `ename` binary and must be absent from it with the feature off.
+    # dependency of the `example_game_editor_bin` binary and must be absent from it with the
+    # feature off.
     # The tree is captured before the grep runs: with both in one pipeline, the `|| true`
     # for grep's legitimate no-match exit would also swallow a `cargo tree` failure.
     deps=$(cargo tree -p "$crate" -e normal --no-default-features --prefix none \
@@ -46,6 +47,6 @@ check ename_mcp 'ename_.*'
 check ename_xtask 'ename_asset_content|ename_engine|ename_editor|example_game_lib|ename_remote|ename_mcp'
 # `--no-default-features` also proves the `agent` feature is off in the shipping graph, which
 # matters more than the editor: `ename_remote` is unauthenticated write access to the world.
-check ename 'ename_editor|ename_remote'
+check example_game_editor_bin 'ename_editor|ename_remote'
 
 exit "$fail"

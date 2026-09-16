@@ -2,7 +2,8 @@
 //!
 //! It lives outside the asset tree, so it is read with `std::fs` through a path the target
 //! supplies rather than through the [`crate::Vfs`] the scan uses. Which directory that path comes
-//! from is platform policy and belongs to the binary: `ename` computes it from `dirs::config_dir`,
+//! from is platform policy and belongs to the binary: `example_game_editor_bin` computes it from
+//! `dirs::config_dir`,
 //! and a test passes a fixture path.
 //!
 //! There is no sequence in here, deliberately. A total order over the installed set goes stale the

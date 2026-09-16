@@ -8,32 +8,34 @@ The long-form analysis behind this is in `scratch/crate-structure-review.md`.
 
 Project codename is `ename`. Every engine-side crate is prefixed with it: `ename_engine`,
 `ename_asset_alias`, `ename_asset_package`, `ename_asset_content`, `ename_editor`, `ename_remote`,
-`ename_mcp`, `ename_xtask`, and the binary crate `ename`. Bare names like `engine` and `editor`
-collide with anything and resolve independently once there is more than one workspace.
+`ename_mcp`, `ename_xtask`. Bare names like `engine` and `editor` collide with anything and
+resolve independently once there is more than one workspace.
 
 `example_` crates are the exception: these are demo crates showing how a game project consumes
-the engine crates, not part of the engine itself, so they take the `example_` prefix instead. The
-workspace's `members` glob lists both prefixes.
+the engine crates, not part of the engine itself, so they take the `example_` prefix instead.
+`example_game_lib` is the demo gameplay code; `example_game_editor_bin` is the binary that
+composes it with the engine and (optionally) the editor. The workspace's `members` glob lists
+both prefixes.
 
 ## Layer graph
 
 ```
-ename (bin)          -> ename_engine, example_game_lib, dirs
-                        + ename_editor                      (feature `editor`)
-                        + ename_remote                      (feature `agent`)
-ename_remote         -> ename_engine
-example_game_lib     -> ename_engine, ename_asset_alias
-ename_editor         -> ename_engine
-ename_engine         -> ename_asset_content, bevy, avian3d, big_space
-ename_asset_content  -> ename_asset_alias, ename_asset_package, async-lock, bevy
-ename_asset_package  -> ename_asset_alias, semver, serde, toml, thiserror, tracing
-                        + bevy, behind the default `bevy` feature
-ename_asset_alias    -> async-lock, serde, toml, glob, uuid, thiserror   (no first-party deps)
-                        + bevy, behind the default `bevy` feature
+example_game_editor_bin (bin) -> ename_engine, example_game_lib, dirs
+                                 + ename_editor                      (feature `editor`)
+                                 + ename_remote                      (feature `agent`)
+ename_remote                  -> ename_engine
+example_game_lib              -> ename_engine, ename_asset_alias
+ename_editor                  -> ename_engine
+ename_engine                  -> ename_asset_content, bevy, avian3d, big_space
+ename_asset_content           -> ename_asset_alias, ename_asset_package, async-lock, bevy
+ename_asset_package           -> ename_asset_alias, semver, serde, toml, thiserror, tracing
+                                 + bevy, behind the default `bevy` feature
+ename_asset_alias             -> async-lock, serde, toml, glob, uuid, thiserror   (no first-party deps)
+                                 + bevy, behind the default `bevy` feature
 
-ename_mcp (bin)      -> rmcp, reqwest, tokio, serde_json  (no first-party deps, no bevy)
-ename_xtask (bin)    -> ename_asset_alias, ename_asset_package, dirs, futures-lite, toml, uuid
-                        (no bevy; no other first-party crate)
+ename_mcp (bin)               -> rmcp, reqwest, tokio, serde_json  (no first-party deps, no bevy)
+ename_xtask (bin)             -> ename_asset_alias, ename_asset_package, dirs, futures-lite, toml, uuid
+                                 (no bevy; no other first-party crate)
 ```
 
 `ename_mcp` and `ename_xtask` hang off the bottom with no arrow to anything because they are not

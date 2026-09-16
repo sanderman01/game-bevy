@@ -15,7 +15,7 @@ Why the design is shaped this way is in
 The `agent` feature is on by default, so a plain run listens on `127.0.0.1:15702`.
 
 ```sh
-cargo run -p ename
+cargo run -p example_game_editor_bin
 ```
 
 Build the sidecar once:

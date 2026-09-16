@@ -12,14 +12,15 @@ BEVY_ASSET_ROOT = { value = ".", relative = true }
 WGPU_BACKEND = "vulkan"
 WGPU_ADAPTER_TYPE = "discrete"
 
-# Every alias passes the same feature set as `ename`'s default features, so `cargo build --workspace`
-# and these resolve Bevy the same way and share one copy of it in target/. They also save typing
-# out `-p ename --features ...` for the common cases.
+# Every alias passes the same feature set as `example_game_editor_bin`'s default features, so
+# `cargo build --workspace` and these resolve Bevy the same way and share one copy of it in
+# target/. They also save typing out `-p example_game_editor_bin --features ...` for the common
+# cases.
 [alias]
-db = "build --workspace --features ename/dev"
-dr = "run -p ename --features dev"
-dc = "clippy --workspace --all-targets --features ename/dev"
-dt = "test --workspace --features ename/dev"
+db = "build --workspace --features example_game_editor_bin/dev"
+dr = "run -p example_game_editor_bin --features dev"
+dc = "clippy --workspace --all-targets --features example_game_editor_bin/dev"
+dt = "test --workspace --features example_game_editor_bin/dev"
 
 # `ename_xtask` links no Bevy, so this does not need the shared `dev`-feature build the aliases
 # above do.

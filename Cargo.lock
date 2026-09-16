@@ -2957,18 +2957,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ename"
-version = "0.0.0"
-dependencies = [
- "bevy",
- "dirs",
- "ename_editor",
- "ename_engine",
- "ename_remote",
- "example_game_lib",
-]
-
-[[package]]
 name = "ename_asset_alias"
 version = "0.0.0"
 dependencies = [
@@ -3201,6 +3189,18 @@ checksum = "8be9f3dfaaffdae2972880079a491a1a8bb7cbed0b8dd7a347f668b4150a3b93"
 dependencies = [
  "event-listener",
  "pin-project-lite",
+]
+
+[[package]]
+name = "example_game_editor_bin"
+version = "0.0.0"
+dependencies = [
+ "bevy",
+ "dirs",
+ "ename_editor",
+ "ename_engine",
+ "ename_remote",
+ "example_game_lib",
 ]
 
 [[package]]
