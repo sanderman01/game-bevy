@@ -1,0 +1,30 @@
+.gitignore
+  h_72decab43bbb75 7-9
+assets/examples/examples-stage/_alias_rules.toml
+  h_72decab43bbb75 1-3
+assets/examples/examples-stage/airship.glb.alias
+  h_72decab43bbb75 1-3
+assets/examples/examples-stage/manifest.toml
+  h_72decab43bbb75 1-6
+assets/examples/examples-stage/map.glb.alias
+  h_72decab43bbb75 1-3
+assets/examples/examples-stage/stage.scn.ron
+  h_72decab43bbb75 1-519
+assets/examples/examples-stage/stage.scn.ron.alias
+  h_72decab43bbb75 1-3
+ename/src/main.rs
+  h_72decab43bbb75 17
+ename_game/src/stage.rs
+  h_72decab43bbb75 21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3f9d2b3ee5538fcf027f90b537b1f4537f45a2ef",
+  "prompts": {},
+  "humans": {
+    "h_72decab43bbb75": {
+      "author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
