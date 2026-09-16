@@ -1,0 +1,6 @@
+[package]
+id = "examples-stage"
+version = "2.0.0"
+authors = ["Alexander Verbeek"]
+title = "Examples"
+description = "Examples content package."

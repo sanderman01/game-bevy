@@ -1,0 +1,3 @@
+# Every model in this folder is addressable as `core::<name without extension>`.
+alias = "examples::{stem}"
+include = ["*.glb"]

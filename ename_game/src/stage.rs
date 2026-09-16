@@ -18,5 +18,5 @@ impl Plugin for StagePlugin {
 }
 
 fn open_start_stage(world: &mut World) {
-    open_stage(world, &format!("{ALIAS_SOURCE}://core::start_stage"));
+    open_stage(world, &format!("{ALIAS_SOURCE}://examples::stage"));
 }

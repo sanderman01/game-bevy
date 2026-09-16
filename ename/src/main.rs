@@ -14,7 +14,7 @@ fn main() {
             resolution: WindowResolution::new(1360, 710),
             ..default()
         })
-        .with_content_search_paths(["basegame", "mods"]);
+        .with_content_search_paths(["basegame", "mods", "examples"]);
     if let Some(path) = load_order_path() {
         engine = engine.with_load_order_file(path);
     }
