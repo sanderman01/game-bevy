@@ -6,8 +6,7 @@ asset gets a name.
 ## Search paths
 
 Package search paths (`basegame`, `mods`) are game policy, not engine policy. `EnginePlugins`
-defaults to none; `example_game_editor_bin`'s `main` passes them in with
-`with_content_search_paths`.
+defaults to none; each example binary's `main` passes them in with `with_content_search_paths`.
 
 `ename_asset_package` sits above the alias scan and adds the one thing it has no opinion about: an
 order. It calls the scan once per package root and folds the results into load order.
@@ -57,7 +56,7 @@ a full sequence, because a total order over the installed set goes stale the mom
 added.
 
 It lives outside the asset tree. `ename_asset_package` reads whatever path it's handed;
-`example_game_editor_bin`'s `main` computes the default from `dirs::config_dir()`, because
+each example binary's `main` computes the default from `dirs::config_dir()`, because
 platform config policy
 belongs to the target that owns platform policy. Most players never write the file, so a missing
 one isn't a problem.

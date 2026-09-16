@@ -13,13 +13,15 @@ resolve independently once there is more than one workspace.
 
 `example_` crates are the exception: these are demo crates showing how a game project consumes
 the engine crates, not part of the engine itself, so they take the `example_` prefix instead.
-`example_game_lib` is the demo gameplay code; `example_game_editor_bin` is the binary that
-composes it with the engine and (optionally) the editor. The workspace's `members` glob lists
-both prefixes.
+`example_game_lib` is the demo gameplay code. Two binaries compose it with the engine:
+`example_game_bin` is the minimal case, engine plus game and nothing else; `example_game_editor_bin`
+is the same composition with the editor and agent tooling linked in behind features. The workspace's
+`members` glob lists both prefixes.
 
 ## Layer graph
 
 ```
+example_game_bin (bin)        -> ename_engine, example_game_lib, dirs
 example_game_editor_bin (bin) -> ename_engine, example_game_lib, dirs
                                  + ename_editor                      (feature `editor`)
                                  + ename_remote                      (feature `agent`)

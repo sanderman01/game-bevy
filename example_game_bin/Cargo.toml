@@ -1,0 +1,21 @@
+[package]
+name = "example_game_bin"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[features]
+default = ["dev"]
+# Development-only Bevy features. Must be off for a shipping build.
+dev = ["bevy/dynamic_linking", "bevy/dev"]
+
+[dependencies]
+bevy = { workspace = true }
+dirs.workspace = true
+ename_engine = { workspace = true }
+example_game_lib = { workspace = true }
+
+[lints]
+workspace = true

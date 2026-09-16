@@ -35,7 +35,8 @@ Requires bevy = "0.19".
 
 | Crate | What it does |
 | --- | --- |
-| `example_game_editor_bin` | The binary. Decides which layers link in. |
+| `example_game_bin` | Minimal example binary: engine plus game, no editor or agent tooling. |
+| `example_game_editor_bin` | Example binary with the editor and agent tooling linked in. |
 | `ename_engine` | Runtime layer: camera rig, `big_space` floating origin, Avian physics glue, input, time control, log capture. |
 | `ename_editor` | egui editor: dock layout, selection, viewport, console, gizmos. Game-agnostic. |
 | `example_game_lib` | Where game-specific gameplay code goes. |

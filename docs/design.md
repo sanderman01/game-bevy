@@ -44,10 +44,10 @@ Depend on `bevy` and use its re-exports (`bevy::camera`, `bevy::window`, `bevy::
 `bevy::log`). A direct sub-crate pin puts two `bevy_reflect` versions in the graph the moment Bevy
 bumps one, and the resulting type errors read as nonsense.
 
-`dynamic_linking` and `dev` are features of the binary, never of a library. Only
-`example_game_editor_bin` declares them, behind its own `dev` feature, which its defaults turn on.
+`dynamic_linking` and `dev` are features of the binary, never of a library. Only the `example_*_bin`
+crates declare them, each behind its own `dev` feature, which its defaults turn on.
 So any workspace-wide command resolves Bevy with `dynamic_linking` and `target/` holds one copy.
-Build a subset that leaves `example_game_editor_bin` out, `cargo check -p ename_engine` for
+Build a subset that leaves both binaries out, `cargo check -p ename_engine` for
 instance, and Bevy resolves without it: a second copy
 and a full rebuild each way. The `cargo db` / `dr` / `dc` / `dt` aliases in `.cargo/config.toml` are
 the workspace-wide commands written out, so reaching for one avoids that.

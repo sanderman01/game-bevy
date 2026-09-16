@@ -48,5 +48,8 @@ check ename_xtask 'ename_asset_content|ename_engine|ename_editor|example_game_li
 # `--no-default-features` also proves the `agent` feature is off in the shipping graph, which
 # matters more than the editor: `ename_remote` is unauthenticated write access to the world.
 check example_game_editor_bin 'ename_editor|ename_remote'
+# The minimal example binary never has an editor or agent feature to turn off; it must never
+# name either crate regardless of features.
+check example_game_bin 'ename_editor|ename_remote'
 
 exit "$fail"
