@@ -5,15 +5,13 @@ use bevy::prelude::*;
 use ename_asset_alias::ALIAS_SOURCE;
 use ename_engine::stage::{DynamicWorldFormat, StageAppExt, open_stage};
 
-use crate::GameState;
-
-/// Opens the starting stage on entry to [`GameState::Stage`].
+/// Opens the starting stage on startup.
 pub struct StagePlugin;
 
 impl Plugin for StagePlugin {
     fn build(&self, app: &mut App) {
         app.register_stage_format(DynamicWorldFormat)
-            .add_systems(OnEnter(GameState::Stage), open_start_stage);
+            .add_systems(Startup, open_start_stage);
     }
 }
 

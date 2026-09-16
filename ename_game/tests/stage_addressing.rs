@@ -1,52 +1,15 @@
 //! Integration tests for the game's side of alias addressing, over a headless `App`.
 //!
-//! Two properties, both of which phase 1 changed:
-//!
-//! 1. `GameState` leaves `Loading` without waiting on the content layer.
-//! 2. The stage's asset handles are keyed on `alias://`, not on a resolved file path.
-//!
-//! Neither needs the real `assets/` tree, which is a symlink outside the repository and is not
-//! present on a fresh clone.
+//! The stage's asset handles are keyed on `alias://`, not on a resolved file path. This does not
+//! need the real `assets/` tree, which is a symlink outside the repository and is not present on
+//! a fresh clone.
 
-use bevy::{
-    app::{App, TaskPoolPlugin},
-    asset::AssetPlugin,
-    prelude::*,
-    state::app::StatesPlugin,
-};
+use bevy::{app::TaskPoolPlugin, asset::AssetPlugin, prelude::*};
 use ename_asset_content::AssetContentPlugin;
 use ename_engine::stage::StageAppExt;
-use ename_game::{GameState, GameStatePlugin};
 
 /// Relative to the workspace root, which `BEVY_ASSET_ROOT` pins in `.cargo/config.toml`.
 const FIXTURE_ROOT: &str = "ename_game/tests/fixtures";
-
-/// `GameState` used to wait for `LoaderState::AssetsRegistered`, which meant the content layer's
-/// internal bookkeeping was part of the game's lifecycle. It should now advance on its own, with
-/// no content plugin present at all.
-#[test]
-fn game_state_leaves_loading_without_the_content_layer() {
-    let mut app = App::new();
-    app.add_plugins(TaskPoolPlugin::default())
-        .add_plugins(StatesPlugin)
-        .add_plugins(GameStatePlugin);
-
-    assert_eq!(
-        *app.world().resource::<State<GameState>>().get(),
-        GameState::Loading,
-        "starts in Loading"
-    );
-
-    // One update runs Startup and queues the transition; the next applies it.
-    app.update();
-    app.update();
-
-    assert_eq!(
-        *app.world().resource::<State<GameState>>().get(),
-        GameState::Stage,
-        "reaches Stage without any content plugin in the App"
-    );
-}
 
 /// The stage must still be keyed on `alias://`, not a resolved path, for the same reason the
 /// hand-built-handle version of this test checked it before `open_stage` existed: a

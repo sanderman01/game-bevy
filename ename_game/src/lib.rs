@@ -1,12 +1,9 @@
-//! `ename_game` -- gameplay: game states and the starting stage.
+//! `ename_game` -- gameplay: the starting stage.
 //!
 //! Sits above `ename_engine` and the asset crates and below the binary. It never reaches back
 //! down into the editor. See `docs/design/crate-layout.md`.
 
 pub mod stage;
-mod state;
-
-pub use state::{GameState, GameStatePlugin};
 
 use bevy::{app::PluginGroupBuilder, prelude::*};
 
@@ -18,8 +15,6 @@ pub struct GamePlugins;
 
 impl PluginGroup for GamePlugins {
     fn build(self) -> PluginGroupBuilder {
-        PluginGroupBuilder::start::<Self>()
-            .add(state::GameStatePlugin)
-            .add(stage::StagePlugin)
+        PluginGroupBuilder::start::<Self>().add(stage::StagePlugin)
     }
 }
