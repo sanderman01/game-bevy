@@ -9,7 +9,7 @@ use big_space::prelude::BigSpaceSystems;
 
 pub use big_space::camera::BigSpaceCameraInput;
 pub use big_space::plugin::BigSpaceDefaultPlugins;
-pub use big_space::prelude::{BigSpaceCameraController, CellCoord, Grid, Grids};
+pub use big_space::prelude::{BigSpace, BigSpaceCameraController, CellCoord, Grid, Grids};
 pub use camera::{
     FloatingOriginCandidate, FrozenOrigin, GridCameraSystems, GridFollowCamera, detach_from_grid,
     set_origin_frozen,

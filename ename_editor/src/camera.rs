@@ -4,7 +4,7 @@
 
 use bevy::{
     camera::primitives::Aabb,
-    input::mouse::{MouseMotion, MouseWheel},
+    input::mouse::{MouseMotion, MouseScrollUnit, MouseWheel},
     math::DVec3,
     prelude::*,
     transform::TransformSystems,
@@ -94,10 +94,38 @@ const EDITOR_CAMERA_ORIGIN_PRIORITY: i32 = 100;
 /// from here.
 const FLY_CAMERA_BUTTON: MouseButton = MouseButton::Right;
 
-/// Linear step applied to `BigSpaceCameraController::speed` per plain scroll tick.
-const SPEED_SCROLL_STEP: f64 = 5.0;
-/// Multiplicative factor applied per scroll tick instead, while Shift is held.
-const SPEED_SCROLL_MULTIPLIER: f64 = 1.2;
+/// Factor applied per plain scroll tick to whichever quantity the wheel is currently adjusting --
+/// `BigSpaceCameraController::speed` while flying, `OrbitFocus::distance` while orbiting.
+///
+/// Proportional rather than an additive step, because neither quantity has a fixed scale: fly speed
+/// spans several orders of magnitude between inspecting a prop and crossing a system, and orbit
+/// distance is whatever the last F-focus computed from the target's bounds. An additive step sized
+/// for one end of that range saturates instantly at the other -- a step of `5.0` took `speed` from
+/// its default `1.0` to the clamp floor in a single tick down, freezing the camera outright, and
+/// put a `2.0` orbit distance on [`MIN_ORBIT_DISTANCE`] just as fast. A factor cannot: every tick
+/// is the same proportional nudge wherever it starts from, and no number of them reaches either
+/// bound.
+const SCROLL_FINE_FACTOR: f64 = 1.1;
+/// Coarser [`SCROLL_FINE_FACTOR`] used instead while Shift is held, for crossing that range quickly.
+const SCROLL_COARSE_FACTOR: f64 = 1.5;
+/// Pixels one notch of a `MouseScrollUnit::Pixel` wheel is worth. Touchpads and smooth-scroll mice
+/// report scroll in pixels rather than lines, tens of units per notch; counting those raw would
+/// apply tens of ticks where a line-scrolling mouse applies one.
+const SCROLL_PIXELS_PER_TICK: f64 = 50.0;
+
+/// Bounds on `BigSpaceCameraController::speed`, the knob [`adjust_fly_speed`] turns.
+///
+/// Deliberately *not* `BigSpaceCameraController::speed_bounds`, which big_space applies to the
+/// metres-per-second it finally derives, after its own `speed * (speed + boost)`. Clamping the knob
+/// to those is a unit confusion, and with big_space's `1e-17` default floor it is what let a single
+/// scroll tick down pin `speed` to `1e-17` -- a camera that no longer moves at all.
+const FLY_SPEED_BOUNDS: [f64; 2] = [0.1, 300.0];
+
+/// `BigSpaceCameraController::speed` the editor camera starts at.
+///
+/// Not metres per second: both flight paths compute `speed * (speed + boost)`, so this is nearer
+/// its square root -- `4.0` is about 16 m/s unboosted.
+const INITIAL_FLY_SPEED: f64 = 4.0;
 
 /// `EditorCamera`'s spawn-time `OrbitFocus` sits this far in front of it, so orbiting has
 /// something to pivot around before anything has ever been F-focused.
@@ -199,6 +227,7 @@ fn spawn_editor_camera(mut commands: Commands) {
     commands.spawn((
         EditorCamera,
         GridFollowCamera,
+        editor_camera_controller(),
         FloatingOriginCandidate(EDITOR_CAMERA_ORIGIN_PRIORITY),
         FreeFlightState::default(),
         OrbitFocus {
@@ -209,6 +238,46 @@ fn spawn_editor_camera(mut commands: Commands) {
         spawn_transform,
         Name::new("Editor Camera"),
     ));
+}
+
+/// The editor camera's own controller settings, supplied at spawn in place of the default
+/// `GridFollowCamera` would otherwise `#[require]` in.
+///
+/// `slow_near_objects` is off. big_space leaves it on, which makes its `camera_controller` compute
+/// `nearest_object_distance * controller.speed` rather than using `controller.speed` as the speed --
+/// so on the grid-attached path (the one the editor is on whenever a stage is loaded) flight speed
+/// swings with whatever geometry happens to be near the camera, with nobody having touched the
+/// wheel, and the speed the wheel sets is only a multiplier on it. Off, `controller.speed` means one
+/// thing on both paths, which is also what makes [`apply_free_flight`]'s claim to reproduce
+/// `camera_controller`'s `nearest_object: None` branch true in practice rather than only in tests.
+fn editor_camera_controller() -> BigSpaceCameraController {
+    BigSpaceCameraController::default()
+        .with_speed(INITIAL_FLY_SPEED)
+        .with_slowing(false)
+}
+
+/// The scroll ticks accumulated in `wheel`, with pixel-unit wheels folded onto the same scale as
+/// line-unit ones (see [`SCROLL_PIXELS_PER_TICK`]).
+fn scroll_ticks(wheel: &mut MessageReader<MouseWheel>) -> f64 {
+    wheel
+        .read()
+        .map(|event| match event.unit {
+            MouseScrollUnit::Line => f64::from(event.y),
+            MouseScrollUnit::Pixel => f64::from(event.y) / SCROLL_PIXELS_PER_TICK,
+        })
+        .sum()
+}
+
+/// The proportional factor `ticks` of scrolling should multiply the adjusted quantity by: a fine
+/// nudge per tick, or a coarse one while either Shift is held. Both Shift keys count, matching
+/// [`orbit_active`]'s treatment of Alt.
+fn scroll_factor(keyboard: &ButtonInput<KeyCode>, ticks: f64) -> f64 {
+    let base = if keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight) {
+        SCROLL_COARSE_FACTOR
+    } else {
+        SCROLL_FINE_FACTOR
+    };
+    base.powf(ticks)
 }
 
 /// big_space's own WASD/Space/Ctrl/Q-E-roll bindings (`default_camera_inputs`) are never wanted
@@ -255,10 +324,10 @@ fn write_editor_camera_intent(
     }
 }
 
-/// Scroll wheel while flying adjusts `BigSpaceCameraController::speed`: plain ticks step it
-/// linearly, Shift+tick scales it multiplicatively (`speed *= 2` per tick up, `/= 2` per tick
-/// down). Stands down while orbiting -- scrolling then adjusts `OrbitFocus::distance` instead (see
-/// [`apply_orbit`]), and must not also drift the persistent fly speed.
+/// Scroll wheel while flying scales `BigSpaceCameraController::speed`: a fine factor per plain
+/// tick, a coarse one per Shift+tick (see [`SCROLL_FINE_FACTOR`]). Stands down while orbiting --
+/// scrolling then adjusts `OrbitFocus::distance` instead (see [`apply_orbit`]), and must not also
+/// drift the persistent fly speed.
 fn adjust_fly_speed(
     mouse_button: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -269,20 +338,15 @@ fn adjust_fly_speed(
         wheel.clear();
         return;
     }
-    let ticks: f64 = wheel.read().map(|event| event.y as f64).sum();
+    let ticks = scroll_ticks(&mut wheel);
     if ticks == 0.0 {
         return;
     }
     let Ok(mut controller) = cams.single_mut() else {
         return;
     };
-    let [min, max] = controller.speed_bounds;
-    controller.speed = if keyboard.pressed(KeyCode::ShiftLeft) {
-        controller.speed * SPEED_SCROLL_MULTIPLIER.powf(ticks)
-    } else {
-        controller.speed + ticks * SPEED_SCROLL_STEP
-    }
-    .clamp(min, max);
+    let [min, max] = FLY_SPEED_BOUNDS;
+    controller.speed = (controller.speed * scroll_factor(&keyboard, ticks)).clamp(min, max);
 }
 
 /// Orbits `EditorCamera` around its `OrbitFocus` while RMB+Alt are held: drag to rotate around the
@@ -364,15 +428,10 @@ fn apply_orbit(
     }
     *pitch = pitch.clamp(-MAX_CAMERA_PITCH, MAX_CAMERA_PITCH);
 
-    let ticks: f64 = wheel.read().map(|event| event.y as f64).sum();
+    let ticks = scroll_ticks(&mut wheel);
     if ticks != 0.0 {
-        let distance = focus.distance as f64;
-        focus.distance = if keyboard.pressed(KeyCode::ShiftLeft) {
-            distance * SPEED_SCROLL_MULTIPLIER.powf(ticks)
-        } else {
-            distance + ticks * SPEED_SCROLL_STEP
-        }
-        .max(MIN_ORBIT_DISTANCE as f64) as f32;
+        let distance = f64::from(focus.distance) * scroll_factor(&keyboard, ticks);
+        focus.distance = distance.max(f64::from(MIN_ORBIT_DISTANCE)) as f32;
     }
 
     let forward = Vec3::new(
@@ -727,8 +786,163 @@ fn apply_focus_on_f_key(
 mod tests {
     use super::*;
     use bevy::time::TimeUpdateStrategy;
-    use ename_engine::bigspace::{BigSpaceDefaultPlugins, BigSpacePlugin, CellCoord};
+    use ename_engine::bigspace::{BigSpace, BigSpaceDefaultPlugins, BigSpacePlugin, CellCoord};
     use std::time::Duration;
+
+    /// The app the real editor actually runs once a stage is loaded: a root `BigSpace` grid, so
+    /// `sync_grid_attachment` attaches `EditorCamera` to it and big_space's own `camera_controller`
+    /// -- not [`apply_free_flight`] -- is what moves the camera. Every test using the plain
+    /// [`test_app`] runs `CellCoord`-less, a state the real editor is only ever in before a stage
+    /// has loaded, so those tests exercise the path the editor almost never takes.
+    fn grid_attached_test_app() -> App {
+        let mut app = test_app();
+        // `Transform` (and so `GlobalTransform`) is not optional here: `sync_grid_attachment`
+        // picks the nearest root by `GlobalTransform`, so a root without one never matches its
+        // query and the camera silently stays detached.
+        app.world_mut()
+            .spawn((BigSpace::default(), Grid::default(), Transform::default()));
+        // Two updates: the first spawns the camera and queues its attachment, the second lets that
+        // land so the camera has its `CellCoord` before the test body runs.
+        app.update();
+        app.update();
+        let attached = app
+            .world_mut()
+            .query_filtered::<Entity, (With<EditorCamera>, With<CellCoord>)>()
+            .single(app.world())
+            .is_ok();
+        assert!(
+            attached,
+            "grid_attached_test_app must leave the camera attached to the BigSpace grid"
+        );
+        app
+    }
+
+    fn editor_camera(app: &mut App) -> Entity {
+        app.world_mut()
+            .query_filtered::<Entity, With<EditorCamera>>()
+            .single(app.world())
+            .unwrap()
+    }
+
+    fn scroll(app: &mut App, ticks: f32) {
+        app.world_mut()
+            .write_message(bevy::input::mouse::MouseWheel {
+                unit: bevy::input::mouse::MouseScrollUnit::Line,
+                x: 0.0,
+                y: ticks,
+                window: Entity::PLACEHOLDER,
+                phase: bevy::input::touch::TouchPhase::Moved,
+            });
+    }
+
+    fn fly_speed(app: &App, camera: Entity) -> f64 {
+        app.world()
+            .get::<BigSpaceCameraController>(camera)
+            .unwrap()
+            .speed
+    }
+
+    /// One scroll tick is a nudge, not a mode switch: whichever way it goes, it must leave the
+    /// adjusted quantity within this factor of where it started. Deliberately generous -- the bug
+    /// this pins down moves the quantity by 17 orders of magnitude in one tick.
+    const MAX_SINGLE_TICK_FACTOR: f64 = 4.0;
+
+    #[test]
+    fn one_scroll_tick_down_leaves_a_usable_fly_speed() {
+        let mut app = grid_attached_test_app();
+        let camera = editor_camera(&mut app);
+        let before = fly_speed(&app, camera);
+
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Right);
+        scroll(&mut app, -1.0);
+        app.update();
+
+        let after = fly_speed(&app, camera);
+        assert!(
+            after >= before / MAX_SINGLE_TICK_FACTOR,
+            "one scroll tick down must slow the camera, not stop it: speed went from {before} to \
+             {after}"
+        );
+    }
+
+    #[test]
+    fn one_scroll_tick_up_does_not_multiply_the_fly_speed_several_fold() {
+        let mut app = grid_attached_test_app();
+        let camera = editor_camera(&mut app);
+        let before = fly_speed(&app, camera);
+
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Right);
+        scroll(&mut app, 1.0);
+        app.update();
+
+        let after = fly_speed(&app, camera);
+        assert!(
+            after <= before * MAX_SINGLE_TICK_FACTOR,
+            "one scroll tick up must speed the camera up gradually: speed went from {before} to \
+             {after}"
+        );
+    }
+
+    #[test]
+    fn one_scroll_tick_in_while_orbiting_does_not_slam_into_the_pivot() {
+        let mut app = grid_attached_test_app();
+        let camera = editor_camera(&mut app);
+        // A close focus distance, the state F-focus leaves behind after framing a small object --
+        // exactly when a fixed-size zoom step is most destructive.
+        let before = 2.0_f32;
+        app.world_mut()
+            .get_mut::<OrbitFocus>(camera)
+            .unwrap()
+            .distance = before;
+
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Right);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::AltLeft);
+        scroll(&mut app, -1.0);
+        app.update();
+
+        let after = app.world().get::<OrbitFocus>(camera).unwrap().distance;
+        assert!(
+            f64::from(after) >= f64::from(before) / MAX_SINGLE_TICK_FACTOR,
+            "one scroll tick in must zoom towards the pivot, not onto it: distance went from \
+             {before} to {after}"
+        );
+    }
+
+    #[test]
+    fn the_editor_camera_does_not_scale_its_speed_by_proximity_to_geometry() {
+        // While `slow_near_objects` is set, big_space's `camera_controller` computes
+        // `nearest_object_distance * controller.speed` instead of using `controller.speed` as the
+        // speed -- so on the grid-attached path (the editor's, whenever a stage is loaded) flight
+        // speed swings with whatever is near the camera, untouched wheel and all.
+        //
+        // Asserted as configuration rather than as flown distance because the behaviour cannot be
+        // reproduced headlessly: big_space's `nearest_objects_in_grid` takes its spatial lookups as
+        // `Option<Res<..>>` and returns early when they are absent, which they are under
+        // `MinimalPlugins`, so `nearest_object` stays `None` no matter what is spawned nearby. A
+        // distance-based version of this test passed just as happily with the bug switched back on.
+        // The bug was confirmed against the running editor instead, whose camera reported
+        // `slow_near_objects: true` alongside a live `nearest_object` 48.9m away.
+        let mut app = grid_attached_test_app();
+        let camera = editor_camera(&mut app);
+        let controller = app.world().get::<BigSpaceCameraController>(camera).unwrap();
+        assert!(
+            !controller.slow_near_objects,
+            "EditorCamera must opt out of big_space's proximity slowdown, or the scrolled speed is \
+             only a multiplier on the distance to the nearest object"
+        );
+        assert!(
+            controller.nearest_object().is_none(),
+            "with the slowdown off, nothing should be populating nearest_object"
+        );
+    }
 
     fn test_app() -> App {
         let mut app = App::new();
@@ -811,25 +1025,15 @@ mod tests {
         app.world_mut()
             .resource_mut::<ButtonInput<MouseButton>>()
             .press(MouseButton::Right);
-        // One plain (non-shift) scroll tick: default speed 1.0 -> 1.0 + SPEED_SCROLL_STEP == 6.0,
-        // the same value the scroll-wheel test above also lands on after its first tick.
-        app.world_mut()
-            .write_message(bevy::input::mouse::MouseWheel {
-                unit: bevy::input::mouse::MouseScrollUnit::Line,
-                x: 0.0,
-                y: 1.0,
-                window: Entity::PLACEHOLDER,
-                phase: bevy::input::touch::TouchPhase::Moved,
-            });
+        // One plain (non-shift) scroll tick, to get off `INITIAL_FLY_SPEED` -- the exact value
+        // doesn't matter, only that the two formulas disagree there, which they do at anything but
+        // `1.0`.
+        scroll(&mut app, 1.0);
         app.update();
-        let controller_speed = app
-            .world()
-            .get::<BigSpaceCameraController>(camera)
-            .unwrap()
-            .speed;
-        assert_eq!(
-            controller_speed, 6.0,
-            "scroll tick didn't land on the expected speed"
+        let controller_speed = fly_speed(&app, camera);
+        assert!(
+            (controller_speed - INITIAL_FLY_SPEED * SCROLL_FINE_FACTOR).abs() < 1e-9,
+            "scroll tick didn't land on the expected speed, got {controller_speed}"
         );
 
         app.world_mut()
@@ -870,58 +1074,105 @@ mod tests {
     }
 
     #[test]
-    fn scroll_wheel_while_flying_adjusts_speed_linearly_and_shift_scroll_multiplies() {
+    fn scroll_wheel_while_flying_scales_speed_and_shift_scroll_scales_it_harder() {
         let mut app = test_app();
         app.update();
-        let camera = app
-            .world_mut()
-            .query_filtered::<Entity, With<EditorCamera>>()
-            .single(app.world())
-            .unwrap();
+        let camera = editor_camera(&mut app);
 
         app.world_mut()
             .resource_mut::<ButtonInput<MouseButton>>()
             .press(MouseButton::Right);
-        let starting_speed = app
-            .world()
-            .get::<BigSpaceCameraController>(camera)
-            .unwrap()
-            .speed;
+        let starting_speed = fly_speed(&app, camera);
 
-        app.world_mut()
-            .write_message(bevy::input::mouse::MouseWheel {
-                unit: bevy::input::mouse::MouseScrollUnit::Line,
-                x: 0.0,
-                y: 1.0,
-                window: Entity::PLACEHOLDER,
-                phase: bevy::input::touch::TouchPhase::Moved,
-            });
+        scroll(&mut app, 1.0);
         app.update();
-        let after_linear = app
-            .world()
-            .get::<BigSpaceCameraController>(camera)
-            .unwrap()
-            .speed;
-        assert!(after_linear > starting_speed);
+        let after_fine = fly_speed(&app, camera);
+        let fine_factor = after_fine / starting_speed;
+        assert!(
+            (fine_factor - SCROLL_FINE_FACTOR).abs() < 1e-9,
+            "a plain tick should scale speed by {SCROLL_FINE_FACTOR}, scaled it by {fine_factor}"
+        );
 
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::ShiftLeft);
-        app.world_mut()
-            .write_message(bevy::input::mouse::MouseWheel {
-                unit: bevy::input::mouse::MouseScrollUnit::Line,
-                x: 0.0,
-                y: 1.0,
-                window: Entity::PLACEHOLDER,
-                phase: bevy::input::touch::TouchPhase::Moved,
-            });
+        scroll(&mut app, 1.0);
         app.update();
-        let after_multiplied = app
-            .world()
-            .get::<BigSpaceCameraController>(camera)
-            .unwrap()
-            .speed;
-        assert!(after_multiplied > after_linear * 1.9);
+        let coarse_factor = fly_speed(&app, camera) / after_fine;
+        assert!(
+            (coarse_factor - SCROLL_COARSE_FACTOR).abs() < 1e-9,
+            "a Shift tick should scale speed by {SCROLL_COARSE_FACTOR}, scaled it by \
+             {coarse_factor}"
+        );
+        assert!(
+            coarse_factor > fine_factor,
+            "Shift must be the coarser step"
+        );
+    }
+
+    #[test]
+    fn scrolling_is_reversible_and_never_reaches_a_bound() {
+        // The property the old additive step broke: a tick each way returns to where it started,
+        // wherever that was, because each tick is a factor rather than a fixed quantity.
+        let mut app = test_app();
+        app.update();
+        let camera = editor_camera(&mut app);
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Right);
+        let starting_speed = fly_speed(&app, camera);
+
+        for _ in 0..20 {
+            scroll(&mut app, -1.0);
+            app.update();
+        }
+        let slowest = fly_speed(&app, camera);
+        assert!(
+            slowest > FLY_SPEED_BOUNDS[0],
+            "20 ticks down must not reach the floor {}, got {slowest}",
+            FLY_SPEED_BOUNDS[0]
+        );
+
+        for _ in 0..20 {
+            scroll(&mut app, 1.0);
+            app.update();
+        }
+        let restored = fly_speed(&app, camera);
+        assert!(
+            (restored - starting_speed).abs() / starting_speed < 1e-9,
+            "20 ticks down then 20 up must return to {starting_speed}, got {restored}"
+        );
+    }
+
+    #[test]
+    fn a_pixel_unit_wheel_scrolls_at_the_same_rate_as_a_line_unit_one() {
+        // Touchpads report scroll in pixels, tens of units per notch. Counting those raw applied
+        // tens of ticks where a mouse applies one.
+        fn speed_after_one_notch(unit: MouseScrollUnit, y: f32) -> f64 {
+            let mut app = test_app();
+            app.update();
+            let camera = editor_camera(&mut app);
+            app.world_mut()
+                .resource_mut::<ButtonInput<MouseButton>>()
+                .press(MouseButton::Right);
+            app.world_mut()
+                .write_message(bevy::input::mouse::MouseWheel {
+                    unit,
+                    x: 0.0,
+                    y,
+                    window: Entity::PLACEHOLDER,
+                    phase: bevy::input::touch::TouchPhase::Moved,
+                });
+            app.update();
+            fly_speed(&app, camera)
+        }
+
+        let by_line = speed_after_one_notch(MouseScrollUnit::Line, 1.0);
+        let by_pixel = speed_after_one_notch(MouseScrollUnit::Pixel, SCROLL_PIXELS_PER_TICK as f32);
+        assert!(
+            (by_line - by_pixel).abs() / by_line < 1e-6,
+            "one notch should mean the same either way: {by_line} by line, {by_pixel} by pixel"
+        );
     }
 
     #[test]
