@@ -1,0 +1,22 @@
+ename_engine/src/stage/dynamic_world_format.rs
+  s_183f0b345bcf9e::t_2daff50cb0b095 53-58
+ename_engine/tests/stage_dynamic_world_format.rs
+  s_183f0b345bcf9e::t_0aa30bdb7987d2 12,108-140
+  s_183f0b345bcf9e::t_814116e2985b6e 141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "aecd7dd1554876b759dceeb763a82fbe03fff7c6",
+  "prompts": {},
+  "sessions": {
+    "s_183f0b345bcf9e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2ca80c9b-2897-4d03-9d23-cb5f69ff625a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
