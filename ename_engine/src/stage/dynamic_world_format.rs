@@ -50,6 +50,12 @@ impl StageFormat for DynamicWorldFormat {
             // reference that resolves to a phantom entity on load. Denying it loses no
             // information.
             .deny_component::<Children>()
+            // Which entity *holds* the origin is runtime policy, decided per binary by
+            // `elect_floating_origins` -- a stage carrying one would arrive as a second origin in
+            // any binary that elects its own, which clears `BigSpace::floating_origin` outright
+            // and stops propagation. `FloatingOriginCandidate` is deliberately not denied: which
+            // entities are *eligible* is content. See `docs/design/floating-origin.md`.
+            .deny_component::<big_space::prelude::FloatingOrigin>()
             .extract_entities(entities.iter().copied())
             .build();
         let bytes = dynamic_world.serialize(&type_registry)?.into_bytes();

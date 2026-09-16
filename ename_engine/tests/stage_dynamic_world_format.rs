@@ -9,6 +9,7 @@ use bevy::{
     prelude::*,
     world_serialization::WorldSerializationPlugin,
 };
+use ename_engine::bigspace::FloatingOriginCandidate;
 use ename_engine::stage::{DynamicWorldFormat, SourcePath, StageFormat};
 
 const FIXTURE_ROOT: &str = "ename_engine/tests/fixtures";
@@ -102,5 +103,39 @@ fn serialize_denies_children_so_an_entity_outside_the_extracted_set_leaves_no_da
         "Children must be denied from stage serialization -- otherwise the root's Children list \
          can reference an entity outside the file's own entity map, a dangling reference that \
          resolves to a phantom entity on load: {text}"
+    );
+}
+
+#[test]
+fn serialize_denies_the_floating_origin_but_keeps_the_candidate_that_earned_it() {
+    let mut app = test_app();
+    app.register_type::<FloatingOriginCandidate>();
+
+    // The state a stage is in while the editor has it open: the stage nominated this camera, and
+    // (in a binary with no higher-priority candidate) the election gave it the origin.
+    let camera = app
+        .world_mut()
+        .spawn((
+            Marker(1),
+            FloatingOriginCandidate(0),
+            big_space::prelude::FloatingOrigin,
+        ))
+        .id();
+
+    let format = DynamicWorldFormat;
+    let bytes = format
+        .serialize(app.world(), &[camera])
+        .expect("serialize succeeds");
+    let text = String::from_utf8(bytes).expect("ron is valid utf8");
+
+    assert!(
+        !text.contains("FloatingOrigin\""),
+        "FloatingOrigin must be denied: it is runtime policy, and a stage carrying one arrives as \
+         a second origin in any binary that elects its own, which clears \
+         BigSpace::floating_origin outright: {text}"
+    );
+    assert!(
+        text.contains("ename_engine::bigspace::camera::FloatingOriginCandidate"),
+        "candidacy is content and must survive the round trip: {text}"
     );
 }
