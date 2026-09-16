@@ -1,0 +1,14 @@
+example_game_editor_bin/Cargo.toml
+  h_72decab43bbb75 10,17,19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c9ebac0c70713c0908d742b7f753dd2b256d143e",
+  "prompts": {},
+  "humans": {
+    "h_72decab43bbb75": {
+      "author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
