@@ -22,10 +22,7 @@ fn main() {
     app.add_plugins(engine)
         .add_plugins(example_game_lib::GamePlugins);
 
-    #[cfg(feature = "editor")]
     app.add_plugins(ename_editor::EditorPlugins);
-
-    #[cfg(feature = "agent")]
     app.add_plugins(ename_remote::RemotePlugins);
 
     app.run();
