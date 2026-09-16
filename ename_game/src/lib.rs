@@ -1,20 +1,33 @@
-//! `ename_game` -- gameplay: the starting stage.
+//! `ename_game` -- gameplay lib.
 //!
-//! Sits above `ename_engine` and the asset crates and below the binary. It never reaches back
-//! down into the editor. See `docs/design/crate-layout.md`.
-
-pub mod stage;
+//! This is where game-specific functionality goes.
+//! Sits above `ename_engine` and the asset crates and below the binary.
+//! It never reaches into the editor.
+//! See `docs/design/crate-layout.md`.
 
 use bevy::{app::PluginGroupBuilder, prelude::*};
+use ename_engine::stage::open_stage;
 
-/// Everything the game contributes to an `App`.
-///
-/// Requires the `alias://` asset source the stage loads through. `EnginePlugins` registers it, so
-/// any target that adds `EnginePlugins` has it; `GamePlugins` does not add it itself.
+/// A group of plugins comprising your game functionality.
+/// Add this plugin group to the app in your game binary crate.
 pub struct GamePlugins;
 
 impl PluginGroup for GamePlugins {
     fn build(self) -> PluginGroupBuilder {
-        PluginGroupBuilder::start::<Self>().add(stage::StagePlugin)
+        PluginGroupBuilder::start::<Self>().add(StartPlugin)
     }
+}
+
+/// Opens the starting stage on startup.
+/// (a stage is a scene or world, much like a Unity scene or Unreal map file)
+pub struct StartPlugin;
+
+impl Plugin for StartPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, open_start_stage);
+    }
+}
+
+fn open_start_stage(world: &mut World) {
+    open_stage(world, "alias://examples::stage");
 }

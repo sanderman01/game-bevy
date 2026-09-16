@@ -3038,7 +3038,6 @@ name = "ename_game"
 version = "0.0.0"
 dependencies = [
  "bevy",
- "ename_asset_alias",
  "ename_asset_content",
  "ename_engine",
 ]

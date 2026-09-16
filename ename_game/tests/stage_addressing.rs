@@ -29,10 +29,7 @@ fn stage_is_opened_through_the_alias_source() {
     .add_plugins(bevy::world_serialization::WorldSerializationPlugin)
     .add_plugins(ename_engine::stage::StagePlugin);
 
-    let entity = ename_engine::stage::open_stage(
-        app.world_mut(),
-        &format!("{}://core::start_stage", ename_asset_alias::ALIAS_SOURCE),
-    );
+    let entity = ename_engine::stage::open_stage(app.world_mut(), "alias://core::start_stage");
 
     let handle = app
         .world()
