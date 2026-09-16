@@ -1,0 +1,33 @@
+docs/design/crate-layout.md
+  s_633a7bbc5f5fe0::t_5d7e10443fdf1f 16-19,24
+docs/assets-packages.md
+  s_633a7bbc5f5fe0::t_624b44e1ffddbe 9
+  s_633a7bbc5f5fe0::t_ec29de2e0c1ad8 59
+docs/design.md
+  s_633a7bbc5f5fe0::t_9f697c7c3ed4c6 47-48,50
+scripts/check-layers.sh
+  s_633a7bbc5f5fe0::t_f440aafdff8d0a 51-53
+README.md
+  s_633a7bbc5f5fe0::t_39bac68c627e1a 38
+  s_633a7bbc5f5fe0::t_a435b2c26610c4 39
+example_game_bin/Cargo.toml
+  s_633a7bbc5f5fe0::t_0dd9c29f46f260 1-21
+example_game_bin/src/main.rs
+  s_633a7bbc5f5fe0::t_6452f6eda1d80e 1-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "24e5a653a0673c46cce3a1858a2d62258a549ab3",
+  "prompts": {},
+  "sessions": {
+    "s_633a7bbc5f5fe0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d4441f9-c206-40a0-9e80-3a8d1017992e",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
