@@ -410,6 +410,7 @@
           y: 0,
           z: 0,
         ),
+        "ename_engine::bigspace::camera::FloatingOriginCandidate": (0),
         "ename_engine::camera::MainCamera": (),
         "ename_engine::camera::driver::CameraDriver": (
           enabled: true,

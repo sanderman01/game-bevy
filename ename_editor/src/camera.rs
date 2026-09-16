@@ -10,8 +10,8 @@ use bevy::{
     transform::TransformSystems,
 };
 use ename_engine::bigspace::{
-    BigSpaceCameraController, BigSpaceCameraInput, CellCoord, Grid, GridCameraSystems,
-    GridFollowCamera, Grids,
+    BigSpaceCameraController, BigSpaceCameraInput, CellCoord, FloatingOriginCandidate, Grid,
+    GridCameraSystems, GridFollowCamera, Grids,
 };
 
 use crate::panels::{ActiveViewport, UiState};
@@ -78,6 +78,16 @@ impl EditorCameraIntent {
 }
 
 const EDITOR_CAMERA_INIT_POS: Vec3 = vec3(0.0, 10.0, 60.0);
+
+/// Outranks the candidate a stage nominates (priority `0` by convention), so while editing, the
+/// world recenters around this camera rather than around whatever the stage would have picked.
+///
+/// This constant lives here, not in the engine, because the editor owns the mode that decides it.
+/// When play-in-editor lands, entering play drops `EditorCamera`'s `FloatingOriginCandidate` below
+/// `0` so the Game View's own candidate wins, and leaving play restores this value; the engine
+/// still knows only "highest priority wins". There is no mode to read yet, so nothing flips it
+/// today. See `docs/design/floating-origin.md`.
+const EDITOR_CAMERA_ORIGIN_PRIORITY: i32 = 100;
 
 /// The button that puts the fly camera in control. The only place this binding is written down;
 /// [`fly_camera_active`], [`write_editor_camera_intent`], and [`adjust_fly_speed`] all read it
@@ -189,6 +199,7 @@ fn spawn_editor_camera(mut commands: Commands) {
     commands.spawn((
         EditorCamera,
         GridFollowCamera,
+        FloatingOriginCandidate(EDITOR_CAMERA_ORIGIN_PRIORITY),
         FreeFlightState::default(),
         OrbitFocus {
             entity: focus,
