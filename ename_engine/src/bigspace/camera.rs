@@ -4,9 +4,10 @@
 
 use bevy::ecs::lifecycle::HookContext;
 use bevy::ecs::world::DeferredWorld;
+use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 use big_space::camera::camera_controller;
-use big_space::prelude::{BigSpaceCameraController, CellCoord, FloatingOrigin, Grid};
+use big_space::prelude::{BigSpace, BigSpaceCameraController, CellCoord, FloatingOrigin, Grid};
 
 /// Attach this to any entity that should automatically become a child of the nearest root
 /// `Grid` (an entity carrying both `BigSpace` and `Grid`) when one exists, and a parentless root
@@ -15,8 +16,21 @@ use big_space::prelude::{BigSpaceCameraController, CellCoord, FloatingOrigin, Gr
 /// and detaching -- big_space's own systems simply never match this entity while it lacks
 /// `CellCoord`.
 #[derive(Component, Debug, Default, Clone, Copy)]
-#[require(BigSpaceCameraController)]
+#[require(BigSpaceCameraController, FloatingOriginCandidate)]
 pub struct GridFollowCamera;
+
+/// Marks an entity as eligible to hold big_space's [`FloatingOrigin`], and says how strongly it
+/// wants it: [`elect_floating_origins`] gives the origin to the highest-priority candidate under
+/// each root `BigSpace`. Higher wins; `0` is the default.
+///
+/// Candidacy is a component of its own rather than something `MainCamera` requires, because the
+/// origin belongs wherever the content author puts it -- a vehicle a camera is mounted to is as
+/// reasonable a choice as the camera. Stages serialize it (unlike [`FloatingOrigin`] itself, which
+/// `DynamicWorldFormat` denies): which entities are *eligible* is content, which one *holds* it is
+/// runtime policy. See `docs/design/floating-origin.md`.
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Reflect)]
+#[reflect(Component)]
+pub struct FloatingOriginCandidate(pub i32);
 
 /// Present on a [`GridFollowCamera`] entity while its floating-origin recentering is frozen:
 /// names the stationary anchor entity holding [`FloatingOrigin`] in its place. Set and cleared by
@@ -39,14 +53,26 @@ pub struct GridFollowPlugin;
 
 impl Plugin for GridFollowPlugin {
     fn build(&self, app: &mut App) {
-        app.configure_sets(
-            PostUpdate,
-            GridCameraSystems::Apply.before(camera_controller),
-        )
-        .add_systems(
-            PostUpdate,
-            sync_grid_attachment.before(GridCameraSystems::Apply),
-        );
+        app.register_type::<FloatingOriginCandidate>()
+            .configure_sets(
+                PostUpdate,
+                GridCameraSystems::Apply.before(camera_controller),
+            )
+            // `.chain()` is what lets the election observe the attachment `sync_grid_attachment`
+            // just queued: `auto_insert_apply_deferred` defaults to true, so Bevy puts a sync
+            // point between two systems with an explicit order dependency when the earlier one
+            // defers. Reading a frame-old `ChildOf`/`CellCoord` here would cost a frame of
+            // `find_floating_origin` errors on every stage load.
+            //
+            // Nothing needs ordering against `BigSpaceSystems`: `GridCameraSystems::Apply` is
+            // already before `camera_controller`, which big_space schedules before
+            // `TransformSystems::Propagate` -- and `find_floating_origin` runs inside that set.
+            .add_systems(
+                PostUpdate,
+                (sync_grid_attachment, elect_floating_origins)
+                    .chain()
+                    .before(GridCameraSystems::Apply),
+            );
         app.world_mut()
             .register_component_hooks::<Grid>()
             .on_remove(rescue_children_on_grid_removed);
@@ -126,6 +152,8 @@ fn sync_grid_attachment(
                     .get(grid_entity)
                     .expect("nearest_grid always has Grid");
                 let (cell, remainder) = grid.translation_to_grid(position.as_dvec3());
+                // No `FloatingOrigin` here: attaching only makes this entity *eligible*, and
+                // `elect_floating_origins` (chained directly after this system) decides.
                 commands.entity(camera).insert((
                     cell,
                     Transform {
@@ -133,20 +161,83 @@ fn sync_grid_attachment(
                         rotation,
                         scale: Vec3::ONE,
                     },
-                    FloatingOrigin,
                     ChildOf(grid_entity),
                 ));
             }
             None => {
                 commands
                     .entity(camera)
-                    .remove::<(CellCoord, FloatingOrigin, ChildOf)>()
+                    .remove::<(CellCoord, ChildOf)>()
                     .insert(Transform {
                         translation: position,
                         rotation,
                         scale: Vec3::ONE,
                     });
             }
+        }
+    }
+}
+
+/// Maintains big_space's one hard invariant: exactly one [`FloatingOrigin`] per root `BigSpace`.
+/// The highest-priority [`FloatingOriginCandidate`] under each root gets it, everyone else loses
+/// it, and a root with no candidate gets none -- the same state a detached camera already
+/// produced. This is the only place `FloatingOrigin` is *granted*.
+///
+/// It is not the only place it is taken away. [`detach_from_grid`], the `Grid`-removal hook and
+/// [`set_origin_frozen`] all take `&mut World` and are expected to have landed by the time they
+/// return, so they strip (or move) the marker themselves rather than leave the world holding a
+/// stale origin for a frame. Each leaves the world in a state this system then agrees with, so the
+/// two never fight.
+///
+/// Both ways of breaking the invariant are logged by `BigSpace::find_floating_origin` every frame,
+/// but they are not equally bad: a missing origin stops propagation for that space, while a
+/// *duplicate* also clears `BigSpace::floating_origin` outright. That asymmetry is why this runs
+/// as a single elect-and-diff rather than letting each interested party manage its own marker.
+///
+/// A camera holding [`FrozenOrigin`] is deliberately excluded: its anchor stands in for it and
+/// carries a copy of its priority, so without the filter the tie between the two would be settled
+/// by entity id. See [`set_origin_frozen`].
+///
+/// Runs every frame instead of on change detection. Candidates number one to three in practice,
+/// and a change-detection version would have to react to attachment, priority, despawn and
+/// `FrozenOrigin` edits at once; the diff below already makes a steady frame issue no commands.
+#[allow(clippy::type_complexity)]
+fn elect_floating_origins(
+    mut commands: Commands,
+    candidates: Query<(Entity, &FloatingOriginCandidate), (With<CellCoord>, Without<FrozenOrigin>)>,
+    holders: Query<Entity, With<FloatingOrigin>>,
+    parents: Query<&ChildOf>,
+    roots: Query<(), With<BigSpace>>,
+) {
+    // Keyed by root, valued by the best `(priority, entity)` bid seen under it. Comparing the
+    // tuple makes the entity id the tie-break, so an equal-priority pair elects deterministically
+    // rather than flapping frame to frame.
+    let mut best_per_root: HashMap<Entity, (i32, Entity)> = HashMap::default();
+    for (entity, candidate) in &candidates {
+        // The same walk `find_floating_origin` does, so eligibility here means exactly what
+        // big_space will conclude later in the frame.
+        let Some(root) = parents.iter_ancestors(entity).last() else {
+            continue;
+        };
+        if !roots.contains(root) {
+            continue;
+        }
+        let bid = (candidate.0, entity);
+        best_per_root
+            .entry(root)
+            .and_modify(|best| *best = (*best).max(bid))
+            .or_insert(bid);
+    }
+
+    let elected: HashSet<Entity> = best_per_root.values().map(|&(_, entity)| entity).collect();
+    for holder in &holders {
+        if !elected.contains(&holder) {
+            commands.entity(holder).remove::<FloatingOrigin>();
+        }
+    }
+    for entity in elected {
+        if !holders.contains(entity) {
+            commands.entity(entity).insert(FloatingOrigin);
         }
     }
 }
@@ -230,8 +321,22 @@ pub fn set_origin_frozen(world: &mut World, camera: Entity, frozen: bool) {
                 .get::<ChildOf>(camera)
                 .expect("a CellCoord entity is always a child of its Grid")
                 .parent();
+            // The anchor spawns as a candidate carrying the camera's own priority, so
+            // `elect_floating_origins` leaves the origin where this puts it instead of electing it
+            // straight back to the camera. The camera itself is excluded from the election for as
+            // long as `FrozenOrigin` is on it -- equal priorities would otherwise tie.
+            let priority = world
+                .get::<FloatingOriginCandidate>(camera)
+                .copied()
+                .unwrap_or_default();
             let anchor = world
-                .spawn((cell, transform, FloatingOrigin, ChildOf(grid_entity)))
+                .spawn((
+                    cell,
+                    transform,
+                    priority,
+                    FloatingOrigin,
+                    ChildOf(grid_entity),
+                ))
                 .id();
             world
                 .entity_mut(camera)

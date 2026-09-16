@@ -1,7 +1,9 @@
 use bevy::prelude::*;
 use big_space::plugin::BigSpaceDefaultPlugins;
 use big_space::prelude::{BigSpaceCameraController, CellCoord, FloatingOrigin, Grid};
-use ename_engine::bigspace::{BigSpacePlugin, FrozenOrigin, GridFollowCamera, set_origin_frozen};
+use ename_engine::bigspace::{
+    BigSpacePlugin, FloatingOriginCandidate, FrozenOrigin, GridFollowCamera, set_origin_frozen,
+};
 
 fn test_app() -> App {
     let mut app = App::new();
@@ -10,6 +12,23 @@ fn test_app() -> App {
         .add_plugins(BigSpaceDefaultPlugins)
         .add_plugins(BigSpacePlugin);
     app
+}
+
+/// Spawns a root `BigSpace` and a candidate of the given priority already parented to it, skipping
+/// `GridFollowCamera`'s attach step so a test can set up several candidates in one known cell.
+fn spawn_candidate(app: &mut App, root: Entity, priority: i32) -> Entity {
+    app.world_mut()
+        .spawn((
+            FloatingOriginCandidate(priority),
+            CellCoord::default(),
+            Transform::default(),
+            ChildOf(root),
+        ))
+        .id()
+}
+
+fn holds_origin(app: &App, entity: Entity) -> bool {
+    app.world().entity(entity).contains::<FloatingOrigin>()
 }
 
 #[test]
@@ -117,4 +136,96 @@ fn freezing_the_origin_moves_floating_origin_to_a_stationary_anchor() {
         app.world().get_entity(anchor).is_err(),
         "anchor should be despawned"
     );
+}
+
+#[test]
+fn the_highest_priority_candidate_under_a_root_holds_the_origin() {
+    let mut app = test_app();
+    let root = app
+        .world_mut()
+        .spawn(big_space::bundles::BigSpaceRootBundle::default())
+        .id();
+    let low = spawn_candidate(&mut app, root, 0);
+    let high = spawn_candidate(&mut app, root, 100);
+    app.update();
+
+    assert!(holds_origin(&app, high));
+    assert!(!holds_origin(&app, low));
+}
+
+#[test]
+fn raising_a_losers_priority_moves_the_origin_to_it() {
+    let mut app = test_app();
+    let root = app
+        .world_mut()
+        .spawn(big_space::bundles::BigSpaceRootBundle::default())
+        .id();
+    let editor = spawn_candidate(&mut app, root, 100);
+    let game = spawn_candidate(&mut app, root, 0);
+    app.update();
+    assert!(holds_origin(&app, editor));
+
+    // What entering play-in-editor will do: the editor camera drops below the stage's own
+    // candidate rather than the game camera being raised, but the election sees the same thing.
+    *app.world_mut()
+        .get_mut::<FloatingOriginCandidate>(editor)
+        .unwrap() = FloatingOriginCandidate(-100);
+    app.update();
+
+    assert!(holds_origin(&app, game));
+    assert!(!holds_origin(&app, editor));
+}
+
+#[test]
+fn despawning_the_holder_hands_the_origin_to_the_remaining_candidate() {
+    let mut app = test_app();
+    let root = app
+        .world_mut()
+        .spawn(big_space::bundles::BigSpaceRootBundle::default())
+        .id();
+    let winner = spawn_candidate(&mut app, root, 100);
+    let runner_up = spawn_candidate(&mut app, root, 0);
+    app.update();
+    assert!(holds_origin(&app, winner));
+
+    app.world_mut().entity_mut(winner).despawn();
+    app.update();
+
+    assert!(holds_origin(&app, runner_up));
+}
+
+#[test]
+fn each_root_elects_its_own_origin_independently() {
+    let mut app = test_app();
+    let first = app
+        .world_mut()
+        .spawn(big_space::bundles::BigSpaceRootBundle::default())
+        .id();
+    let second = app
+        .world_mut()
+        .spawn(big_space::bundles::BigSpaceRootBundle::default())
+        .id();
+    let in_first = spawn_candidate(&mut app, first, 0);
+    let in_second = spawn_candidate(&mut app, second, 0);
+    app.update();
+
+    assert!(holds_origin(&app, in_first));
+    assert!(holds_origin(&app, in_second));
+}
+
+#[test]
+fn a_candidate_that_is_not_grid_attached_never_holds_the_origin() {
+    let mut app = test_app();
+    app.world_mut()
+        .spawn(big_space::bundles::BigSpaceRootBundle::default());
+    // No `CellCoord` and no parent: eligible on paper, but not in any `BigSpace` hierarchy, which
+    // is the same walk `find_floating_origin` does.
+    let loose = app
+        .world_mut()
+        .spawn((FloatingOriginCandidate(1000), Transform::default()))
+        .id();
+    app.update();
+    app.update();
+
+    assert!(!holds_origin(&app, loose));
 }

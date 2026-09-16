@@ -57,9 +57,16 @@ rule half-known by two crates is the shape that produced the W/E clash.
 ## Freezing
 
 `set_origin_frozen` spawns a stationary anchor so an editor camera can keep flying without the world
-recentering under it. The anchor is a candidate too, carrying a copy of its camera's priority, and
-the election skips any camera that currently has `FrozenOrigin`. No tie-break and no special case,
-and it composes with play-in-editor on its own: freeze the editor camera, enter play, and the game
+recentering under it. It takes `&mut World` and its effect is visible on return, so it keeps moving
+`FloatingOrigin` to the anchor itself rather than waiting a frame for the election to agree.
+
+Two things make the election agree instead of undoing it. The anchor is spawned as a candidate
+carrying a copy of its camera's priority, so the election does not strip its origin; and the
+election skips any camera that currently has `FrozenOrigin`, so it does not hand the origin back.
+The second is not redundant with the first: the camera and its anchor hold equal priority, and
+without the filter the tie would be settled by entity id.
+
+This composes with play-in-editor on its own: freeze the editor camera, enter play, and the game
 camera outranks the frozen anchor.
 
 ## Ordering
@@ -69,6 +76,8 @@ The election runs in `PostUpdate`, immediately after `sync_grid_attachment` and 
 big_space schedules inside `TransformSystems::Propagate`, after `camera_controller`, which
 `GridCameraSystems::Apply` is ordered before.
 
-`sync_grid_attachment` attaches through deferred `Commands`, so an explicit `ApplyDeferred` sits
-between the two. Without it the election reads the previous frame's `ChildOf`/`CellCoord` and a
-stage load costs a frame of `find_floating_origin` errors.
+`sync_grid_attachment` attaches through deferred `Commands`, so the election has to see those
+commands applied or it reads the previous frame's `ChildOf`/`CellCoord` and a stage load costs a
+frame of `find_floating_origin` errors. `.chain()` is enough: `auto_insert_apply_deferred` defaults
+to true, so Bevy puts a sync point between two systems with an explicit order dependency when the
+earlier one defers. No hand-written `ApplyDeferred`.
