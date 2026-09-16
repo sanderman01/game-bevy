@@ -379,7 +379,7 @@ pub struct GetLogsParams {
     /// Lowest level to return: TRACE, DEBUG, INFO, WARN or ERROR. Defaults to TRACE.
     #[serde(default)]
     pub min_level: Option<String>,
-    /// Case-insensitive substring of the emitting module path, e.g. "ename_game".
+    /// Case-insensitive substring of the emitting module path, e.g. "example_game_lib".
     #[serde(default)]
     pub target_contains: Option<String>,
     /// Case-insensitive substring of the message.

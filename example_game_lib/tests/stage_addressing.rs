@@ -8,7 +8,7 @@ use bevy::{app::TaskPoolPlugin, asset::AssetPlugin, prelude::*};
 use ename_asset_content::AssetContentPlugin;
 
 /// Relative to the workspace root, which `BEVY_ASSET_ROOT` pins in `.cargo/config.toml`.
-const FIXTURE_ROOT: &str = "ename_game/tests/fixtures";
+const FIXTURE_ROOT: &str = "example_game_lib/tests/fixtures";
 
 /// The stage must still be keyed on `alias://`, not a resolved path, for the same reason the
 /// hand-built-handle version of this test checked it before `open_stage` existed: a

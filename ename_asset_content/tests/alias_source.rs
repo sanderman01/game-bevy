@@ -170,7 +170,7 @@ fn greeting_text(app: &App, handle: &Handle<Greeting>) -> String {
 
 /// The headline property of the phase. The handle is requested before a single frame has run, so
 /// `start_content_scan` has not even been called yet. The reader awaits the index inside
-/// `bevy_asset`, which is what lets `LoaderState` and the gate in `ename_game` be deleted in
+/// `bevy_asset`, which is what lets `LoaderState` and the gate in `example_game_lib` be deleted in
 /// Task 7.
 #[test]
 fn a_handle_requested_before_the_first_frame_still_loads() {

@@ -19,7 +19,8 @@ fn main() {
         engine = engine.with_load_order_file(path);
     }
 
-    app.add_plugins(engine).add_plugins(ename_game::GamePlugins);
+    app.add_plugins(engine)
+        .add_plugins(example_game_lib::GamePlugins);
 
     #[cfg(feature = "editor")]
     app.add_plugins(ename_editor::EditorPlugins);

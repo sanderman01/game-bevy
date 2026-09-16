@@ -75,7 +75,7 @@ fn resolves_an_alias_to_a_real_file() {
 
 /// The headline property of the phase. The handle is requested before the index exists at all, so
 /// nothing could have resolved it yet. The reader awaits the cell inside `bevy_asset`, which is
-/// what lets `LoaderState` and the gate in `ename_game` be deleted in Task 7.
+/// what lets `LoaderState` and the gate in `example_game_lib` be deleted in Task 7.
 #[test]
 fn a_handle_requested_before_the_index_exists_still_loads() {
     let mut app = test_app();

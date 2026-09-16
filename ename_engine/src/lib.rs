@@ -1,7 +1,7 @@
 //! `ename_engine` -- the runtime layer: camera rig, big_space integration, physics glue, input,
 //! time control, log capture.
 //!
-//! Sits directly above the asset crates. It must never depend on `ename_editor` or `ename_game`:
+//! Sits directly above the asset crates. It must never depend on `ename_editor` or `example_game_lib`:
 //! if engine code needs something from a higher layer, move the shared type down or invert the
 //! call into an event. It does depend on `ename_asset_content`, because the `alias://` source has
 //! to be registered before `AssetPlugin` builds and this group owns `AssetPlugin`.

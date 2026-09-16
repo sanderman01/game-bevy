@@ -6,20 +6,23 @@ The long-form analysis behind this is in `scratch/crate-structure-review.md`.
 
 ## Naming
 
-Project codename is `ename`. Every crate is prefixed with it: `ename_engine`, `ename_asset_alias`,
-`ename_asset_package`, `ename_asset_content`, `ename_editor`, `ename_game`,
-`ename_xtask`, and the binary crate `ename`. Bare names like
-`engine` and `editor` collide with anything and resolve independently once there is more than one
-workspace.
+Project codename is `ename`. Every engine-side crate is prefixed with it: `ename_engine`,
+`ename_asset_alias`, `ename_asset_package`, `ename_asset_content`, `ename_editor`, `ename_remote`,
+`ename_mcp`, `ename_xtask`, and the binary crate `ename`. Bare names like `engine` and `editor`
+collide with anything and resolve independently once there is more than one workspace.
+
+`example_` crates are the exception: these are demo crates showing how a game project consumes
+the engine crates, not part of the engine itself, so they take the `example_` prefix instead. The
+workspace's `members` glob lists both prefixes.
 
 ## Layer graph
 
 ```
-ename (bin)          -> ename_engine, ename_game, dirs
+ename (bin)          -> ename_engine, example_game_lib, dirs
                         + ename_editor                      (feature `editor`)
                         + ename_remote                      (feature `agent`)
 ename_remote         -> ename_engine
-ename_game           -> ename_engine, ename_asset_alias
+example_game_lib     -> ename_engine, ename_asset_alias
 ename_editor         -> ename_engine
 ename_engine         -> ename_asset_content, bevy, avian3d, big_space
 ename_asset_content  -> ename_asset_alias, ename_asset_package, async-lock, bevy
@@ -114,7 +117,7 @@ it, so a layer above the engine never has to name that big_space system itself.
 
 A third-party type that crosses a boundary is re-exported by the crate that owns the dependency.
 `ename_engine::bigspace` re-exports the `big_space` `Grid` and `CellCoord` the editor needs, so
-`ename_editor` never names the git-pinned dependency itself. `ename_game` still depends on
+`ename_editor` never names the git-pinned dependency itself. `example_game_lib` still depends on
 `big_space` directly, for `spawn_big_space` and the floating-origin components. The cost this does
 not avoid is that `bigspace::grid` exposes `big_space::Grid` in its signatures, so every consumer
 of `ename_engine` is pinned to that git revision. That is accepted deliberately for now.

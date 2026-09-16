@@ -22,7 +22,7 @@ there are no cycles.
 The graph itself is in [design/crate-layout.md](design/crate-layout.md#layer-graph). Keep one copy;
 this file only states the rules that follow from it.
 
-`ename_engine` never depends on `ename_game` or `ename_editor`. It does depend on
+`ename_engine` never depends on `example_game_lib` or `ename_editor`. It does depend on
 `ename_asset_content`, because the `alias://` source has to be registered before `AssetPlugin`
 builds and `EnginePlugins` owns `AssetPlugin`; the asset crates are a layer below the engine, not
 beside it. If engine code needs something from a higher layer, the design is wrong: move the

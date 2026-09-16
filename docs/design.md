@@ -101,10 +101,10 @@ A binary aunched straight from `target/` falls back to Bevy's executable-directo
 - `ename_engine::bigspace::grid` exposes `big_space::Grid` in its signatures, so every consumer is
   pinned to that git revision. Accepted deliberately; newtype it if the engine is ever consumed
   outside this workspace.
-- The asset crates and `ename_game` have integration tests that run a headless `App`
+- The asset crates and `example_game_lib` have integration tests that run a headless `App`
   (`ename_asset_alias/tests/alias_reader.rs` and `alias_scan.rs`,
   `ename_asset_content/tests/alias_source.rs`,
-  `ename_game/tests/stage_addressing.rs`), using `TaskPoolPlugin` plus `AssetPlugin` over
+  `example_game_lib/tests/stage_addressing.rs`), using `TaskPoolPlugin` plus `AssetPlugin` over
   committed fixture trees in each crate's own `tests/fixtures`, never the `assets/` symlink, which
   is not present on a fresh clone. The walk itself needs none of that, because it runs through a
   `Vfs` trait: `ename_asset_alias/tests/asset_discovery.rs` drives it over an in-memory `FakeVfs`

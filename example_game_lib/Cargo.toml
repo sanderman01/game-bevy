@@ -1,5 +1,5 @@
 [package]
-name = "ename_game"
+name = "example_game_lib"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

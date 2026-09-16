@@ -24,8 +24,8 @@ bevy = { workspace = true }
 dirs.workspace = true
 ename_editor = { workspace = true, optional = true }
 ename_engine = { workspace = true }
-ename_game = { workspace = true }
 ename_remote = { workspace = true, optional = true }
+example_game_lib = { workspace = true }
 
 [lints]
 workspace = true

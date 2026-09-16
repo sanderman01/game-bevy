@@ -2,7 +2,7 @@
 //! integration.
 //!
 //! Sits above `ename_engine` and links into a target only when that target asks for it. A
-//! shipping build does not contain this crate, and it must never depend on `ename_game`. See
+//! shipping build does not contain this crate, and it must never depend on `example_game_lib`. See
 //! `docs/design/crate-layout.md`.
 //!
 //! Based on the example at:

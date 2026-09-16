@@ -38,7 +38,7 @@ Requires bevy = "0.19".
 | `ename` | The binary. Decides which layers link in. |
 | `ename_engine` | Runtime layer: camera rig, `big_space` floating origin, Avian physics glue, input, time control, log capture. |
 | `ename_editor` | egui editor: dock layout, selection, viewport, console, gizmos. Game-agnostic. |
-| `ename_game` | Where game-specific gameplay code goes. |
+| `example_game_lib` | Where game-specific gameplay code goes. |
 | `ename_asset_alias` | Addressing an asset by name. `asset_server.load("alias://core::airship")` instead of a path. |
 | `ename_asset_package` | Content packages: manifests, versions, load order, overrides. |
 | `ename_asset_content` | Where the previous two meet, plus the plugin that installs both. |

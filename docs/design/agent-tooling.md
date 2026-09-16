@@ -49,7 +49,7 @@ countdown that sits alongside `Time<Virtual>`'s paused flag -- lives in `ename_e
 `game.time.get` / `.set` is only a BRP surface over it. A pause menu wants the same thing,
 and the agent must not be the only way to reach it. The method reports the clock and nothing else:
 it used to report `GameState` too, which was the one reason `ename_remote` depended on
-`ename_game`. Dropping the field removed that arrow from the
+`example_game_lib`. Dropping the field removed that arrow from the
 [layer graph](crate-layout.md#layer-graph), so the side channel now sits directly on the engine.
 
 ## What the agent can actually see

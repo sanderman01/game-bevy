@@ -91,7 +91,7 @@ fn despawn_stage_members(world: &mut World, id: Option<StageId>) {
         .collect();
 
     // A container's `SourcePath` is recorded exactly as it was passed to `spawn_stage_root` (an
-    // `alias://` URL, for a stage `ename_game` opened by alias), but `StageSource` on that stage's
+    // `alias://` URL, for a stage `example_game_lib` opened by alias), but `StageSource` on that stage's
     // root is always the normalized form (see `resolve_source_path`'s doc). Comparing the two
     // directly would never match an alias-loaded stage's own container to itself.
     let content_index = world.get_resource::<ContentIndex>();

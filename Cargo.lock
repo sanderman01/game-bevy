@@ -2964,8 +2964,8 @@ dependencies = [
  "dirs",
  "ename_editor",
  "ename_engine",
- "ename_game",
  "ename_remote",
+ "example_game_lib",
 ]
 
 [[package]]
@@ -3031,15 +3031,6 @@ dependencies = [
  "ron",
  "thiserror 2.0.20",
  "uuid",
-]
-
-[[package]]
-name = "ename_game"
-version = "0.0.0"
-dependencies = [
- "bevy",
- "ename_asset_content",
- "ename_engine",
 ]
 
 [[package]]
@@ -3210,6 +3201,15 @@ checksum = "8be9f3dfaaffdae2972880079a491a1a8bb7cbed0b8dd7a347f668b4150a3b93"
 dependencies = [
  "event-listener",
  "pin-project-lite",
+]
+
+[[package]]
+name = "example_game_lib"
+version = "0.0.0"
+dependencies = [
+ "bevy",
+ "ename_asset_content",
+ "ename_engine",
 ]
 
 [[package]]

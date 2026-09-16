@@ -1,4 +1,4 @@
-//! `ename_game` -- gameplay lib.
+//! `example_game_lib` -- gameplay lib.
 //!
 //! This is where game-specific functionality goes.
 //! Sits above `ename_engine` and the asset crates and below the binary.
