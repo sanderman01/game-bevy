@@ -203,11 +203,22 @@ pub(crate) fn fly_camera_active(mouse: Res<ButtonInput<MouseButton>>) -> bool {
     mouse.pressed(FLY_CAMERA_BUTTON)
 }
 
-/// True while orbit is claiming the fly button: RMB *and* either Alt held. Orbit and plain fly
-/// are mutually exclusive -- see [`write_editor_camera_intent`]'s guard and [`apply_orbit`].
+/// True while orbit is claiming the fly button: RMB *and* [`alt_held`]. Orbit and plain fly are
+/// mutually exclusive -- see [`write_editor_camera_intent`]'s guard and [`apply_orbit`].
 fn orbit_active(mouse: &ButtonInput<MouseButton>, keyboard: &ButtonInput<KeyCode>) -> bool {
-    mouse.pressed(FLY_CAMERA_BUTTON)
-        && (keyboard.pressed(KeyCode::AltLeft) || keyboard.pressed(KeyCode::AltRight))
+    mouse.pressed(FLY_CAMERA_BUTTON) && alt_held(keyboard)
+}
+
+/// Shift, from either key. Bevy reports the two as distinct `KeyCode`s, so a binding that names
+/// only one silently does nothing on the other -- which is what the flight boost used to do.
+/// Every modifier in this module goes through this or [`alt_held`] so no site can drift again.
+fn shift_held(keyboard: &ButtonInput<KeyCode>) -> bool {
+    keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight)
+}
+
+/// Alt, from either key. See [`shift_held`].
+fn alt_held(keyboard: &ButtonInput<KeyCode>) -> bool {
+    keyboard.pressed(KeyCode::AltLeft) || keyboard.pressed(KeyCode::AltRight)
 }
 
 fn spawn_editor_camera(mut commands: Commands) {
@@ -272,7 +283,7 @@ fn scroll_ticks(wheel: &mut MessageReader<MouseWheel>) -> f64 {
 /// nudge per tick, or a coarse one while either Shift is held. Both Shift keys count, matching
 /// [`orbit_active`]'s treatment of Alt.
 fn scroll_factor(keyboard: &ButtonInput<KeyCode>, ticks: f64) -> f64 {
-    let base = if keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight) {
+    let base = if shift_held(keyboard) {
         SCROLL_COARSE_FACTOR
     } else {
         SCROLL_FINE_FACTOR
@@ -314,9 +325,7 @@ fn write_editor_camera_intent(
     keyboard.pressed(KeyCode::KeyD).then(|| intent.right += 1.0);
     keyboard.pressed(KeyCode::KeyE).then(|| intent.up += 1.0);
     keyboard.pressed(KeyCode::KeyQ).then(|| intent.up -= 1.0);
-    keyboard
-        .pressed(KeyCode::ShiftLeft)
-        .then(|| intent.boost = true);
+    shift_held(&keyboard).then(|| intent.boost = true);
 
     if let Some(total) = mouse_move.read().map(|e| e.delta).reduce(|sum, i| sum + i) {
         intent.pitch += total.y as f64 * -0.1;
@@ -430,7 +439,10 @@ fn apply_orbit(
 
     let ticks = scroll_ticks(&mut wheel);
     if ticks != 0.0 {
-        let distance = f64::from(focus.distance) * scroll_factor(&keyboard, ticks);
+        // Negated: scrolling up (positive ticks) zooms *in*, so it has to shrink the distance to
+        // the pivot. That is the convention Blender, Maya and Unreal all share, and the opposite of
+        // [`adjust_fly_speed`], where scrolling up raising the number is itself the convention.
+        let distance = f64::from(focus.distance) * scroll_factor(&keyboard, -ticks);
         focus.distance = distance.max(f64::from(MIN_ORBIT_DISTANCE)) as f32;
     }
 
@@ -905,7 +917,7 @@ mod tests {
         app.world_mut()
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::AltLeft);
-        scroll(&mut app, -1.0);
+        scroll(&mut app, 1.0);
         app.update();
 
         let after = app.world().get::<OrbitFocus>(camera).unwrap().distance;
@@ -913,6 +925,116 @@ mod tests {
             f64::from(after) >= f64::from(before) / MAX_SINGLE_TICK_FACTOR,
             "one scroll tick in must zoom towards the pivot, not onto it: distance went from \
              {before} to {after}"
+        );
+    }
+
+    #[test]
+    fn scrolling_up_zooms_the_orbit_camera_in_and_speeds_the_fly_camera_up() {
+        // The two wheel bindings move their numbers opposite ways on purpose: scrolling up means
+        // "more speed" but "less distance", both of which read as forward to the user.
+        let mut app = grid_attached_test_app();
+        let camera = editor_camera(&mut app);
+        let distance_before = app.world().get::<OrbitFocus>(camera).unwrap().distance;
+        let speed_before = fly_speed(&app, camera);
+
+        app.world_mut()
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Right);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::AltLeft);
+        scroll(&mut app, 1.0);
+        app.update();
+
+        let distance_after = app.world().get::<OrbitFocus>(camera).unwrap().distance;
+        assert!(
+            distance_after < distance_before,
+            "scrolling up must zoom in, moving the camera closer than {distance_before}, got \
+             {distance_after}"
+        );
+
+        // Now the fly binding, with Alt released so orbit stands down.
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .release(KeyCode::AltLeft);
+        scroll(&mut app, 1.0);
+        app.update();
+        let speed_after = fly_speed(&app, camera);
+        assert!(
+            speed_after > speed_before,
+            "scrolling up must speed the fly camera up from {speed_before}, got {speed_after}"
+        );
+    }
+
+    #[test]
+    fn either_shift_key_boosts_flight_and_coarsens_scrolling() {
+        // Bevy reports the two Shift keys as distinct `KeyCode`s, so a binding naming only one is
+        // silently dead on the other -- which the flight boost was.
+        fn speed_after_one_tick_holding(shift: KeyCode) -> f64 {
+            let mut app = test_app();
+            app.update();
+            let camera = editor_camera(&mut app);
+            app.world_mut()
+                .resource_mut::<ButtonInput<MouseButton>>()
+                .press(MouseButton::Right);
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(shift);
+            scroll(&mut app, 1.0);
+            app.update();
+            fly_speed(&app, camera)
+        }
+
+        let left = speed_after_one_tick_holding(KeyCode::ShiftLeft);
+        let right = speed_after_one_tick_holding(KeyCode::ShiftRight);
+        assert!(
+            (left - right).abs() < 1e-9,
+            "both Shift keys must coarsen scrolling alike: {left} vs {right}"
+        );
+        assert!(
+            left > INITIAL_FLY_SPEED * SCROLL_FINE_FACTOR,
+            "holding Shift should have taken the coarse step, got {left}"
+        );
+
+        // Measured as distance flown rather than read off `BigSpaceCameraInput`: nothing writes
+        // that resource on the free-flight path, and `apply_free_flight` clears the intent it
+        // consumes, so by the end of an update there is no boost flag left anywhere to inspect.
+        fn distance_flown_holding(shift: Option<KeyCode>) -> f32 {
+            let mut app = test_app();
+            app.update();
+            let camera = editor_camera(&mut app);
+            let start = app.world().get::<Transform>(camera).unwrap().translation;
+            app.world_mut()
+                .resource_mut::<ButtonInput<MouseButton>>()
+                .press(MouseButton::Right);
+            app.world_mut()
+                .resource_mut::<ButtonInput<KeyCode>>()
+                .press(KeyCode::KeyW);
+            if let Some(shift) = shift {
+                app.world_mut()
+                    .resource_mut::<ButtonInput<KeyCode>>()
+                    .press(shift);
+            }
+            for _ in 0..30 {
+                app.update();
+            }
+            app.world()
+                .get::<Transform>(camera)
+                .unwrap()
+                .translation
+                .distance(start)
+        }
+
+        let unboosted = distance_flown_holding(None);
+        let boosted_left = distance_flown_holding(Some(KeyCode::ShiftLeft));
+        let boosted_right = distance_flown_holding(Some(KeyCode::ShiftRight));
+        assert!(
+            boosted_left > unboosted * 1.05,
+            "left Shift must boost: flew {boosted_left} against {unboosted} unboosted"
+        );
+        assert!(
+            (boosted_left - boosted_right).abs() / boosted_left < 1e-6,
+            "both Shift keys must boost alike: {boosted_left} vs {boosted_right}"
         );
     }
 
