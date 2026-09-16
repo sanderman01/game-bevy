@@ -283,7 +283,7 @@
         "bevy_ecs::name::Name": "BigSpaceCameraController",
         "bevy_transform::components::global_transform::GlobalTransform": ((1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)),
         "bevy_transform::components::transform::Transform": (
-          translation: (5.0, 2.0, 10.0),
+          translation: (20.0, 20.0, 50.0),
           rotation: (-0.08602652, 0.22885363, 0.020308105, 0.9694395),
           scale: (1.0, 1.0, 1.0),
         ),
