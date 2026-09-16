@@ -1,0 +1,14 @@
+Cargo.lock
+  h_72decab43bbb75 3194-3203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9e9f49f7f5c88e66dfde135ad4a7f1f1c3f77ddf",
+  "prompts": {},
+  "humans": {
+    "h_72decab43bbb75": {
+      "author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
