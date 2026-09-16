@@ -3192,6 +3192,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "example_game_bin"
+version = "0.0.0"
+dependencies = [
+ "bevy",
+ "dirs",
+ "ename_engine",
+ "example_game_lib",
+]
+
+[[package]]
 name = "example_game_editor_bin"
 version = "0.0.0"
 dependencies = [
