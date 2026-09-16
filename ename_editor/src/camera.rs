@@ -77,6 +77,8 @@ impl EditorCameraIntent {
     }
 }
 
+const EDITOR_CAMERA_INIT_POS: Vec3 = vec3(0.0, 10.0, 60.0);
+
 /// The button that puts the fly camera in control. The only place this binding is written down;
 /// [`fly_camera_active`], [`write_editor_camera_intent`], and [`adjust_fly_speed`] all read it
 /// from here.
@@ -171,7 +173,8 @@ fn orbit_active(mouse: &ButtonInput<MouseButton>, keyboard: &ButtonInput<KeyCode
 }
 
 fn spawn_editor_camera(mut commands: Commands) {
-    let spawn_transform = Transform::from_xyz(0.0, 2.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y);
+    let spawn_transform =
+        Transform::from_translation(EDITOR_CAMERA_INIT_POS).looking_at(Vec3::ZERO, Vec3::Y);
     let focus_position =
         spawn_transform.translation + spawn_transform.forward() * DEFAULT_FOCUS_DISTANCE;
     // Not grid-attached at spawn (no target has ever been focused yet): a plain root entity,
