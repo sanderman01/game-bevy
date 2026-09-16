@@ -6,7 +6,6 @@
 
 use bevy::{app::TaskPoolPlugin, asset::AssetPlugin, prelude::*};
 use ename_asset_content::AssetContentPlugin;
-use ename_engine::stage::StageAppExt;
 
 /// Relative to the workspace root, which `BEVY_ASSET_ROOT` pins in `.cargo/config.toml`.
 const FIXTURE_ROOT: &str = "ename_game/tests/fixtures";
@@ -28,8 +27,7 @@ fn stage_is_opened_through_the_alias_source() {
         ..Default::default()
     })
     .add_plugins(bevy::world_serialization::WorldSerializationPlugin)
-    .add_plugins(ename_engine::stage::StagePlugin)
-    .register_stage_format(ename_engine::stage::DynamicWorldFormat);
+    .add_plugins(ename_engine::stage::StagePlugin);
 
     let entity = ename_engine::stage::open_stage(
         app.world_mut(),

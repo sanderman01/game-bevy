@@ -3,15 +3,14 @@
 
 use bevy::prelude::*;
 use ename_asset_alias::ALIAS_SOURCE;
-use ename_engine::stage::{DynamicWorldFormat, StageAppExt, open_stage};
+use ename_engine::stage::open_stage;
 
 /// Opens the starting stage on startup.
 pub struct StagePlugin;
 
 impl Plugin for StagePlugin {
     fn build(&self, app: &mut App) {
-        app.register_stage_format(DynamicWorldFormat)
-            .add_systems(Startup, open_start_stage);
+        app.add_systems(Startup, open_start_stage);
     }
 }
 

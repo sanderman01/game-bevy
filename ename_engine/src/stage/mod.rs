@@ -21,8 +21,8 @@ pub use workflow::{new_stage, open_stage, open_stage_additive, save_stage, stage
 
 use bevy::prelude::*;
 
-/// Registers stage identity types for reflection, inserts a production-default `AssetRoot`, and
-/// tags loaded stage content with its identity.
+/// Registers stage identity types for reflection, inserts a production-default `AssetRoot`,
+/// tags loaded stage content with its identity, and registers [`DynamicWorldFormat`].
 pub struct StagePlugin;
 
 impl Plugin for StagePlugin {
@@ -35,6 +35,7 @@ impl Plugin for StagePlugin {
             // `Camera::viewport`'s `Range<f32>` lacks default serde data, breaking real save/load.
             .register_type_data::<std::ops::Range<f32>, bevy::reflect::ReflectSerialize>()
             .register_type_data::<std::ops::Range<f32>, bevy::reflect::ReflectDeserialize>()
-            .add_observer(commands::tag_stage_membership_on_ready);
+            .add_observer(commands::tag_stage_membership_on_ready)
+            .register_stage_format(DynamicWorldFormat);
     }
 }
