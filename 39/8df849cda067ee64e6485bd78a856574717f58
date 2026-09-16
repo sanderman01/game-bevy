@@ -1,0 +1,16 @@
+ename_game/src/lib.rs
+  h_72decab43bbb75 1,3-6,9,11-12,17,20-33
+ename_game/tests/stage_addressing.rs
+  h_72decab43bbb75 32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "398df849cda067ee64e6485bd78a856574717f58",
+  "prompts": {},
+  "humans": {
+    "h_72decab43bbb75": {
+      "author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
