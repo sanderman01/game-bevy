@@ -1,0 +1,70 @@
+ename/src/main.rs
+  s_0f5235c6cef167::t_3db43ca2105d29 22-23
+scripts/check-layers.sh
+  s_0f5235c6cef167::t_af3710ce84e6bd 27,34,36-39,46
+docs/design.md
+  s_0f5235c6cef167::t_d507f10fe0d55c 104,107
+docs/design/crate-layout.md
+  s_0f5235c6cef167::t_d507f10fe0d55c 21,120
+  s_0f5235c6cef167::t_9c3f627db6ddb5 14-16
+  s_0f5235c6cef167::t_c7cc4c4ca93079 9-13
+  s_0f5235c6cef167::t_5740e7b9a42d3d 25
+docs/design/agent-tooling.md
+  s_0f5235c6cef167::t_d507f10fe0d55c 52
+docs/code-style.md
+  s_0f5235c6cef167::t_d507f10fe0d55c 25
+example_game_lib/src/lib.rs
+  s_0f5235c6cef167::t_c110ac94c948ed 1
+  s_0f5235c6cef167::t_47c0a8df06f126 2-33
+ename/Cargo.toml
+  s_0f5235c6cef167::t_59097ae7e9de0d 28
+ename_engine/src/lib.rs
+  s_0f5235c6cef167::t_d507f10fe0d55c 4
+ename_engine/src/stage/workflow.rs
+  s_0f5235c6cef167::t_d507f10fe0d55c 94
+ename_mcp/src/server.rs
+  s_0f5235c6cef167::t_d507f10fe0d55c 382
+ename_asset_content/tests/alias_source.rs
+  s_0f5235c6cef167::t_d507f10fe0d55c 173
+ename_editor/src/lib.rs
+  s_0f5235c6cef167::t_a939739df4611a 5
+ename_asset_alias/tests/alias_reader.rs
+  s_0f5235c6cef167::t_d507f10fe0d55c 78
+Cargo.toml
+  s_0f5235c6cef167::t_7944a5057807bd 47
+  s_0f5235c6cef167::t_2098363b549d2f 3
+example_game_lib/tests/fixtures/packages/core/airship.txt
+  s_0f5235c6cef167::t_47c0a8df06f126 1
+example_game_lib/tests/fixtures/packages/core/start_stage.scn.ron
+  s_0f5235c6cef167::t_47c0a8df06f126 1-4
+example_game_lib/tests/fixtures/packages/core/_alias_rules.toml
+  s_0f5235c6cef167::t_47c0a8df06f126 1-2
+README.md
+  s_0f5235c6cef167::t_d507f10fe0d55c 41
+example_game_lib/Cargo.toml
+  s_0f5235c6cef167::t_47c0a8df06f126 1,3-17
+  s_0f5235c6cef167::t_d1225e7eeba1d4 2
+example_game_lib/tests/stage_addressing.rs
+  s_0f5235c6cef167::t_e940a483b211f1 11
+  s_0f5235c6cef167::t_47c0a8df06f126 1-10,12-45
+example_game_lib/tests/fixtures/packages/core/manifest.toml
+  s_0f5235c6cef167::t_47c0a8df06f126 1-6
+Cargo.lock
+  s_0f5235c6cef167::t_7bcfc6fa257d79 2968,3206-3214
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "317928e978bd4c48e1a184a96edc64707fbdede7",
+  "prompts": {},
+  "sessions": {
+    "s_0f5235c6cef167": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0d39121c-8c99-45d6-937f-630107ce8422",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
