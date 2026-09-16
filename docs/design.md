@@ -13,6 +13,8 @@ acting on it.
 - [Asset aliases](assets-aliases.md). How an asset gets a name, and how the alias source resolves
   it.
 - [Asset packages](assets-packages.md). Search paths, manifests, and load order.
+- [Floating origin](design/floating-origin.md). Who holds big_space's `FloatingOrigin`, and why the
+  engine elects it rather than the stage file naming it.
 - [Input is intent](#input-is-intent)
 - [Bevy dependencies](#bevy-dependencies)
 - [Assets](#assets)
