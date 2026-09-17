@@ -10,6 +10,7 @@
 
 mod camera;
 mod console;
+mod game_view;
 mod gizmo;
 mod menu;
 mod panels;
@@ -41,6 +42,7 @@ impl PluginGroup for EditorPlugins {
             .add(selection::SelectionPlugin)
             .add(viewport::ViewportPlugin)
             .add(camera::EditorCameraPlugin)
+            .add(game_view::GameViewPlugin)
             .add(gizmo::GizmoPlugin)
     }
 }

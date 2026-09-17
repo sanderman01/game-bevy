@@ -145,6 +145,7 @@ impl egui_dock::TabViewer for TabViewer<'_> {
             EguiWindow::GameView => {
                 *self.active_viewport = ActiveViewport::Game;
                 *self.viewport_rect = ui.clip_rect();
+                crate::game_view::ui(ui, self.world);
             }
             EguiWindow::Hierarchy => {
                 let selected = hierarchy_ui(self.world, ui, self.selected_entities);
@@ -192,8 +193,11 @@ impl egui_dock::TabViewer for TabViewer<'_> {
         format!("{window:?}").into()
     }
 
+    /// Scene View is the one tab egui must not paint over: its camera renders straight into the
+    /// window behind the dock. Game View arrives as an egui texture and needs a background under
+    /// it, for the frames where there is no stage camera to draw.
     fn clear_background(&self, window: &Self::Tab) -> bool {
-        !matches!(window, EguiWindow::GameView | EguiWindow::SceneView)
+        !matches!(window, EguiWindow::SceneView)
     }
 }
 

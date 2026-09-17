@@ -43,6 +43,13 @@ impl StageFormat for DynamicWorldFormat {
             .deny_component::<bevy::camera::Exposure>()
             // Camera requirements recreate this runtime-interned render graph selection on load.
             .deny_component::<bevy::render::camera::CameraRenderGraph>()
+            // Which surface a camera renders into is runtime policy, like `FloatingOrigin`
+            // below: a shipping binary puts it on the window, the editor puts it in an offscreen
+            // image so the Game View tab can paint it. Saving whichever the running binary
+            // happened to pick would write the editor's own image handle -- an `Assets::add`
+            // handle with no asset path -- into the stage. Camera's required-component default
+            // restores `Window(Primary)` on load, which is what every stage means by it.
+            .deny_component::<bevy::camera::RenderTarget>()
             // `Children` is a derived list `ChildOf`'s insert hook rebuilds on load; serializing
             // it verbatim writes entity ids that may not be in `entities` (e.g. a non-StageMember
             // entity, like the editor's GridFollowCamera, temporarily parented under a stage's

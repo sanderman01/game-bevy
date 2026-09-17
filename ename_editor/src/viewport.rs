@@ -1,9 +1,10 @@
-//! Confines the editor's scene camera to the Scene View tab, and the game's camera (if any) to
-//! the Game View tab -- activating only whichever one the currently-selected dock tab shows.
+//! Confines the editor's scene camera to the Scene View tab, activating it only while that tab
+//! is the one the dock shows.
+//!
+//! The game's camera is not here: it renders offscreen, see `game_view.rs`.
 
 use bevy::{app::TransformGizmoRenderStep, camera::Viewport, prelude::*, window::PrimaryWindow};
 use bevy_egui::{EguiPostUpdateSet, EguiZoomFactor, PrimaryEguiContext};
-use ename_engine::camera::MainCamera;
 
 use crate::{
     camera::EditorCamera,
@@ -19,7 +20,7 @@ impl Plugin for ViewportPlugin {
         // the same frame.
         app.add_systems(
             PostUpdate,
-            (set_scene_camera_viewport, set_game_camera_viewport)
+            set_scene_camera_viewport
                 .after(EguiPostUpdateSet::EndPass)
                 .before(TransformGizmoRenderStep),
         );
@@ -58,27 +59,6 @@ fn set_scene_camera_viewport(
     zoom_factor: Single<&EguiZoomFactor, With<PrimaryEguiContext>>,
 ) {
     cam.is_active = ui_state.active_viewport == ActiveViewport::Scene;
-    if !cam.is_active {
-        return;
-    }
-    let scale_factor = window.scale_factor() * zoom_factor.zoom_factor;
-    if let Some(viewport) =
-        viewport_for(ui_state.viewport_rect, scale_factor, window.physical_size())
-    {
-        cam.viewport = Some(viewport);
-    }
-}
-
-/// `MainCamera` may not exist at all (no stage loaded, or a loaded stage that defines no
-/// camera). `Single` simply skips this system in that case -- the Game View tab stays blank,
-/// which is the intended behavior.
-fn set_game_camera_viewport(
-    ui_state: Res<UiState>,
-    window: Single<&Window, With<PrimaryWindow>>,
-    mut cam: Single<&mut Camera, With<MainCamera>>,
-    zoom_factor: Single<&EguiZoomFactor, With<PrimaryEguiContext>>,
-) {
-    cam.is_active = ui_state.active_viewport == ActiveViewport::Game;
     if !cam.is_active {
         return;
     }
