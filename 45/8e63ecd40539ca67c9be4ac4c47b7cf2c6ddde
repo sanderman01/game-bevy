@@ -1,0 +1,19 @@
+assets/examples/examples-stage/stage.scn.ron
+  s_703c03d25648ad::t_41b790aee6647c 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "458e63ecd40539ca67c9be4ac4c47b7cf2c6ddde",
+  "prompts": {},
+  "sessions": {
+    "s_703c03d25648ad": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7ee476c-f85f-46ed-a8eb-bc7044451647",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
