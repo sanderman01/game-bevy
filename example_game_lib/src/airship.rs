@@ -1,7 +1,14 @@
-//! Airship movement: turns [`PlayerInput`] into forces on a rigid body with an [`AirshipMovement`] component.
+//! Airship movement example: turns [`PlayerInput`] into forces on a rigid body with an [`AirshipMovement`] component.
 
 use avian3d::prelude::{Forces, WriteRigidBodyForces};
 use bevy::prelude::*;
+
+const KEY_RIGHT: KeyCode = KeyCode::KeyD;
+const KEY_LEFT: KeyCode = KeyCode::KeyA;
+const KEY_FORWARD: KeyCode = KeyCode::KeyW;
+const KEY_REARWARD: KeyCode = KeyCode::KeyS;
+const KEY_UP: KeyCode = KeyCode::Space;
+const KEY_DOWN: KeyCode = KeyCode::ControlLeft;
 
 /// Registers [`AirshipMovement`] and the system that drives it from [`PlayerInput`].
 pub struct AirshipMovementPlugin;
@@ -21,18 +28,22 @@ impl Plugin for AirshipMovementPlugin {
 #[reflect(Resource, Default, Debug, PartialEq)]
 pub struct PlayerInput {
     /// Steering: positive is right (D), negative is left (A).
-    pub x: f32,
+    pub steering_axis: f32,
     /// Throttle: positive is forward (W), negative is backward (S).
-    pub y: f32,
+    pub move_forward_axis: f32,
+    /// Altitude: positive is up (Shift), negative is down (Ctrl)
+    pub move_vertical_axis: f32,
 }
 
 fn read_player_input(keys: Res<ButtonInput<KeyCode>>, mut input: ResMut<PlayerInput>) {
     let axis = |positive: KeyCode, negative: KeyCode| {
         f32::from(keys.pressed(positive)) - f32::from(keys.pressed(negative))
     };
+
     input.set_if_neq(PlayerInput {
-        x: axis(KeyCode::KeyD, KeyCode::KeyA),
-        y: axis(KeyCode::KeyW, KeyCode::KeyS),
+        steering_axis: axis(KEY_RIGHT, KEY_LEFT),
+        move_forward_axis: axis(KEY_FORWARD, KEY_REARWARD),
+        move_vertical_axis: axis(KEY_UP, KEY_DOWN),
     });
 }
 
@@ -41,7 +52,9 @@ fn read_player_input(keys: Res<ButtonInput<KeyCode>>, mut input: ResMut<PlayerIn
 #[reflect(Component, Default, Debug, PartialEq)]
 pub struct AirshipMovement {
     /// Thrust along the entity's forward axis at full throttle, in newtons.
-    pub thrust: f32,
+    pub thrust_forward: f32,
+    /// Thrust along the entity's vertical axis at full throttle, in newtons.
+    pub thrust_vertical: f32,
     /// Yaw torque at full steering, in newton-metres.
     pub turn_torque: f32,
 }
@@ -49,7 +62,8 @@ pub struct AirshipMovement {
 impl Default for AirshipMovement {
     fn default() -> Self {
         Self {
-            thrust: 20_000.0,
+            thrust_forward: 20_000.0,
+            thrust_vertical: 20_000.0,
             turn_torque: 5_000.0,
         }
     }
@@ -58,7 +72,8 @@ impl Default for AirshipMovement {
 fn drive_airship(input: Res<PlayerInput>, mut airships: Query<(&AirshipMovement, Forces)>) {
     for (movement, mut forces) in &mut airships {
         // Forward is -Z and steering right is a negative yaw about +Y.
-        forces.apply_local_force(Vec3::NEG_Z * (input.y * movement.thrust));
-        forces.apply_local_torque(Vec3::NEG_Y * (input.x * movement.turn_torque));
+        forces.apply_local_force(Vec3::NEG_Z * (input.move_forward_axis * movement.thrust_forward));
+        forces.apply_force(Vec3::Y * (input.move_vertical_axis * movement.thrust_vertical));
+        forces.apply_local_torque(Vec3::NEG_Y * (input.steering_axis * movement.turn_torque));
     }
 }

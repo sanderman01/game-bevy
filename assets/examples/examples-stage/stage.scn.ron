@@ -97,7 +97,8 @@
         "ename_engine::bigspace::camera::FloatingOriginCandidate": (0),
         "ename_engine::stage::identity::StageMember": (("8d267113-91f2-48c5-ba39-54577a6e2e19")),
         "example_game_lib::airship::AirshipMovement": (
-          thrust: 200000.0,
+          thrust_forward: 200000.0,
+          thrust_vertical: 200000.0,
           turn_torque: 100000.0,
         ),
       },
