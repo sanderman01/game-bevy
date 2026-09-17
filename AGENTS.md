@@ -32,7 +32,9 @@ Where the two overlap, this file wins.
 ## Building and testing
 
 Use `cargo clippy` and `cargo build` to check for correctness and build success.
-Use `cargo run` to test at runtime.
+To test at runtime, run `cargo run -p example_game_editor_bin`, not `example_game_bin`.
+The editor binary is the only target that links `ename_remote`, so it is the only one the
+MCP tools in [docs/agent-tools.md](docs/agent-tools.md) can reach.
 
 ## Code style
 
