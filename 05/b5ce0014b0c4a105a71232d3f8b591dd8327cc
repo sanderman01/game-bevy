@@ -1,0 +1,51 @@
+example_game_lib/src/lib.rs
+  s_e96988d16dc586::t_85f11b9808a1cb 8-9,19-21
+example_game_lib/src/airship.rs
+  s_e96988d16dc586::t_09d933b143c577 2-10,15-64
+  s_e96988d16dc586::t_23195ac13f7041 1
+  s_e96988d16dc586::t_6b303ee8ee9690 11-14
+example_game_lib/Cargo.toml
+  s_e96988d16dc586::t_ae2da3a16fcae7 10
+Cargo.toml
+  s_1601109d739301::t_1f64fab19bb8cd 30
+assets/examples/examples-stage/stage.scn.ron
+  s_34fa36c9d7d42c::t_555348f2d37113 95-98
+  s_34fa36c9d7d42c::t_3b1063cbf4fc40 30
+  s_34fa36c9d7d42c::t_b5b7b07b99d3cf 31
+  s_34fa36c9d7d42c::t_8230fe27972a75 32
+  s_34fa36c9d7d42c::t_ea2b4c8caa5656 21,23
+Cargo.lock
+  s_1601109d739301::t_236efa3f65c86e 3220,4158-4159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "05b5ce0014b0c4a105a71232d3f8b591dd8327cc",
+  "prompts": {},
+  "sessions": {
+    "s_1601109d739301": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ebc6cd89-5de8-4f62-a682-437a8a725434",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_34fa36c9d7d42c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e8c9d819-25ec-440a-9b5b-3a8bc6087ed8",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_e96988d16dc586": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "97311584-1ade-415e-b57d-183e9fe8510c",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
