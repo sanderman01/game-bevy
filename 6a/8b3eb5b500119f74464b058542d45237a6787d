@@ -1,0 +1,19 @@
+assets/examples/examples-stage/stage.scn.ron
+  s_fac4aefe1c19ca::t_73bcc24bf63050 117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6a8b3eb5b500119f74464b058542d45237a6787d",
+  "prompts": {},
+  "sessions": {
+    "s_fac4aefe1c19ca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "34f2250d-df48-4d42-9275-2d48b3bded20",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
