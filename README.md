@@ -22,6 +22,16 @@ standard Bevy equivalents, and this project should become less neccesary over ti
 
 This project also serves as a testbed for some of my ideas e.g. asset alias over path or uuid.
 
+## AI Disclaimer
+
+I use agentic coding tools like Claude and Codex in developing this project,
+partially in an effort to gain personal experience with those tools and that tech, and partially for productivity reasons.
+I tend to be hands-on, giving agents small tasks and frequent human judgment.
+
+I try to review most changes with a careful human eye, but code quality may still
+vary as a result of using these tools, as not every piece of code gets the same level of human review attention.
+Some area of the code and docs I consider good quality, while others are best considered as AI slop to be cleaned up later.
+
 ## Status
 
 Work in progress. Every crate is at version `0.0.0`, nothing is published, and there is no
