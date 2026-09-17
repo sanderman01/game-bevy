@@ -4,13 +4,12 @@ mod collider_grid_transform;
 mod grid_writeback;
 
 use avian3d::{
-    PhysicsPlugins,
-    debug_render::PhysicsDebugPlugin,
-    dynamics::rigid_body::mass_properties::MassPropertySystems,
-    physics_transform::{PhysicsTransformConfig, PhysicsTransformSystems},
+    PhysicsPlugins, debug_render::PhysicsDebugPlugin, physics_transform::PhysicsTransformConfig,
     prelude::PhysicsSystems,
 };
 use bevy::prelude::*;
+
+use crate::bigspace::GridSystems;
 
 /// Adds avian3d, and replaces its `position_to_transform` writeback with one that survives
 /// an entity being recentered into another grid cell.
@@ -29,13 +28,12 @@ impl Plugin for PhysicsIntegrationPlugin {
             })
             .add_systems(
                 FixedPostUpdate,
-                (
-                    collider_grid_transform::collider_transform_from_global
-                        .in_set(PhysicsSystems::Prepare)
-                        .after(PhysicsTransformSystems::Propagate)
-                        .before(MassPropertySystems::UpdateColliderMassProperties),
-                    grid_writeback::physics_position_to_transform.after(PhysicsSystems::Writeback),
-                ),
+                grid_writeback::physics_position_to_transform.after(PhysicsSystems::Writeback),
+            )
+            .add_systems(
+                PostUpdate,
+                collider_grid_transform::collider_transform_from_global
+                    .in_set(GridSystems::Recentered),
             );
     }
 }
