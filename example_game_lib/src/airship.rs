@@ -1,6 +1,9 @@
 //! Airship movement example: turns [`PlayerInput`] into forces on a rigid body with an [`AirshipMovement`] component.
 
-use avian3d::prelude::{Forces, WriteRigidBodyForces};
+use avian3d::{
+    dynamics::rigid_body::forces::ReadRigidBodyForces,
+    prelude::{Forces, WriteRigidBodyForces},
+};
 use bevy::prelude::*;
 
 const KEY_RIGHT: KeyCode = KeyCode::KeyD;
@@ -9,6 +12,8 @@ const KEY_FORWARD: KeyCode = KeyCode::KeyW;
 const KEY_REARWARD: KeyCode = KeyCode::KeyS;
 const KEY_UP: KeyCode = KeyCode::Space;
 const KEY_DOWN: KeyCode = KeyCode::ControlLeft;
+
+const UP_DIR: Vec3 = vec3(0.0, 1.0, 0.0);
 
 /// Registers [`AirshipMovement`] and the system that drives it from [`PlayerInput`].
 pub struct AirshipMovementPlugin;
@@ -57,6 +62,10 @@ pub struct AirshipMovement {
     pub thrust_vertical: f32,
     /// Yaw torque at full steering, in newton-metres.
     pub turn_torque: f32,
+    // Proportional gain, in newton-metres.
+    pub align_stability: f32,
+    // Derivative gain to stop wobble, in newton-metres.
+    pub align_damping: f32,
 }
 
 impl Default for AirshipMovement {
@@ -65,15 +74,25 @@ impl Default for AirshipMovement {
             thrust_forward: 20_000.0,
             thrust_vertical: 20_000.0,
             turn_torque: 5_000.0,
+            align_stability: 50_000.0,
+            align_damping: 2_000.0,
         }
     }
 }
 
 fn drive_airship(input: Res<PlayerInput>, mut airships: Query<(&AirshipMovement, Forces)>) {
     for (movement, mut forces) in &mut airships {
+        // Apply movement input forces
         // Forward is -Z and steering right is a negative yaw about +Y.
         forces.apply_local_force(Vec3::NEG_Z * (input.move_forward_axis * movement.thrust_forward));
         forces.apply_force(Vec3::Y * (input.move_vertical_axis * movement.thrust_vertical));
         forces.apply_local_torque(Vec3::NEG_Y * (input.steering_axis * movement.turn_torque));
+
+        // Align back to y = up over time.
+        let body_up = forces.rotation() * UP_DIR;
+        let direction_error = Vec3::cross(body_up, UP_DIR);
+        let torque = (direction_error * movement.align_stability)
+            - (forces.angular_velocity() * movement.align_damping);
+        forces.apply_torque(torque);
     }
 }
