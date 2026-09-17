@@ -12,11 +12,21 @@ Why the design is shaped this way is in
 
 ## Running it
 
-The `agent` feature is on by default, so a plain run listens on `127.0.0.1:15702`.
+Run the editor binary. It is the only target that links `ename_remote`, so it is the only one
+with a server to talk to:
 
 ```sh
 cargo run -p example_game_editor_bin
 ```
+
+It listens on `127.0.0.1:15702`. `example_game_bin` is the shipping composition and has no BRP
+server at all -- it runs and renders normally, nothing binds the port, and every tool call fails
+with "cannot reach the game's remote server" as though the game were down. See Security below for
+why the split exists.
+
+Expect a long first build: the editor pulls in egui and the dev-only Bevy features, and this
+workspace optimizes dependencies, so a target directory warm for `example_game_bin` still
+recompiles most of the render stack. Give it ten minutes before concluding anything is wrong.
 
 Build the sidecar once:
 
