@@ -47,9 +47,9 @@ Requires bevy = "0.19".
 | --- | --- |
 | `example_game_bin` | Minimal example binary: engine plus game, no editor or agent tooling. |
 | `example_game_editor_bin` | Example binary with the editor and agent tooling linked in. |
-| `ename_engine` | Runtime layer: camera rig, `big_space` floating origin, Avian physics glue, input, time control, log capture. |
-| `ename_editor` | egui editor: dock layout, selection, viewport, console, gizmos. Game-agnostic. |
 | `example_game_lib` | Where game-specific gameplay code goes. |
+| `ename_engine` | Core runtime layer: camera rig, `big_space` floating origin, Avian physics glue, input, time control, log capture. |
+| `ename_editor` | egui editor: dock layout, selection, viewport, console, gizmos. Game-agnostic. |
 | `ename_asset_alias` | Addressing an asset by name. `asset_server.load("alias://core::airship")` instead of a path. |
 | `ename_asset_package` | Content packages: manifests, versions, load order, overrides. |
 | `ename_asset_content` | Where the previous two meet, plus the plugin that installs both. |
