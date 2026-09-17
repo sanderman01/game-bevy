@@ -3217,6 +3217,7 @@ dependencies = [
 name = "example_game_lib"
 version = "0.0.0"
 dependencies = [
+ "avian3d",
  "bevy",
  "ename_asset_content",
  "ename_engine",
@@ -4154,6 +4155,8 @@ dependencies = [
  "num-traits",
  "png",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]

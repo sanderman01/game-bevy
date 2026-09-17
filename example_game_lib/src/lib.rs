@@ -5,6 +5,8 @@
 //! It never reaches into the editor.
 //! See `docs/design/crate-layout.md`.
 
+pub mod airship;
+
 use bevy::{app::PluginGroupBuilder, prelude::*};
 use ename_engine::stage::open_stage;
 
@@ -14,7 +16,9 @@ pub struct GamePlugins;
 
 impl PluginGroup for GamePlugins {
     fn build(self) -> PluginGroupBuilder {
-        PluginGroupBuilder::start::<Self>().add(StartPlugin)
+        PluginGroupBuilder::start::<Self>()
+            .add(StartPlugin)
+            .add(airship::AirshipMovementPlugin)
     }
 }
 

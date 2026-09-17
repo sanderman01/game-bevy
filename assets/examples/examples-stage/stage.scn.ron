@@ -18,13 +18,18 @@
           linear_damping_rhs: 0.0,
           angular_damping_rhs: 0.0,
         ),
+        "avian3d::dynamics::rigid_body::AngularDamping": (1.0),
         "avian3d::dynamics::rigid_body::AngularVelocity": ((0.0, 0.0, 0.0)),
+        "avian3d::dynamics::rigid_body::LinearDamping": (0.2),
         "avian3d::dynamics::rigid_body::LinearVelocity": ((0.0, 0.0, 0.0)),
         "avian3d::dynamics::rigid_body::RigidBody": Dynamic,
         "avian3d::dynamics::rigid_body::forces::AccumulatedLocalAcceleration": (
           linear: (0.0, 0.0, 0.0),
           angular: (0.0, 0.0, 0.0),
         ),
+        "avian3d::dynamics::rigid_body::forces::ConstantForce": ((0.0, 98100.0, 0.0)),
+        "avian3d::dynamics::rigid_body::mass_properties::components::Mass": (10000.0),
+        "avian3d::dynamics::rigid_body::mass_properties::components::NoAutoMass": (),
         "avian3d::dynamics::rigid_body::mass_properties::components::computed::ComputedAngularInertia": (
           inverse: (
             m00: 0.0,
@@ -72,7 +77,7 @@
         "bevy_camera::visibility::ViewVisibility": (0),
         "bevy_camera::visibility::Visibility": Inherited,
         "bevy_ecs::hierarchy::ChildOf": (4294966707),
-        "bevy_ecs::name::Name": "core::airship",
+        "bevy_ecs::name::Name": "examples::airship",
         "bevy_transform::components::global_transform::GlobalTransform": ((1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 5.0, 0.0)),
         "bevy_transform::components::transform::Transform": (
           translation: (0.0, 5.0, 0.0),
@@ -80,13 +85,17 @@
           scale: (1.0, 1.0, 1.0),
         ),
         "bevy_transform::components::transform::TransformTreeChanged": (),
-        "bevy_world_serialization::components::WorldAssetRoot": (Path("alias://core::airship#Scene0")),
+        "bevy_world_serialization::components::WorldAssetRoot": (Path("alias://examples::airship#Scene0")),
         "big_space::grid::cell::CellCoord": (
           x: 0,
           y: 0,
           z: 0,
         ),
         "ename_engine::stage::identity::StageMember": (("8d267113-91f2-48c5-ba39-54577a6e2e19")),
+        "example_game_lib::airship::AirshipMovement": (
+          thrust: 200000.0,
+          turn_torque: 100000.0,
+        ),
       },
     ),
     4294966698: (
@@ -95,7 +104,7 @@
         "bevy_camera::visibility::ViewVisibility": (0),
         "bevy_camera::visibility::Visibility": Inherited,
         "bevy_ecs::hierarchy::ChildOf": (4294966707),
-        "bevy_ecs::name::Name": "core::map",
+        "bevy_ecs::name::Name": "examples::map",
         "bevy_transform::components::global_transform::GlobalTransform": ((1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0)),
         "bevy_transform::components::transform::Transform": (
           translation: (0.0, -1500.0, 0.0),
@@ -103,7 +112,7 @@
           scale: (1.0, 1.0, 1.0),
         ),
         "bevy_transform::components::transform::TransformTreeChanged": (),
-        "bevy_world_serialization::components::WorldAssetRoot": (Path("alias://core::map#Scene0")),
+        "bevy_world_serialization::components::WorldAssetRoot": (Path("alias://examples::map#Scene0")),
         "big_space::grid::cell::CellCoord": (
           x: 0,
           y: 0,

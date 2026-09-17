@@ -27,7 +27,7 @@ undocumented_unsafe_blocks = "warn"
 anyhow = "1.0.100"
 async-lock = "3.4.2"
 avian3d = "0.7.0"
-bevy = { version = "0.19.1", default-features = true }
+bevy = { version = "0.19.1", default-features = true, features = ["jpeg"] }
 bevy-inspector-egui = { version = "0.37.0", features = ["highlight_changes"] }
 bevy_egui = "0.40"
 big_space = { git = "https://github.com/aevyrie/big_space", rev = "5f25522", features = ["debug", "camera"] }
