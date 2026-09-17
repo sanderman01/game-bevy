@@ -1,0 +1,32 @@
+ename_editor/src/viewport.rs
+  s_04f78b93d98714::t_c6b50d6b15bc42 1-4,23
+ename_editor/src/panels.rs
+  s_04f78b93d98714::t_263b53f06af28f 148,196-198,200
+ename_editor/src/game_view.rs
+  s_04f78b93d98714::t_57e67f3964c791 1-65,67-70,83-110,112-136,138-168
+  s_04f78b93d98714::t_8a7efd4433319c 78-81
+  s_04f78b93d98714::t_b2b4a0ca075fc9 66,71,77,82
+  s_04f78b93d98714::t_6bd66eb5f29447 111
+  s_04f78b93d98714::t_f2efa4fa6debea 72-76
+  s_04f78b93d98714::t_62e738e8da4129 137
+ename_engine/src/stage/dynamic_world_format.rs
+  s_04f78b93d98714::t_9cd30fd9773401 46-52
+ename_editor/src/lib.rs
+  s_04f78b93d98714::t_263b53f06af28f 13,45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5de4021d5d769de84e5312466dc95cc317fcfb16",
+  "prompts": {},
+  "sessions": {
+    "s_04f78b93d98714": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5fd45141-1e08-4fce-97c2-4436521009dd",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
