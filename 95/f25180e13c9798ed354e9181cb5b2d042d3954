@@ -1,0 +1,30 @@
+scripts/check-layers.sh
+  s_d69d2e7e6793bd::t_c289157c39a584 11-12,15
+  s_d69d2e7e6793bd::t_58bde142479c80 47-50
+docs/design/crate-layout.md
+  s_d69d2e7e6793bd::t_7b291958cea528 25
+  s_d69d2e7e6793bd::t_198acee40b2e40 88-90
+  s_d69d2e7e6793bd::t_7e22c7db32d810 18-19
+docs/design/agent-tooling.md
+  s_d69d2e7e6793bd::t_0e4b8fddf7b11e 15-19
+docs/agent-tools.md
+  s_d69d2e7e6793bd::t_2218fff1f957dc 46-53
+.github/workflows/ci.yml
+  s_d69d2e7e6793bd::t_8ca95782b581bf 34-37,39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "95f25180e13c9798ed354e9181cb5b2d042d3954",
+  "prompts": {},
+  "sessions": {
+    "s_d69d2e7e6793bd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4ec7e0f2-5b99-4157-81a5-752e36d82f70",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
