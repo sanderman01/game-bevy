@@ -1,0 +1,14 @@
+assets/examples/examples-stage/stage.scn.ron
+  h_72decab43bbb75 100-102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2c33780bff73396e7701a5153043053631cbd16c",
+  "prompts": {},
+  "humans": {
+    "h_72decab43bbb75": {
+      "author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
