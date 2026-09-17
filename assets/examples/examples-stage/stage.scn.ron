@@ -114,6 +114,7 @@
           default_density: (1.0),
           config: {},
         ),
+        "avian3d::dynamics::rigid_body::RigidBody": Static,
         "bevy_camera::visibility::InheritedVisibility": (false),
         "bevy_camera::visibility::ViewVisibility": (0),
         "bevy_camera::visibility::Visibility": Inherited,
