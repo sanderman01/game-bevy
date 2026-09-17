@@ -1,0 +1,16 @@
+assets/examples/examples-stage/stage.scn.ron
+  h_72decab43bbb75 100-101
+example_game_lib/src/airship.rs
+  h_72decab43bbb75 1,6-12,31,33-35,42,44-46,55-57,65-66,75-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5efeaeda8c2fade0a27001e4dffcf24101be30b0",
+  "prompts": {},
+  "humans": {
+    "h_72decab43bbb75": {
+      "author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
