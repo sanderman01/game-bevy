@@ -1,0 +1,14 @@
+example_game_lib/src/airship.rs
+  h_72decab43bbb75 3-6,16-17,65-68,77-78,85,90-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "993e7a84e98760e1168aea0b1b5f10a020fd35c9",
+  "prompts": {},
+  "humans": {
+    "h_72decab43bbb75": {
+      "author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
