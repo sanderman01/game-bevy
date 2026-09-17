@@ -17,12 +17,20 @@ pub(crate) struct SelectionPlugin;
 impl Plugin for SelectionPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(MeshPickingPlugin)
+            .init_gizmo_group::<EditorGizmos>()
             .add_systems(Update, draw_mesh_intersections)
             .add_systems(PostUpdate, handle_pick_events.in_set(EditorSystems::Select));
     }
 }
 
-fn draw_mesh_intersections(pointers: Query<&PointerInteraction>, mut gizmos: Gizmos) {
+/// The editor's own gizmos. A group of its own rather than the default one, because the default
+/// group is what switches big_space's cell-partition bounds off -- see
+/// `ename_engine::debug_overlay`.
+#[derive(Default, Reflect, GizmoConfigGroup)]
+#[reflect(Default)]
+pub(crate) struct EditorGizmos;
+
+fn draw_mesh_intersections(pointers: Query<&PointerInteraction>, mut gizmos: Gizmos<EditorGizmos>) {
     for (point, normal) in pointers
         .iter()
         .filter_map(|interaction| interaction.get_nearest_hit())

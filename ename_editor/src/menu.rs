@@ -1,20 +1,23 @@
 //! The top menu bar: `File` dropdown for stage operations (new/open/open-additive/save), and
-//! `View` dropdown for camera/viewport toggles (freeze origin). The stage operations themselves
-//! live in `ename_engine::stage`; this module only draws the buttons, resolves the currently
-//! selected stage from the Hierarchy panel's selection, and asks the OS for a file when needed.
+//! `View` dropdown for camera/viewport toggles (freeze origin) and debug gizmo overlays. The
+//! stage operations themselves live in `ename_engine::stage`; this module only draws the buttons,
+//! resolves the currently selected stage from the Hierarchy panel's selection, and asks the OS for
+//! a file when needed.
 
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 use bevy_inspector_egui::bevy_inspector::hierarchy::SelectedEntities;
 use ename_engine::bigspace::{CellCoord, FrozenOrigin, set_origin_frozen};
+use ename_engine::debug_overlay::DebugOverlays;
 use ename_engine::stage::{
     AssetRoot, SaveStageError, StageFormats, StageId, new_stage, open_stage, open_stage_additive,
     save_stage, stage_of, write_stage_file,
 };
 
 /// Draws the top menu bar's `File` and `View` menus: `File` for stage operations
-/// (new/open/open-additive/save), and `View` for the camera's Freeze Origin toggle.
+/// (new/open/open-additive/save), and `View` for the camera's Freeze Origin toggle and the debug
+/// gizmo overlays.
 pub(crate) fn ui(ui: &mut egui::Ui, world: &mut World, selected: &mut SelectedEntities) {
     egui::MenuBar::new().ui(ui, |ui| {
         ui.menu_button("File", |ui| {
@@ -47,31 +50,57 @@ pub(crate) fn ui(ui: &mut egui::Ui, world: &mut World, selected: &mut SelectedEn
             });
         });
         ui.menu_button("View", |ui| {
-            let Ok(camera) = world
-                .query_filtered::<Entity, With<crate::camera::EditorCamera>>()
-                .single(world)
-            else {
-                return;
-            };
-            let frozen = world.get::<FrozenOrigin>(camera).is_some();
-            let has_grid = world.get::<CellCoord>(camera).is_some();
-
-            ui.add_enabled_ui(has_grid, |ui| {
-                let mut checked = frozen;
-                if ui
-                    .checkbox(&mut checked, "Freeze Camera Origin")
-                    .on_hover_text(
-                        "Keep flying without recentering the world around the camera. \
-                         Disabled with no Grid loaded -- there is nothing to freeze.",
-                    )
-                    .changed()
-                {
-                    set_origin_frozen(world, camera, checked);
-                    ui.close();
-                }
-            });
+            freeze_origin_item(ui, world);
+            ui.separator();
+            debug_overlay_items(ui, world);
         });
     });
+}
+
+/// Draws the Freeze Origin checkbox. Disabled, rather than hidden, with no grid loaded: the
+/// toggle is a property of the camera, and the camera is still there.
+fn freeze_origin_item(ui: &mut egui::Ui, world: &mut World) {
+    let Ok(camera) = world
+        .query_filtered::<Entity, With<crate::camera::EditorCamera>>()
+        .single(world)
+    else {
+        return;
+    };
+    let frozen = world.get::<FrozenOrigin>(camera).is_some();
+    let has_grid = world.get::<CellCoord>(camera).is_some();
+
+    ui.add_enabled_ui(has_grid, |ui| {
+        let mut checked = frozen;
+        if ui
+            .checkbox(&mut checked, "Freeze Camera Origin")
+            .on_hover_text(
+                "Keep flying without recentering the world around the camera. \
+                 Disabled with no Grid loaded -- there is nothing to freeze.",
+            )
+            .changed()
+        {
+            set_origin_frozen(world, camera, checked);
+            ui.close();
+        }
+    });
+}
+
+/// Draws the debug gizmo overlay checkboxes. Writing the resource back only when something
+/// actually changed keeps `DebugOverlays` from being marked changed every frame the menu is open.
+fn debug_overlay_items(ui: &mut egui::Ui, world: &mut World) {
+    let mut overlays = *world.resource::<DebugOverlays>();
+    let mut changed = ui
+        .checkbox(&mut overlays.physics, "Avian Physics Gizmos")
+        .on_hover_text("Collider wireframes, body axes and joints, drawn by avian3d.")
+        .changed();
+    changed |= ui
+        .checkbox(&mut overlays.grids, "Big Space Grid Gizmos")
+        .on_hover_text("big_space's grid axes and the bounds of the cells around the origin.")
+        .changed();
+
+    if changed {
+        *world.resource_mut::<DebugOverlays>() = overlays;
+    }
 }
 
 /// Saves `id` back to its recorded source, or -- for a stage that has never been saved -- asks

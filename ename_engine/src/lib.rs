@@ -9,6 +9,7 @@
 
 pub mod bigspace;
 pub mod camera;
+pub mod debug_overlay;
 pub mod log;
 pub mod physics;
 pub mod stage;
@@ -124,6 +125,7 @@ impl PluginGroup for EnginePlugins {
             // No longer bundled with BigSpaceDefaultPlugins as of big_space 0.13.
             .add_group(BigSpaceDebugPlugins::default())
             .add(bigspace::BigSpacePlugin)
+            .add(debug_overlay::DebugOverlayPlugin)
             .add(camera::VirtualCameraPlugin)
             .add(stage::StagePlugin)
             .add(physics::PhysicsIntegrationPlugin)

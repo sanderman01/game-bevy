@@ -16,6 +16,7 @@ acting on it.
 - [Floating origin](design/floating-origin.md). Who holds big_space's `FloatingOrigin`, and why the
   engine elects it rather than the stage file naming it.
 - [Input is intent](#input-is-intent)
+- [Debug overlays](#debug-overlays)
 - [Bevy dependencies](#bevy-dependencies)
 - [Assets](#assets)
 - [Open questions](#open-questions)
@@ -39,6 +40,22 @@ frame based on which is true, ordering the two apply systems in one `.chain()` s
 them ever observes and clears that frame's intent. `fly_camera_active` in `ename_editor::camera` is
 the one place the W/E-claiming rule is written down. While the right mouse button is held the fly
 camera claims the keyboard and the gizmo's W/E/R/X shortcuts stand down.
+
+## Debug overlays
+
+avian3d's `PhysicsDebugPlugin` and big_space's `BigSpaceDebugPlugins` are always installed, and
+both overlays start off. `ename_engine::debug_overlay::DebugOverlays` is the single switch; the
+editor's `View` menu is the only thing that flips it today. Installing them unconditionally and
+switching them at runtime beats a cargo feature: the question "is the collider where I think it
+is" comes up mid-session, and a feature answers it only after a rebuild.
+
+Switching them means writing `GizmoConfig::enabled` on the groups the two plugins draw through.
+avian has one group of its own, `PhysicsGizmos`, and that is the whole story there. big_space
+splits over two: the grid axes go through a group private to that crate, reachable only by
+reflected type path, and the cell partition bounds through Bevy's *default* group. So the default
+group is, in this project, big_space's -- which is why the editor's own pointer-hit gizmos moved
+into `EditorGizmos`. Anything new that draws gizmos needs its own group too, or it disappears with
+the grid overlay.
 
 ## Bevy dependencies
 
