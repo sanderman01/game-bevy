@@ -1,9 +1,13 @@
 //! Physics integration: avian3d configured to work inside big_space grids.
 
+mod collider_grid_transform;
 mod grid_writeback;
 
 use avian3d::{
-    PhysicsPlugins, debug_render::PhysicsDebugPlugin, physics_transform::PhysicsTransformConfig,
+    PhysicsPlugins,
+    debug_render::PhysicsDebugPlugin,
+    dynamics::rigid_body::mass_properties::MassPropertySystems,
+    physics_transform::{PhysicsTransformConfig, PhysicsTransformSystems},
     prelude::PhysicsSystems,
 };
 use bevy::prelude::*;
@@ -25,7 +29,13 @@ impl Plugin for PhysicsIntegrationPlugin {
             })
             .add_systems(
                 FixedPostUpdate,
-                grid_writeback::physics_position_to_transform.after(PhysicsSystems::Writeback),
+                (
+                    collider_grid_transform::collider_transform_from_global
+                        .in_set(PhysicsSystems::Prepare)
+                        .after(PhysicsTransformSystems::Propagate)
+                        .before(MassPropertySystems::UpdateColliderMassProperties),
+                    grid_writeback::physics_position_to_transform.after(PhysicsSystems::Writeback),
+                ),
             );
     }
 }
