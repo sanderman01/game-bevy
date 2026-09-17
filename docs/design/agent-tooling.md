@@ -12,11 +12,11 @@ to allocate and no client config to regenerate. The sidecar survives a game cras
 one tool error rather than a dead MCP server, and after a panic the agent can still read the logs.
 The cost is one hop and a reserialization per call, irrelevant at this call volume.
 
-**`ename_remote` is behind an `agent` feature and must never ship.** BRP is unauthenticated read
-and write access to the running world, and any process running as the same user can connect.
-Localhost is not a trust boundary. The feature is in `default` because every build made here is a
-development build; a shipping build is `--no-default-features`. `scripts/check-layers.sh` asserts
-the crate is absent from that graph, the same mechanism that keeps the editor out.
+**`ename_remote` must never ship.** BRP is unauthenticated read and write access to the running
+world, and any process running as the same user can connect. Localhost is not a trust boundary.
+Only `example_game_editor_bin`, the development binary, links it; `example_game_bin` is the
+shipping composition and never names it. `scripts/check-layers.sh` asserts the crate is absent
+from that binary's graph, the same mechanism that keeps the editor out.
 
 **Every tool result carries a three-letter run id, named `pid`.** The sidecar holds no connection
 and no cached state, so a call after the game restarts just works. That is right, and it is also the

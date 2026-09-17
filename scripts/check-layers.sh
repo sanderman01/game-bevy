@@ -8,12 +8,11 @@ fail=0
 # check <crate> <forbidden crates, regex alternation>
 check() {
     local crate="$1" forbidden="$2" deps found
-    # `--no-default-features` so this tests the shipping graph: the editor is an optional
-    # dependency of the `example_game_editor_bin` binary and must be absent from it with the
-    # feature off.
+    # Default features on, so the tree is the widest first-party graph the crate can have: a
+    # violation hidden behind a default feature still fails the check.
     # The tree is captured before the grep runs: with both in one pipeline, the `|| true`
     # for grep's legitimate no-match exit would also swallow a `cargo tree` failure.
-    deps=$(cargo tree -p "$crate" -e normal --no-default-features --prefix none \
+    deps=$(cargo tree -p "$crate" -e normal --prefix none \
         | awk 'NR > 1 { print $1 }' \
         | sort -u)
     found=$(printf '%s\n' "$deps" | grep -xE "$forbidden" || true)
@@ -45,11 +44,10 @@ check ename_mcp 'ename_.*'
 # the editor, the game, or `ename_asset_content` (which always links Bevy) -- if it did,
 # `cargo xtask ename_check` would rebuild half the engine.
 check ename_xtask 'ename_asset_content|ename_engine|ename_editor|example_game_lib|ename_remote|ename_mcp'
-# `--no-default-features` also proves the `agent` feature is off in the shipping graph, which
-# matters more than the editor: `ename_remote` is unauthenticated write access to the world.
-check example_game_editor_bin 'ename_editor|ename_remote'
-# The minimal example binary never has an editor or agent feature to turn off; it must never
-# name either crate regardless of features.
+# `example_game_editor_bin` is the top of the graph -- it links the editor and `ename_remote` on
+# purpose -- so there is nothing above it to forbid and no check for it here.
+# The minimal binary is the one that has to stay clean: it must never name the editor, and never
+# `ename_remote`, which is unauthenticated write access to the world.
 check example_game_bin 'ename_editor|ename_remote'
 
 exit "$fail"

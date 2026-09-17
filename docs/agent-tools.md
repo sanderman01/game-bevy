@@ -43,14 +43,14 @@ down fails with a message saying so, and works again once the game is back.
 
 ## Security
 
-The `agent` feature must never be on in a shipping build. BRP is unauthenticated read and write
-access to the world, and localhost is not a trust boundary. Any process running as the same user
-can connect.
+`ename_remote` must never be in a shipping build. BRP is unauthenticated read and write access to
+the world, and localhost is not a trust boundary. Any process running as the same user can connect.
 
-It is in `default` because every build made here is a development build, alongside `dev` and
-`editor` which carry the same warning. A shipping build is `--no-default-features`, and
-`scripts/check-layers.sh` fails if `ename_remote` reaches the binary through that graph. CI runs
-both, so the feature being convenient by default cannot become the feature shipping by accident.
+It is linked into `example_game_editor_bin` because every build made from that binary is a
+development build, the same reason it carries the editor and the dev-only Bevy features.
+`example_game_bin` is the shipping composition, and `scripts/check-layers.sh` fails if
+`ename_remote` or the editor reaches it. CI runs the check, so a crate that is convenient here
+cannot become a crate that ships by accident.
 
 ## The tools
 

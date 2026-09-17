@@ -15,16 +15,14 @@ resolve independently once there is more than one workspace.
 the engine crates, not part of the engine itself, so they take the `example_` prefix instead.
 `example_game_lib` is the demo gameplay code. Two binaries compose it with the engine:
 `example_game_bin` is the minimal case, engine plus game and nothing else; `example_game_editor_bin`
-is the same composition with the editor and agent tooling linked in behind features. The workspace's
-`members` glob lists both prefixes.
+is the same composition with the editor and agent tooling linked in. The workspace's `members` glob
+lists both prefixes.
 
 ## Layer graph
 
 ```
 example_game_bin (bin)        -> ename_engine, example_game_lib, dirs
-example_game_editor_bin (bin) -> ename_engine, example_game_lib, dirs
-                                 + ename_editor                      (feature `editor`)
-                                 + ename_remote                      (feature `agent`)
+example_game_editor_bin (bin) -> ename_engine, example_game_lib, ename_editor, ename_remote, dirs
 ename_remote                  -> ename_engine
 example_game_lib              -> ename_engine, ename_asset_alias
 ename_editor                  -> ename_engine
@@ -87,8 +85,9 @@ before then. `EnginePlugins` already owns `DefaultPlugins` for the same class of
 ordering structural rather than a rule in `main.rs` that every future target has to remember.
 
 `scripts/check-layers.sh` enforces this in CI. It is a build failure, not a habit. It reads
-`cargo tree --no-default-features`, so it also proves that the editor crate and `ename_remote`
-are absent from a shipping build.
+`cargo tree` with default features on, so a dependency added behind a default feature fails the
+check too. It also proves that the editor crate and `ename_remote` are absent from
+`example_game_bin`, the binary that stands in for a shipping build.
 
 An earlier `EditorCamera` was a historical example of the cost of getting a layer wrong. It lived
 in the engine because `engine` depended on `editor` and the editor could not name
