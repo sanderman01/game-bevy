@@ -1,0 +1,24 @@
+example_game_lib/src/lib.rs
+  s_08430703ccd406::t_313a232613c178 9,23
+docs/design.md
+  s_08430703ccd406::t_c578b485274243 20,61-89
+  s_08430703ccd406::t_e08b5458c0e6ac 90
+example_game_lib/src/atmosphere.rs
+  s_08430703ccd406::t_313a232613c178 1-131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4c1f3fdbaa22861065279cd2deda2e1251f2acd1",
+  "prompts": {},
+  "sessions": {
+    "s_08430703ccd406": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "13bf1b78-b121-439e-a6cf-5606cadde587",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
