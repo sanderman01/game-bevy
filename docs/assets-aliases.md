@@ -48,6 +48,13 @@ The reader's `read_meta` closes that gap: where the resolved file has no `.meta`
 answers with the default meta of whichever loader claims that file's extension. A real `.meta`
 still wins, so an author keeps control of loader settings.
 
+Loader settings that read the format from the path's extension are pinned to the resolved file's
+format in that synthesized meta. `ImageLoader` is the one case: its default `FromExtension` would
+panic on an alias, so the meta names the format instead, e.g. `Format(Png)` for a `.png`. Callers
+that override settings with `load_builder().with_settings` start from that meta and need no format
+hint of their own. A hand-written `.meta` is used as is, so one for an image read by alias must
+name its format.
+
 ## Scanning
 
 The scan reads the default asset source directly. It must never read through `alias://`: that

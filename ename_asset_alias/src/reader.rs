@@ -21,8 +21,10 @@ use bevy::{
             AssetReader, AssetReaderError, AssetSource, AssetSourceBuilder, AssetSourceId,
             ErasedAssetReader, PathStream, Reader, VecReader,
         },
+        meta::AssetMetaDyn,
     },
     ecs::{resource::Resource, system::Res},
+    image::{ImageFormat, ImageFormatSetting, ImageLoaderSettings},
     tasks::ConditionalSendFuture,
 };
 use std::{path::Path, sync::Arc};
@@ -106,10 +108,31 @@ impl AliasReader {
             .filter_map(|(i, c)| (c == '.').then_some(&full_extension[i + 1..]));
         for extension in std::iter::once(full_extension).chain(secondary) {
             if let Ok(loader) = server.get_asset_loader_with_extension(extension).await {
-                return Some(VecReader::new(loader.default_meta().serialize()));
+                let mut meta = loader.default_meta();
+                pin_extension_settings(meta.as_mut(), extension);
+                return Some(VecReader::new(meta.serialize()));
             }
         }
         None
+    }
+}
+
+/// Replaces loader settings that would read the format from the asset path's extension, which an
+/// alias does not have, with the format of the resolved file's `extension`.
+///
+/// `ImageLoader` is the one such loader: its default `ImageFormatSetting::FromExtension` unwraps
+/// the path's extension and panics on an alias. Pinning the format here keeps every image format
+/// Bevy knows by extension loadable by alias, with no hint from the caller.
+fn pin_extension_settings(meta: &mut dyn AssetMetaDyn, extension: &str) {
+    let Some(settings) = meta
+        .loader_settings_mut()
+        .and_then(|settings| settings.downcast_mut::<ImageLoaderSettings>())
+    else {
+        return;
+    };
+    if let ImageFormatSetting::FromExtension = settings.format {
+        settings.format = ImageFormat::from_extension(extension)
+            .map_or(ImageFormatSetting::Guess, ImageFormatSetting::Format);
     }
 }
 
