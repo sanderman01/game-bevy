@@ -36,6 +36,7 @@ impl Plugin for StagePlugin {
             .register_type_data::<std::ops::Range<f32>, bevy::reflect::ReflectSerialize>()
             .register_type_data::<std::ops::Range<f32>, bevy::reflect::ReflectDeserialize>()
             .add_observer(commands::tag_stage_membership_on_ready)
+            .add_observer(commands::relink_loaded_children)
             .register_stage_format(DynamicWorldFormat);
     }
 }

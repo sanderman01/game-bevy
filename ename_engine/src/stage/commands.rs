@@ -168,6 +168,46 @@ pub(super) fn tag_stage_membership_on_ready(
     }
 }
 
+/// Rebuilds `Children` for everything a `WorldInstanceReady` event just finished spawning.
+///
+/// Bevy's world loading inserts components with relationship hooks skipped, because it expects a
+/// file to carry both halves of every relationship. Stage files deliberately carry only `ChildOf`
+/// (`DynamicWorldFormat` denies `Children`), so after a load no parent lists its children, and
+/// whatever walks `Children` -- big_space's transform propagation, the editor's Hierarchy -- skips
+/// them. Re-inserting each `ChildOf` with hooks running rebuilds the parent's list. Children are
+/// relinked in entity order, which is spawn order, so siblings keep a stable order.
+pub(super) fn relink_loaded_children(
+    trigger: On<bevy::world_serialization::WorldInstanceReady>,
+    child_of: Query<(Entity, &ChildOf)>,
+    mut commands: Commands,
+) {
+    let container = trigger.event().entity;
+    if container == Entity::PLACEHOLDER {
+        return;
+    }
+    let mut child_map = child_of.iter().fold(
+        HashMap::<Entity, Vec<Entity>>::default(),
+        |mut child_map, (child, parent)| {
+            child_map.entry(parent.parent()).or_default().push(child);
+            child_map
+        },
+    );
+    for children in child_map.values_mut() {
+        children.sort();
+    }
+    // The container's own children were spawned by Bevy with hooks; only their subtrees need it.
+    let mut stack: Vec<Entity> = child_map.get(&container).cloned().unwrap_or_default();
+    while let Some(parent) = stack.pop() {
+        let Some(children) = child_map.get(&parent) else {
+            continue;
+        };
+        for &child in children {
+            commands.entity(child).insert(ChildOf(parent));
+            stack.push(child);
+        }
+    }
+}
+
 fn tag_recursive(
     entity: Entity,
     id: StageId,

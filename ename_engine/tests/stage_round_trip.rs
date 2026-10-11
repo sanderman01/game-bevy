@@ -115,6 +115,46 @@ fn open_stage_tags_the_stage_root_and_its_descendants() {
     );
 }
 
+#[test]
+fn open_stage_lists_loaded_children_in_their_parents_children() {
+    let dir = temp_stage_dir("children");
+    let id = StageId(Uuid::new_v4());
+    write_fixture_stage(&dir, id);
+
+    let mut app = test_app(&dir);
+    open_stage(app.world_mut(), "demo.scn.ron");
+
+    let mut marker_entity = None;
+    for _ in 0..200 {
+        app.update();
+        if let Ok((entity, _)) = app
+            .world_mut()
+            .query::<(Entity, &Marker)>()
+            .single(app.world())
+        {
+            marker_entity = Some(entity);
+            break;
+        }
+    }
+    let marker_entity = marker_entity.expect("stage loads within 200 frames");
+    app.update();
+
+    let parent = app
+        .world()
+        .get::<ChildOf>(marker_entity)
+        .expect("the fixture's child keeps its ChildOf")
+        .parent();
+    let children = app
+        .world()
+        .get::<Children>(parent)
+        .expect("the parent of a loaded child has Children");
+    assert!(
+        children.contains(&marker_entity),
+        "stage files carry only ChildOf, and Bevy loads them with relationship hooks skipped, so \
+         the parent's Children must be rebuilt on load -- big_space and the editor hierarchy walk it"
+    );
+}
+
 /// Like [`write_fixture_stage`], but the root entity already carries a `Name` -- mirrors real
 /// content such as `start_stage.scn.ron`, whose root is a reused entity (big_space's `Grid`)
 /// with its own pre-existing name, which is exactly the shape that produced the "no entity named

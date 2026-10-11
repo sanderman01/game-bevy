@@ -50,12 +50,12 @@ impl StageFormat for DynamicWorldFormat {
             // handle with no asset path -- into the stage. Camera's required-component default
             // restores `Window(Primary)` on load, which is what every stage means by it.
             .deny_component::<bevy::camera::RenderTarget>()
-            // `Children` is a derived list `ChildOf`'s insert hook rebuilds on load; serializing
-            // it verbatim writes entity ids that may not be in `entities` (e.g. a non-StageMember
-            // entity, like the editor's GridFollowCamera, temporarily parented under a stage's
-            // Grid) with no corresponding entry in the file's own entity map -- a dangling
-            // reference that resolves to a phantom entity on load. Denying it loses no
-            // information.
+            // `Children` is derived from `ChildOf`. Serializing it verbatim writes entity ids that
+            // may not be in `entities` (e.g. a non-StageMember entity, like the editor's
+            // GridFollowCamera, temporarily parented under a stage's Grid) with no corresponding
+            // entry in the file's own entity map -- a dangling reference that resolves to a
+            // phantom entity on load. Denying it loses no information, but Bevy's loader skips
+            // relationship hooks, so `relink_loaded_children` rebuilds it after every load.
             .deny_component::<Children>()
             // Which entity *holds* the origin is runtime policy, decided per binary by
             // `elect_floating_origins` -- a stage carrying one would arrive as a second origin in
