@@ -89,9 +89,15 @@ const EDITOR_CAMERA_INIT_POS: Vec3 = vec3(0.0, 10.0, 60.0);
 /// today. See `docs/design/floating-origin.md`.
 const EDITOR_CAMERA_ORIGIN_PRIORITY: i32 = 100;
 
-/// Frustum-culling distance of the editor camera, in meters. Bevy's projection is infinite
-/// reverse-Z, so `far` only culls; the 1000 m default hides landscapes seen from altitude.
-const EDITOR_CAMERA_FAR: f32 = 100_000.0;
+/// How the editor camera is set up. Seeded by `EditorPlugins::with_camera_far`; reflected, so
+/// the Resources tab can change it while the editor runs.
+#[derive(Resource, Reflect, Debug, Clone, Copy)]
+#[reflect(Resource)]
+pub struct EditorCameraSettings {
+    /// Frustum-culling distance in meters. Bevy's perspective projection is infinite reverse-Z, so
+    /// `far` only culls; it does not cost depth precision.
+    pub far: f32,
+}
 
 /// The button that puts the fly camera in control. The only place this binding is written down;
 /// [`fly_camera_active`], [`write_editor_camera_intent`], and [`adjust_fly_speed`] all read it
@@ -162,11 +168,19 @@ const MAX_CAMERA_PITCH: f32 = 89.0 * core::f32::consts::PI / 180.0;
 const MIN_ORBIT_DISTANCE: f32 = 0.1;
 
 /// Spawns `EditorCamera` and drives it from Unreal-style bindings.
-pub(crate) struct EditorCameraPlugin;
+pub(crate) struct EditorCameraPlugin {
+    pub settings: EditorCameraSettings,
+}
 
 impl Plugin for EditorCameraPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<EditorCameraIntent>()
+            .register_type::<EditorCameraSettings>()
+            .insert_resource(self.settings)
+            .add_systems(
+                Update,
+                apply_camera_settings.run_if(resource_changed::<EditorCameraSettings>),
+            )
             .add_systems(
                 Startup,
                 (spawn_editor_camera, disable_default_camera_inputs),
@@ -225,7 +239,7 @@ fn alt_held(keyboard: &ButtonInput<KeyCode>) -> bool {
     keyboard.pressed(KeyCode::AltLeft) || keyboard.pressed(KeyCode::AltRight)
 }
 
-fn spawn_editor_camera(mut commands: Commands) {
+fn spawn_editor_camera(mut commands: Commands, settings: Res<EditorCameraSettings>) {
     let spawn_transform =
         Transform::from_translation(EDITOR_CAMERA_INIT_POS).looking_at(Vec3::ZERO, Vec3::Y);
     let focus_position =
@@ -251,12 +265,25 @@ fn spawn_editor_camera(mut commands: Commands) {
         },
         Camera3d::default(),
         Projection::Perspective(PerspectiveProjection {
-            far: EDITOR_CAMERA_FAR,
+            far: settings.far,
             ..default()
         }),
         spawn_transform,
         Name::new("Editor Camera"),
     ));
+}
+
+fn apply_camera_settings(
+    settings: Res<EditorCameraSettings>,
+    mut cameras: Query<&mut Projection, With<EditorCamera>>,
+) {
+    for mut projection in &mut cameras {
+        if let Projection::Perspective(perspective) = projection.as_mut()
+            && perspective.far != settings.far
+        {
+            perspective.far = settings.far;
+        }
+    }
 }
 
 /// The editor camera's own controller settings, supplied at spawn in place of the default

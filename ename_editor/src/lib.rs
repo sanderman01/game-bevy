@@ -31,8 +31,33 @@ pub(crate) enum EditorSystems {
     ApplySelection,
 }
 
-/// The editor, as a target adds it.
-pub struct EditorPlugins;
+pub use camera::EditorCameraSettings;
+
+/// The editor, as a target adds it. Configure with the `with_*` methods;
+/// `EditorPlugins::default()` keeps Bevy's camera defaults.
+pub struct EditorPlugins {
+    camera: EditorCameraSettings,
+}
+
+impl Default for EditorPlugins {
+    fn default() -> Self {
+        Self {
+            camera: EditorCameraSettings {
+                far: PerspectiveProjection::default().far,
+            },
+        }
+    }
+}
+
+impl EditorPlugins {
+    /// Sets how far the editor camera sees before frustum culling, in meters. Bevy's 1000 m by
+    /// default; a game with large worlds raises it. Changeable later through
+    /// [`EditorCameraSettings`].
+    pub fn with_camera_far(mut self, far: f32) -> Self {
+        self.camera.far = far;
+        self
+    }
+}
 
 impl PluginGroup for EditorPlugins {
     fn build(self) -> PluginGroupBuilder {
@@ -41,7 +66,9 @@ impl PluginGroup for EditorPlugins {
             .add(panels::PanelsPlugin)
             .add(selection::SelectionPlugin)
             .add(viewport::ViewportPlugin)
-            .add(camera::EditorCameraPlugin)
+            .add(camera::EditorCameraPlugin {
+                settings: self.camera,
+            })
             .add(game_view::GameViewPlugin)
             .add(gizmo::GizmoPlugin)
     }
