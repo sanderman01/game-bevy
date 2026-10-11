@@ -89,6 +89,10 @@ const EDITOR_CAMERA_INIT_POS: Vec3 = vec3(0.0, 10.0, 60.0);
 /// today. See `docs/design/floating-origin.md`.
 const EDITOR_CAMERA_ORIGIN_PRIORITY: i32 = 100;
 
+/// Frustum-culling distance of the editor camera, in meters. Bevy's projection is infinite
+/// reverse-Z, so `far` only culls; the 1000 m default hides landscapes seen from altitude.
+const EDITOR_CAMERA_FAR: f32 = 100_000.0;
+
 /// The button that puts the fly camera in control. The only place this binding is written down;
 /// [`fly_camera_active`], [`write_editor_camera_intent`], and [`adjust_fly_speed`] all read it
 /// from here.
@@ -246,6 +250,10 @@ fn spawn_editor_camera(mut commands: Commands) {
             distance: DEFAULT_FOCUS_DISTANCE,
         },
         Camera3d::default(),
+        Projection::Perspective(PerspectiveProjection {
+            far: EDITOR_CAMERA_FAR,
+            ..default()
+        }),
         spawn_transform,
         Name::new("Editor Camera"),
     ));
