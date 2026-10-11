@@ -1,0 +1,39 @@
+ename_asset_alias/src/ignored.rs
+  s_148f1c65919478::t_77eb2574b1a8d9 1-49
+docs/assets-aliases.md
+  s_148f1c65919478::t_10e6ea38060e20 36-41
+ename_asset_alias/src/discovery.rs
+  s_148f1c65919478::t_7017982813ed07 14-15,158-161,173,176,221,229,232,335
+ename_asset_alias/src/lib.rs
+  s_148f1c65919478::t_1fa70a8085f8df 19,31
+ename_asset_alias/src/scan_plugin.rs
+  s_148f1c65919478::t_79a629e4001c8c 13-15,39,47,74-85,95,120,147
+ename_asset_alias/tests/asset_discovery.rs
+  s_148f1c65919478::t_ec2e52951df7b4 9-11,28,33-39,346,352-394,456
+ename_asset_content/src/lib.rs
+  s_148f1c65919478::t_5d6578930c9358 31,55,67,100-121,130,148,192-193
+ename_asset_package/src/scan.rs
+  s_148f1c65919478::t_dc8e9a0ce159a8 19-21,28-29,70-81,84,118-123,165-166
+ename_asset_package/tests/package_scan.rs
+  s_148f1c65919478::t_6c430be6996284 7,26-31,211,227,250,264
+ename_xtask/src/scan.rs
+  s_148f1c65919478::t_5346ea7e0deef0 4,21-26
+ename_xtask/tests/list.rs
+  s_148f1c65919478::t_11d47a03ead91b 3,22-27,58-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8f9053b4817f1a4e5e0cc81dbcbe4a7e82f4d970",
+  "prompts": {},
+  "sessions": {
+    "s_148f1c65919478": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7a3be79d-e290-4e9d-a0e7-36ba769d6823",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
