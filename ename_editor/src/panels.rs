@@ -3,9 +3,10 @@
 use crate::console::ConsoleState;
 use bevy::{
     asset::{ReflectAsset, UntypedAssetId},
-    camera::visibility::RenderLayers,
+    camera::{CameraOutputMode, visibility::RenderLayers},
     prelude::*,
     reflect::TypeRegistry,
+    render::render_resource::BlendState,
 };
 use bevy_egui::{EguiGlobalSettings, EguiPrimaryContextPass, PrimaryEguiContext};
 use bevy_inspector_egui::DefaultInspectorConfigPlugin;
@@ -314,7 +315,13 @@ fn spawn_egui_camera(mut commands: Commands, mut egui_global_settings: ResMut<Eg
         Camera {
             // Above the transform gizmo's overlay camera, which hardcodes `order: 1`.
             order: 2,
-            clear_color: ClearColorConfig::None,
+            // Cleared to transparent and blended over the window, so the UI composes over the scene
+            // cameras' output whether or not they share this camera's texture (an HDR one does not).
+            clear_color: ClearColorConfig::Custom(Color::NONE),
+            output_mode: CameraOutputMode::Write {
+                blend_state: Some(BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                clear_color: ClearColorConfig::None,
+            },
             ..default()
         },
     ));
