@@ -99,6 +99,14 @@ pub struct EditorCameraSettings {
     pub far: f32,
 }
 
+impl Default for EditorCameraSettings {
+    fn default() -> Self {
+        Self {
+            far: PerspectiveProjection::default().far,
+        }
+    }
+}
+
 /// The button that puts the fly camera in control. The only place this binding is written down;
 /// [`fly_camera_active`], [`write_editor_camera_intent`], and [`adjust_fly_speed`] all read it
 /// from here.
@@ -1107,7 +1115,9 @@ mod tests {
             .add_plugins(bevy::input::InputPlugin)
             .add_plugins(BigSpaceDefaultPlugins)
             .add_plugins(BigSpacePlugin)
-            .add_plugins(EditorCameraPlugin)
+            .add_plugins(EditorCameraPlugin {
+                settings: default(),
+            })
             // Real-time headless `App::update()` calls run with a near-zero `Time::delta`,
             // which the flight integrator's smoothing formulas correctly read as "barely move
             // this frame" -- that's accurate integration, not a bug, but it makes a real-time

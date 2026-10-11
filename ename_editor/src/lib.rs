@@ -35,18 +35,9 @@ pub use camera::EditorCameraSettings;
 
 /// The editor, as a target adds it. Configure with the `with_*` methods;
 /// `EditorPlugins::default()` keeps Bevy's camera defaults.
+#[derive(Default)]
 pub struct EditorPlugins {
     camera: EditorCameraSettings,
-}
-
-impl Default for EditorPlugins {
-    fn default() -> Self {
-        Self {
-            camera: EditorCameraSettings {
-                far: PerspectiveProjection::default().far,
-            },
-        }
-    }
 }
 
 impl EditorPlugins {
