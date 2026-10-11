@@ -1,6 +1,6 @@
 //! `ename_content_list` over real fixture trees.
 
-use ename_asset_alias::StdVfs;
+use ename_asset_alias::{IgnoredFiles, StdVfs};
 use ename_asset_package::{LoadOrder, build_index, scan_packages};
 use ename_xtask::list::list;
 use std::path::{Path, PathBuf};
@@ -19,7 +19,12 @@ fn listing_a_clean_tree_resolves_correct_aliases() {
     // Scan using the public API, same as the internal scan::scan does.
     let vfs = StdVfs::new(&root);
     let load_order = LoadOrder::default();
-    let scan = futures_lite::future::block_on(scan_packages(&vfs, &search_paths, &load_order));
+    let scan = futures_lite::future::block_on(scan_packages(
+        &vfs,
+        &search_paths,
+        &load_order,
+        &IgnoredFiles::default(),
+    ));
     let (index, _) = build_index(&scan);
 
     // Assert the index contains the expected aliases from the clean fixture.
@@ -50,7 +55,12 @@ fn listing_a_tree_with_problems_includes_those_assets_in_the_index() {
     // Scan using the public API, same as the internal scan::scan does.
     let vfs = StdVfs::new(&root);
     let load_order = LoadOrder::default();
-    let scan = futures_lite::future::block_on(scan_packages(&vfs, &search_paths, &load_order));
+    let scan = futures_lite::future::block_on(scan_packages(
+        &vfs,
+        &search_paths,
+        &load_order,
+        &IgnoredFiles::default(),
+    ));
     let (index, _) = build_index(&scan);
 
     // Assert the index contains all expected aliases, including those with problems.

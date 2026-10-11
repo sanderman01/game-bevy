@@ -10,7 +10,9 @@
 //! composes instead of opts out. `ename_asset_content` scans package by package, in an order the
 //! manifests decide, and simply never adds this plugin -- there is nothing for it to switch off.
 
-use crate::{AliasScan, ContentIndexCell, discovery::scan_aliases, reader::AliasSourcePlugin};
+use crate::{
+    AliasScan, ContentIndexCell, IgnoredFiles, discovery::scan_aliases, reader::AliasSourcePlugin,
+};
 use async_lock::OnceCell;
 use bevy::{
     app::{App, Plugin, Startup, Update},
@@ -34,7 +36,7 @@ const DEFAULT_ASSET_ROOT: &str = "assets";
 pub struct AliasScanPlugin {
     asset_root: String,
     root: String,
-    ignored_file_names: Vec<String>,
+    ignored: IgnoredFiles,
 }
 
 impl Default for AliasScanPlugin {
@@ -42,7 +44,7 @@ impl Default for AliasScanPlugin {
         Self {
             asset_root: DEFAULT_ASSET_ROOT.to_owned(),
             root: String::new(),
-            ignored_file_names: Vec::new(),
+            ignored: IgnoredFiles::default(),
         }
     }
 }
@@ -69,7 +71,18 @@ impl AliasScanPlugin {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.ignored_file_names = names.into_iter().map(Into::into).collect();
+        self.ignored.file_names = names.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Replaces the sidecar extensions the walk skips, without the dot. Defaults to
+    /// [`DEFAULT_IGNORED_SIDECAR_EXTENSIONS`](crate::DEFAULT_IGNORED_SIDECAR_EXTENSIONS).
+    pub fn with_ignored_sidecar_extensions<I, S>(mut self, extensions: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.ignored.sidecar_extensions = extensions.into_iter().map(Into::into).collect();
         self
     }
 }
@@ -79,7 +92,7 @@ impl AliasScanPlugin {
 struct AliasScanConfig {
     asset_root: String,
     root: String,
-    ignored_file_names: Vec<String>,
+    ignored: IgnoredFiles,
 }
 
 /// Where [`start_alias_scan`] leaves the scan for [`mirror_alias_scan`] to pick up.
@@ -104,7 +117,7 @@ impl Plugin for AliasScanPlugin {
             .insert_resource(AliasScanConfig {
                 asset_root: self.asset_root.clone(),
                 root: self.root.clone(),
-                ignored_file_names: self.ignored_file_names.clone(),
+                ignored: self.ignored.clone(),
             })
             .add_systems(Startup, start_alias_scan)
             .add_systems(Update, mirror_alias_scan);
@@ -129,14 +142,9 @@ fn start_alias_scan(
             info!("Scanning {:?} for aliases", config.asset_root);
             let mut make_reader = AssetSource::get_default_reader(config.asset_root);
             let vfs = crate::AssetReaderVfs::new(make_reader());
-            let ignored: Vec<&str> = config
-                .ignored_file_names
-                .iter()
-                .map(String::as_str)
-                .collect();
             // No package id to fall back to here -- a bare, package-less scan keeps its old
             // rule: no `_alias_rules.toml` covering a file, no alias.
-            let scan = scan_aliases(&vfs, Path::new(&config.root), &ignored, None).await;
+            let scan = scan_aliases(&vfs, Path::new(&config.root), &config.ignored, None).await;
 
             info!(
                 "Found {} aliases, {} problems",

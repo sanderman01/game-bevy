@@ -28,7 +28,7 @@ use bevy::{
     log::{info, warn},
     tasks::IoTaskPool,
 };
-use ename_asset_alias::{AliasSourcePlugin, AssetReaderVfs, ContentIndexCell};
+use ename_asset_alias::{AliasSourcePlugin, AssetReaderVfs, ContentIndexCell, IgnoredFiles};
 use ename_asset_package::{build_index, scan_packages};
 use std::{path::PathBuf, sync::Arc};
 
@@ -52,6 +52,7 @@ pub struct AssetContentPlugin {
     /// constraints, which is the normal case on a fresh install and the only case in a test that
     /// does not care.
     load_order_file: Option<PathBuf>,
+    ignored: IgnoredFiles,
 }
 
 impl Default for AssetContentPlugin {
@@ -63,6 +64,7 @@ impl Default for AssetContentPlugin {
                 .collect(),
             asset_root: DEFAULT_ASSET_ROOT.to_owned(),
             load_order_file: None,
+            ignored: IgnoredFiles::default(),
         }
     }
 }
@@ -95,6 +97,28 @@ impl AssetContentPlugin {
         self.load_order_file = Some(path.into());
         self
     }
+
+    /// Names files the scan must never turn into an asset, on top of `manifest.toml`,
+    /// `_alias_rules.toml`, `*.alias` and `*.meta`, which it always skips.
+    pub fn with_ignored_file_names<I, S>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.ignored.file_names = names.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Replaces the sidecar extensions the scan skips, without the dot. Defaults to
+    /// [`DEFAULT_IGNORED_SIDECAR_EXTENSIONS`](ename_asset_alias::DEFAULT_IGNORED_SIDECAR_EXTENSIONS).
+    pub fn with_ignored_sidecar_extensions<I, S>(mut self, extensions: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.ignored.sidecar_extensions = extensions.into_iter().map(Into::into).collect();
+        self
+    }
 }
 
 /// What [`start_content_scan`] needs, kept out of the plugin so the system can read it.
@@ -103,6 +127,7 @@ struct ContentScanConfig {
     search_paths: Vec<String>,
     asset_root: String,
     load_order_file: Option<PathBuf>,
+    ignored: IgnoredFiles,
 }
 
 /// Where [`start_content_scan`] leaves the report for [`mirror_content_scan`] to pick up.
@@ -120,6 +145,7 @@ impl Plugin for AssetContentPlugin {
                 search_paths: self.search_paths.clone(),
                 asset_root: self.asset_root.clone(),
                 load_order_file: self.load_order_file.clone(),
+                ignored: self.ignored.clone(),
             })
             .add_systems(Startup, start_content_scan)
             .add_systems(Update, mirror_content_scan);
@@ -163,7 +189,8 @@ fn start_content_scan(
                 None => LoadOrder::default(),
             };
 
-            let scan = scan_packages(&vfs, &config.search_paths, &load_order).await;
+            let scan =
+                scan_packages(&vfs, &config.search_paths, &load_order, &config.ignored).await;
             let (index, mut report) = build_index(&scan);
             report.problems.extend(problems);
 

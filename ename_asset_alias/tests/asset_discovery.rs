@@ -6,7 +6,9 @@
 
 mod support;
 
-use ename_asset_alias::{AliasOrigin, AliasScan, DiscoveredAsset, ProblemKind, scan_aliases};
+use ename_asset_alias::{
+    AliasOrigin, AliasScan, DiscoveredAsset, IgnoredFiles, ProblemKind, scan_aliases,
+};
 use futures_lite::future::block_on;
 use std::path::Path;
 use support::FakeVfs;
@@ -23,9 +25,16 @@ fn scan_with_default(vfs: &FakeVfs, default_alias_template: Option<&str>) -> Ali
     block_on(scan_aliases(
         vfs,
         Path::new(ROOT),
-        &[],
+        &IgnoredFiles::default(),
         default_alias_template,
     ))
+}
+
+fn ignoring_manifests() -> IgnoredFiles {
+    IgnoredFiles {
+        file_names: vec!["manifest.toml".to_owned()],
+        ..IgnoredFiles::default()
+    }
 }
 
 fn discovered(vfs: &FakeVfs) -> Vec<DiscoveredAsset> {
@@ -334,10 +343,53 @@ fn a_caller_can_name_files_the_walk_must_not_treat_as_assets() {
     let scan = block_on(scan_aliases(
         &vfs,
         Path::new(ROOT),
-        &["manifest.toml"],
+        &ignoring_manifests(),
         None,
     ));
     assert_eq!(aliases(&scan.assets), ["core::airship"]);
+}
+
+/// A REUSE `.license` sidecar describes the file next to it. Left to a `{stem}` rule it would
+/// claim `core::airship` too, and the asset would lose its alias to a duplicate.
+#[test]
+fn a_license_sidecar_is_not_an_asset_by_default() {
+    let scan = scan(
+        &FakeVfs::new()
+            .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
+            .file("base/core/airship.glb", "")
+            .file("base/core/airship.glb.LICENSE", ""),
+    );
+
+    assert_eq!(aliases(&scan.assets), ["core::airship"]);
+    assert!(scan.problems.is_empty(), "got {:?}", scan.problems);
+}
+
+/// The sidecar extensions are the caller's list, not a fixed one: it can add its own or drop the
+/// default.
+#[test]
+fn a_caller_chooses_which_sidecar_extensions_are_skipped() {
+    let vfs = FakeVfs::new()
+        .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
+        .file("base/core/airship.glb", "")
+        .file("base/core/airship.glb.license", "")
+        .file("base/core/hull.png", "")
+        .file("base/core/hull.png.source", "");
+
+    let scan = block_on(scan_aliases(
+        &vfs,
+        Path::new(ROOT),
+        &IgnoredFiles {
+            sidecar_extensions: vec!["source".to_owned()],
+            ..IgnoredFiles::default()
+        },
+        None,
+    ));
+    assert_eq!(aliases(&scan.assets), ["core::airship", "core::hull"]);
+    assert_eq!(
+        kinds(&scan),
+        [ProblemKind::DuplicateAlias],
+        "the .license is a candidate again and collides with its asset"
+    );
 }
 
 /// An alias `AssetPath` would misread can never resolve, so it is reported here rather than
@@ -401,7 +453,7 @@ fn an_ignored_file_name_is_matched_case_insensitively() {
     let scan = block_on(scan_aliases(
         &vfs,
         Path::new(ROOT),
-        &["manifest.toml"],
+        &ignoring_manifests(),
         None,
     ));
     assert_eq!(aliases(&scan.assets), ["core::airship"]);

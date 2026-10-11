@@ -11,8 +11,8 @@
 //! is the question this system exists to answer.
 
 use crate::{
-    AliasFile, AliasOrigin, CompiledRules, RULES_FILE, Rules, Vfs, VfsError, alias_sidecar_target,
-    is_rules_file, validate_alias, vfs::BoxedFuture,
+    AliasFile, AliasOrigin, CompiledRules, IgnoredFiles, RULES_FILE, Rules, Vfs, VfsError,
+    alias_sidecar_target, is_rules_file, validate_alias, vfs::BoxedFuture,
 };
 use std::{
     collections::BTreeMap,
@@ -155,11 +155,10 @@ impl AliasScan {
 
 /// Discovers every addressable asset under `root`.
 ///
-/// `root` is relative to the vfs root; pass `""` for the whole tree. `ignored_file_names` names
-/// files the caller's own format owns and discovery must never turn into an asset --
-/// `ename_asset_package` passes `manifest.toml`. `_alias_rules.toml`, `*.alias` and `*.meta` are
-/// always ignored and need not be listed. Every one of those names is matched
-/// case-insensitively, `ignored_file_names` included.
+/// `root` is relative to the vfs root; pass `""` for the whole tree. `ignored` names files the
+/// caller's own formats own and discovery must never turn into an asset -- `ename_asset_package`
+/// adds `manifest.toml`. `_alias_rules.toml`, `*.alias` and `*.meta` are always ignored and need
+/// not be listed.
 ///
 /// `default_alias_template` is the alias template a directory falls back to when it has no
 /// `_alias_rules.toml` of its own and inherited none from a parent -- `root` itself, most of the
@@ -171,10 +170,10 @@ impl AliasScan {
 pub async fn scan_aliases(
     vfs: &dyn Vfs,
     root: &Path,
-    ignored_file_names: &[&str],
+    ignored: &IgnoredFiles,
     default_alias_template: Option<&str>,
 ) -> AliasScan {
-    let mut walk = Walk::new(vfs, ignored_file_names);
+    let mut walk = Walk::new(vfs, ignored);
     let default_rules = match default_alias_template {
         Some(template) => match compile_default_rules(template, root) {
             Ok(compiled) => Some(compiled),
@@ -219,7 +218,7 @@ fn problem(path: &Path, kind: ProblemKind, detail: impl Display) -> Problem {
 /// a boxed recursive future is worse than owning them.
 struct Walk<'a> {
     vfs: &'a dyn Vfs,
-    ignored_file_names: &'a [&'a str],
+    ignored: &'a IgnoredFiles,
     assets: Vec<DiscoveredAsset>,
     /// Alias to the file that won it. Only the winner's path is kept, to name it in the report.
     claimed: BTreeMap<String, PathBuf>,
@@ -227,10 +226,10 @@ struct Walk<'a> {
 }
 
 impl<'a> Walk<'a> {
-    fn new(vfs: &'a dyn Vfs, ignored_file_names: &'a [&'a str]) -> Self {
+    fn new(vfs: &'a dyn Vfs, ignored: &'a IgnoredFiles) -> Self {
         Self {
             vfs,
-            ignored_file_names,
+            ignored,
             assets: Vec::new(),
             claimed: BTreeMap::new(),
             problems: Vec::new(),
@@ -333,10 +332,7 @@ impl<'a> Walk<'a> {
     fn is_not_an_asset(&self, file_name: &str) -> bool {
         is_rules_file(file_name)
             || alias_sidecar_target(file_name).is_some()
-            || self
-                .ignored_file_names
-                .iter()
-                .any(|ignored| ignored.eq_ignore_ascii_case(file_name))
+            || self.ignored.matches(file_name)
             // `Vfs` implementations already hide `.meta`. Belt and braces: a reader that did not
             // would otherwise turn every import setting into an asset.
             || Path::new(file_name)

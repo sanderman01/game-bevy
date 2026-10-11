@@ -1,7 +1,7 @@
 //! Running the same package scan `ename_asset_content` runs at startup, blocking, for a command
 //! line tool that has neither an `IoTaskPool` nor an `AssetReader`.
 
-use ename_asset_alias::StdVfs;
+use ename_asset_alias::{IgnoredFiles, StdVfs};
 use ename_asset_package::{LoadOrder, Problem, ProblemKind, Scan, scan_packages};
 use std::path::Path;
 
@@ -18,7 +18,12 @@ pub(crate) fn scan(
 ) -> Scan {
     let vfs = StdVfs::new(asset_root);
     let (load_order, extra_problems) = read_load_order(load_order_path);
-    let mut scan = futures_lite::future::block_on(scan_packages(&vfs, search_paths, &load_order));
+    let mut scan = futures_lite::future::block_on(scan_packages(
+        &vfs,
+        search_paths,
+        &load_order,
+        &IgnoredFiles::default(),
+    ));
     scan.problems.extend(extra_problems);
     scan
 }

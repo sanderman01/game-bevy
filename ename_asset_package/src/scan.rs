@@ -16,15 +16,17 @@
 //! directory name is only the baseline `resolve` sorts its constraints on top of.
 
 use crate::{Disabled, LoadOrder, Manifest, OrderEdges, resolve, validate_package_id};
-use ename_asset_alias::{DiscoveredAsset, Problem, ProblemKind, Vfs, VfsError, scan_aliases};
+use ename_asset_alias::{
+    DiscoveredAsset, IgnoredFiles, Problem, ProblemKind, Vfs, VfsError, scan_aliases,
+};
 use std::{
     fmt::Display,
     path::{Path, PathBuf},
 };
 use tracing::{info, warn};
 
-/// The file that marks a directory as a package. Never an asset: it is passed to the alias walk as
-/// a name to ignore, or a folder rule matching `*` would turn every manifest into content.
+/// The file that marks a directory as a package. Never an asset: it is added to the alias walk's
+/// ignored names, or a folder rule matching `*` would turn every manifest into content.
 pub const MANIFEST_FILE: &str = "manifest.toml";
 
 /// One package found on disk: its parsed manifest, the directory it was found in, and every asset
@@ -65,10 +67,21 @@ pub struct Scan {
 ///
 /// The packages come back in the order the resolver settled on. Search path order and directory
 /// name are underneath that, as the tiebreaker for whatever no constraint relates.
-pub async fn scan_packages(vfs: &dyn Vfs, search_paths: &[String], load_order: &LoadOrder) -> Scan {
+///
+/// `ignored` is passed on to the alias walk in every package. [`MANIFEST_FILE`] is always added
+/// to it.
+pub async fn scan_packages(
+    vfs: &dyn Vfs,
+    search_paths: &[String],
+    load_order: &LoadOrder,
+    ignored: &IgnoredFiles,
+) -> Scan {
+    let mut ignored = ignored.clone();
+    ignored.file_names.push(MANIFEST_FILE.to_owned());
+
     let mut scan = Scan::default();
     for search_path in search_paths {
-        read_packages_in(vfs, Path::new(search_path), &mut scan).await;
+        read_packages_in(vfs, Path::new(search_path), &ignored, &mut scan).await;
     }
 
     let resolution = resolve(&scan.packages, load_order);
@@ -102,7 +115,12 @@ pub async fn scan_packages(vfs: &dyn Vfs, search_paths: &[String], load_order: &
 }
 
 /// Reads every package directly inside `search_path`.
-async fn read_packages_in(vfs: &dyn Vfs, search_path: &Path, scan: &mut Scan) {
+async fn read_packages_in(
+    vfs: &dyn Vfs,
+    search_path: &Path,
+    ignored: &IgnoredFiles,
+    scan: &mut Scan,
+) {
     let entries = match vfs.read_dir(search_path).await {
         Ok(entries) => entries,
         // Not an error: a target may list a `mods` directory that a fresh install has not created.
@@ -144,13 +162,8 @@ async fn read_packages_in(vfs: &dyn Vfs, search_path: &Path, scan: &mut Scan) {
         // A package with no `_alias_rules.toml` anywhere in its tree still gets every file
         // named, under its own package id -- the same as a rule written at its root would.
         let default_alias_template = format!("{}::{{stem}}", manifest.package.id);
-        let mut found = scan_aliases(
-            vfs,
-            &entry.path,
-            &[MANIFEST_FILE],
-            Some(&default_alias_template),
-        )
-        .await;
+        let mut found =
+            scan_aliases(vfs, &entry.path, ignored, Some(&default_alias_template)).await;
         scan.problems.append(&mut found.problems);
         scan.packages.push(Package {
             manifest,

@@ -33,6 +33,12 @@ have written, so a real `_alias_rules.toml` anywhere in the tree still replaces 
 `.alias` sidecar still wins over both. A package needs no `_alias_rules.toml` at all to have every
 one of its files addressable.
 
+Files that describe other files are never candidates: `_alias_rules.toml`, `*.alias`, `*.meta`,
+`manifest.toml` in a package, and any file whose extension is in the ignored sidecar list. That
+list defaults to `license`, so a REUSE `airship.glb.license` does not also claim
+`core::airship`. Replace it with `with_ignored_sidecar_extensions` on `AssetContentPlugin` or
+`AliasScanPlugin`; add exact file names with `with_ignored_file_names`.
+
 The fallback needs a package id, so it applies only where a package supplies one --
 `ename_asset_package`'s scan, and so `ename_fix`. A bare `_alias_rules.toml`-driven tree with no
 packages at all (`AliasScanPlugin` on its own) keeps the old rule: no rule covering a file, no

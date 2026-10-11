@@ -4,7 +4,7 @@
 //! implementation a command line tool would use. `futures_lite::future::block_on` drives it,
 //! because `StdVfs`'s io is blocking and there is nothing to schedule.
 
-use ename_asset_alias::{AliasOrigin, ProblemKind, StdVfs};
+use ename_asset_alias::{AliasOrigin, IgnoredFiles, ProblemKind, StdVfs};
 use ename_asset_package::{LoadOrder, Package, Scan, Version, scan_packages};
 use futures_lite::future::block_on;
 
@@ -23,7 +23,12 @@ fn scan(search_paths: &[&str]) -> Vec<Package> {
 fn full_scan(search_paths: &[&str]) -> Scan {
     let vfs = StdVfs::new(FIXTURE_ROOT);
     let paths: Vec<String> = search_paths.iter().map(|p| (*p).to_owned()).collect();
-    block_on(scan_packages(&vfs, &paths, &LoadOrder::default()))
+    block_on(scan_packages(
+        &vfs,
+        &paths,
+        &LoadOrder::default(),
+        &IgnoredFiles::default(),
+    ))
 }
 
 fn ids(packages: &[Package]) -> Vec<&str> {
@@ -203,6 +208,7 @@ fn a_symlinked_package_directory_is_found_like_a_real_one() {
         &vfs,
         &["search".to_owned()],
         &LoadOrder::default(),
+        &IgnoredFiles::default(),
     ))
     .packages;
 
@@ -218,6 +224,7 @@ fn a_manifest_constraint_reorders_a_real_directory_tree() {
         &vfs,
         &["ordered/base".to_owned(), "ordered/mods".to_owned()],
         &LoadOrder::default(),
+        &IgnoredFiles::default(),
     ));
     assert_eq!(ids(&scan.packages), ["core", "zebra", "apple"]);
     assert!(scan.disabled.is_empty(), "{:?}", scan.disabled);
@@ -240,6 +247,7 @@ fn a_user_constraint_overrules_a_manifest_over_a_real_directory_tree() {
         &vfs,
         &["ordered/base".to_owned(), "ordered/mods".to_owned()],
         &load_order,
+        &IgnoredFiles::default(),
     ));
     assert_eq!(ids(&scan.packages), ["core", "apple", "zebra"]);
 }
@@ -253,6 +261,7 @@ fn an_unsatisfiable_requirement_keeps_a_package_out_of_the_scan() {
         &vfs,
         &["ordered/mods".to_owned()],
         &LoadOrder::default(),
+        &IgnoredFiles::default(),
     ));
 
     // Without `ordered/base` in the search paths, `core` is not installed, so `zebra` cannot load
