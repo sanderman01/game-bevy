@@ -18,7 +18,7 @@ pub enum Command {
     ContentBuild,
     /// `ename_content_list` -- dumps the resolved alias index.
     List,
-    /// `ename_mv <from> <to>` -- moves an asset and its `.meta`/`.alias` sidecars.
+    /// `ename_mv <from> <to>` -- moves an asset and its `.meta`, `.alias` and `.license` sidecars.
     Mv { from: PathBuf, to: PathBuf },
 }
 

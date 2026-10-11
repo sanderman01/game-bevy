@@ -1,8 +1,9 @@
-//! `ename_mv` -- moves an asset and its `.meta`/`.alias` sidecars together, the way `git mv`
-//! moves a file and its history together.
+//! `ename_mv` -- moves an asset and its sidecars together, the way `git mv` moves a file and its
+//! history together.
 //!
-//! Three independent files, none required to exist except the asset itself: `<name>.meta` (Bevy's
-//! import settings) and `<name>.alias` (ours). Inside a git work tree each existing one is moved
+//! Independent files, none required to exist except the asset itself: `<name>.meta` (Bevy's
+//! import settings), `<name>.alias` (ours) and one per
+//! [`DEFAULT_IGNORED_SIDECAR_EXTENSIONS`], such as `<name>.license`. Inside a git work tree each existing one is moved
 //! with `git mv` so history follows it; a file `git mv` refuses -- typically because it is not yet
 //! tracked, which a freshly written `.alias` often is not -- falls back to a plain filesystem
 //! rename rather than failing the whole command over one untracked sidecar. Outside a git work
@@ -12,6 +13,7 @@
 //! until `ename_fix` is run again, which recomputes it -- the same two-step story
 //! `scratch/content-addressing-design.md` describes for a bulk asset's alias surviving a move.
 
+use ename_asset_alias::DEFAULT_IGNORED_SIDECAR_EXTENSIONS;
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -79,9 +81,13 @@ pub fn mv(from: &Path, to: &Path) -> Result<Vec<Moved>, MvError> {
     let in_git = is_inside_git_work_tree(git_dir);
 
     let mut moved = vec![move_one(git_dir, &from, &to, in_git)?];
-    for suffix in [".meta", ".alias"] {
-        let sidecar_from = append(&from, suffix);
-        let sidecar_to = append(&to, suffix);
+    let extensions = ["meta", "alias"]
+        .into_iter()
+        .chain(DEFAULT_IGNORED_SIDECAR_EXTENSIONS.iter().copied());
+    for extension in extensions {
+        let suffix = format!(".{extension}");
+        let sidecar_from = append(&from, &suffix);
+        let sidecar_to = append(&to, &suffix);
         if sidecar_from.exists() {
             moved.push(move_one(git_dir, &sidecar_from, &sidecar_to, in_git)?);
         }

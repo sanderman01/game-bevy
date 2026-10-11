@@ -44,6 +44,32 @@ fn a_missing_sidecar_is_skipped_without_error() {
 }
 
 #[test]
+fn a_license_sidecar_moves_with_the_asset() {
+    let dir = support::copy_fixture("mv_source");
+    let root = dir.path();
+    std::fs::write(root.join("basegame/core/ships/airship.glb.license"), "").unwrap();
+
+    let from = root.join("basegame/core/ships/airship.glb");
+    let to = root.join("basegame/core/ships/warship.glb");
+    let moved = mv(&from, &to).expect("the asset exists");
+
+    assert_eq!(
+        moved.len(),
+        4,
+        "the asset plus its .meta, .alias and .license"
+    );
+    assert!(
+        root.join("basegame/core/ships/warship.glb.license")
+            .exists()
+    );
+    assert!(
+        !root
+            .join("basegame/core/ships/airship.glb.license")
+            .exists()
+    );
+}
+
+#[test]
 fn a_missing_source_asset_is_an_error() {
     let dir = support::copy_fixture("mv_source");
     let root = dir.path();
