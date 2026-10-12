@@ -11,7 +11,10 @@
 //! read the default source directly. Going through `alias://` would await a cell only that code
 //! can fill, and hang.
 
-use crate::ContentIndex;
+use crate::{
+    ContentIndex,
+    shader::{AliasShaderLoader, AliasShaderSettings, SHADER_EXTENSIONS},
+};
 use async_lock::OnceCell;
 use bevy::{
     app::{App, Plugin, Startup},
@@ -25,6 +28,7 @@ use bevy::{
     },
     ecs::{resource::Resource, system::Res},
     image::{ImageFormat, ImageFormatSetting, ImageLoaderSettings},
+    reflect::TypePath,
     tasks::ConditionalSendFuture,
 };
 use std::{path::Path, sync::Arc};
@@ -96,10 +100,17 @@ impl AliasReader {
     /// resolved file's default meta puts the loader name back in the one place `bevy_asset` still
     /// looks, and keeps the extension out of the address.
     ///
+    /// Shader files are the exception: their meta names [`AliasShaderLoader`], see [`shader_meta`].
+    ///
     /// Returns `None` when nothing claims the extension, so the caller reports the meta as absent
     /// and Bevy falls back to its own loader search.
     async fn synthesized_meta(&self, path: &Path) -> Option<VecReader> {
         let server = self.server.wait().await;
+        if let Some(extension) = path.extension().and_then(|e| e.to_str())
+            && SHADER_EXTENSIONS.contains(&extension)
+        {
+            return Some(shader_meta(server, extension).await);
+        }
         let file_name = path.file_name()?.to_str()?;
         let full_extension = &file_name[file_name.find('.')? + 1..];
         // Same widening Bevy applies to a path's own extension: `a.b.c` also tries `b.c` and `c`.
@@ -115,6 +126,25 @@ impl AliasReader {
         }
         None
     }
+}
+
+/// The default `.meta` of [`AliasShaderLoader`], with the language set to `extension`.
+///
+/// Bevy's `ShaderLoader` claims these extensions but reads the language off the asset path, which
+/// an alias does not have, and has no setting to pin. So the meta names a loader that does.
+async fn shader_meta(server: &AssetServer, extension: &str) -> VecReader {
+    let loader = server
+        .get_asset_loader_with_type_name(AliasShaderLoader::type_path())
+        .await
+        .expect("AliasShaderLoader is registered before the server cell is filled");
+    let mut meta = loader.default_meta();
+    if let Some(settings) = meta
+        .loader_settings_mut()
+        .and_then(|settings| settings.downcast_mut::<AliasShaderSettings>())
+    {
+        settings.extension = extension.to_owned();
+    }
+    VecReader::new(meta.serialize())
 }
 
 /// Replaces loader settings that would read the format from the asset path's extension, which an
@@ -257,10 +287,15 @@ impl Plugin for AliasSourcePlugin {
     }
 }
 
-/// Hands the reader the [`AssetServer`], which did not exist when this plugin built.
+/// Hands the reader the [`AssetServer`], which did not exist when this plugin built, and registers
+/// [`AliasShaderLoader`] on it for the same reason.
 ///
 /// `Startup` rather than `Plugin::finish`, because `App::update` does not run `finish` and a test
-/// that drives frames by hand would wait on the cell forever.
+/// that drives frames by hand would wait on the cell forever. The loader goes in first: a
+/// synthesized meta awaits the cell, so it can never ask for the loader before it exists. Doing it
+/// here rather than in a plugin of its own means every user of this source gets it, with no second
+/// plugin to order after `AssetPlugin`.
 fn capture_asset_server(cell: Res<AssetServerCell>, server: Res<AssetServer>) {
+    server.register_loader(AliasShaderLoader);
     let _ = cell.0.set_blocking(server.clone());
 }

@@ -10,6 +10,9 @@
 //! cross-package overrides live in `ename_asset_package`, which drives the same walk one package
 //! root at a time and orders the results itself. See `docs/design/crate-layout.md`.
 //!
+//! Shaders load by alias through [`AliasShaderLoader`], which the source registers itself: Bevy's
+//! own shader loader reads the language off the path's extension, which an alias does not have.
+//!
 //! Everything to do with Bevy is behind the `bevy` feature, on by default. With it off the crate
 //! is the schema and the walk and nothing else, which is what lets a command line tool link it
 //! without a renderer.
@@ -25,6 +28,8 @@ mod vfs;
 mod reader;
 #[cfg(feature = "bevy")]
 mod scan_plugin;
+#[cfg(feature = "bevy")]
+mod shader;
 
 pub use crate::alias_file::{ALIAS_EXTENSION, AliasFile, AliasOrigin, alias_sidecar_target};
 pub use crate::discovery::{AliasScan, DiscoveredAsset, Problem, ProblemKind, scan_aliases};
@@ -37,6 +42,10 @@ pub use crate::vfs::{BoxedFuture, DirEntry, StdVfs, Vfs, VfsError};
 pub use crate::reader::{ALIAS_SOURCE, AliasSourcePlugin, ContentIndexCell};
 #[cfg(feature = "bevy")]
 pub use crate::scan_plugin::AliasScanPlugin;
+#[cfg(feature = "bevy")]
+pub use crate::shader::{
+    AliasShaderLoader, AliasShaderLoaderError, AliasShaderSettings, SHADER_EXTENSIONS,
+};
 #[cfg(feature = "bevy")]
 pub use crate::vfs::AssetReaderVfs;
 

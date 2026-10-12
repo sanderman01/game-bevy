@@ -61,6 +61,17 @@ that override settings with `load_builder().with_settings` start from that meta 
 hint of their own. A hand-written `.meta` is used as is, so one for an image read by alias must
 name its format.
 
+Shaders need a loader of their own. Bevy's `ShaderLoader` reads the shader language off the path's
+extension, panics on an alias, and has no setting to pin it. For a `.wgsl` or `.spv` file the
+synthesized meta names `AliasShaderLoader` instead, with `extension` set to the resolved file's.
+`AliasSourcePlugin` registers that loader itself, so `ShaderRef::Path("alias://core::terrain".into())`
+works with nothing else added. `#import "alias://..."` lines load by alias the same way.
+
+Two limits. GLSL (`.vert`, `.frag`, `.comp`) is not handled and keeps Bevy's loader, so it does not
+load by alias. And a hand-written `.meta` beside a shader that names Bevy's `ShaderLoader` wins
+over the synthesized one, and still panics by alias; such a meta must name
+`ename_asset_alias::shader::AliasShaderLoader` with an `extension` setting.
+
 ## Scanning
 
 The scan reads the default asset source directly. It must never read through `alias://`: that
