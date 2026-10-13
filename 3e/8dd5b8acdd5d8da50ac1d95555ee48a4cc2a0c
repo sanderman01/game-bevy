@@ -1,0 +1,19 @@
+example_game_lib/src/sky.rs
+  s_87c4bd4556ecf6::t_61106e7c4b5525 14-15,29,31,47-52,54-58,62-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e8dd5b8acdd5d8da50ac1d95555ee48a4cc2a0c",
+  "prompts": {},
+  "sessions": {
+    "s_87c4bd4556ecf6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ef5de0df-d5c7-4451-a84c-d6bbfba9e3c5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
