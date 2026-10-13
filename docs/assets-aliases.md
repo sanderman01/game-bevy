@@ -111,8 +111,11 @@ What needs a restart: new or removed files, and edits to `.alias`, `_alias_rules
 
 Limits: processed mode does not reload aliased assets. A `.meta` saved by renaming a temp file
 that does not itself end in `.meta` is dropped by Bevy's watcher before the alias source sees it.
-Index paths outside the asset root never match. Shipping builds have no `file_watcher`, so they
-watch nothing.
+The watcher reports paths relative to the asset root and they are compared as is, so an index
+path that is absolute or contains `..` does not match, even when it points inside the root. The
+default source and the alias source debounce separately, so if a loader records a dependency on
+a default-source path, that dependency and its aliased dependent can reload in different frames;
+the engine's loaders record none. Shipping builds have no `file_watcher`, so they watch nothing.
 
 ## Ownership: `.alias` vs `.meta`
 
