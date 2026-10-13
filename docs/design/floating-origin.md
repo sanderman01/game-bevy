@@ -44,10 +44,12 @@ to the election.
 
 ## The editor owns edit-versus-play
 
-`EditorCamera` carries a priority above the default, so in `example_game_editor_bin` it outranks
-whatever the stage nominated and the stage's own camera simply does not get the origin. When
-play-in-editor lands, the Game View becomes authoritative and the editor drops `EditorCamera`'s
-priority below the default; leaving play raises it again.
+`EditorCamera` carries a priority above the default while the Scene View is shown, so it outranks
+whatever the stage nominated. While the Game View is shown, the editor drops `EditorCamera`'s
+priority below the default, so the stage's camera gets the origin, and with it whatever details the
+world around the origin, such as terrain LOD. Switching back raises it again. A frozen origin's
+anchor copied the camera's priority, so the editor ranks it along with the camera. Play-in-editor,
+when it lands, can reuse the same switch.
 
 That rule lives in `ename_editor` because the editor owns the mode. The engine knows only "highest
 priority wins" and never learns what play-in-editor means — the same split that
@@ -66,8 +68,8 @@ election skips any camera that currently has `FrozenOrigin`, so it does not hand
 The second is not redundant with the first: the camera and its anchor hold equal priority, and
 without the filter the tie would be settled by entity id.
 
-This composes with play-in-editor on its own: freeze the editor camera, enter play, and the game
-camera outranks the frozen anchor.
+This composes with the Game View: freeze the editor camera, show the Game View, and the game
+camera outranks the frozen anchor, because the editor lowers the anchor's priority too.
 
 ## Ordering
 

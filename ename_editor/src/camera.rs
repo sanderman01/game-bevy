@@ -10,8 +10,8 @@ use bevy::{
     transform::TransformSystems,
 };
 use ename_engine::bigspace::{
-    BigSpaceCameraController, BigSpaceCameraInput, CellCoord, FloatingOriginCandidate, Grid,
-    GridCameraSystems, GridFollowCamera, Grids,
+    BigSpaceCameraController, BigSpaceCameraInput, CellCoord, FloatingOriginCandidate,
+    FrozenOrigin, Grid, GridCameraSystems, GridFollowCamera, Grids,
 };
 
 use crate::panels::{ActiveViewport, UiState};
@@ -79,15 +79,17 @@ impl EditorCameraIntent {
 
 const EDITOR_CAMERA_INIT_POS: Vec3 = vec3(0.0, 10.0, 60.0);
 
-/// Outranks the candidate a stage nominates (priority `0` by convention), so while editing, the
-/// world recenters around this camera rather than around whatever the stage would have picked.
+/// Outranks the candidate a stage nominates (priority `0` by convention), so while the Scene View
+/// is shown, the world recenters around this camera rather than around whatever the stage picked.
 ///
-/// This constant lives here, not in the engine, because the editor owns the mode that decides it.
-/// When play-in-editor lands, entering play drops `EditorCamera`'s `FloatingOriginCandidate` below
-/// `0` so the Game View's own candidate wins, and leaving play restores this value; the engine
-/// still knows only "highest priority wins". There is no mode to read yet, so nothing flips it
-/// today. See `docs/design/floating-origin.md`.
+/// These constants live here, not in the engine, because the editor owns the mode that decides
+/// them: while the Game View is shown, [`follow_shown_view`] drops the editor camera to
+/// [`HIDDEN_EDITOR_CAMERA_ORIGIN_PRIORITY`], below the stage's candidate, so the origin -- and
+/// everything that details the world around it, such as terrain LOD -- follows the camera being
+/// looked through. The engine still knows only "highest priority wins". See
+/// `docs/design/floating-origin.md`.
 const EDITOR_CAMERA_ORIGIN_PRIORITY: i32 = 100;
+const HIDDEN_EDITOR_CAMERA_ORIGIN_PRIORITY: i32 = -100;
 
 /// How the editor camera is set up. Seeded by `EditorPlugins::with_camera_far`; reflected, so
 /// the Resources tab can change it while the editor runs.
@@ -187,7 +189,10 @@ impl Plugin for EditorCameraPlugin {
             .insert_resource(self.settings)
             .add_systems(
                 Update,
-                apply_camera_settings.run_if(resource_changed::<EditorCameraSettings>),
+                (
+                    apply_camera_settings.run_if(resource_changed::<EditorCameraSettings>),
+                    follow_shown_view,
+                ),
             )
             .add_systems(
                 Startup,
@@ -835,6 +840,34 @@ fn apply_focus_on_f_key(
         Some(&cell) => focus_entity.insert(cell),
         None => focus_entity.remove::<CellCoord>(),
     };
+}
+
+/// Ranks the editor camera's floating-origin candidacy, and its frozen anchor's if it has one, by
+/// whether its view is the one shown. The anchor copied the camera's priority when it was frozen,
+/// so without this it would keep outranking the stage's camera. `UiState` is `Option`al, as for
+/// [`apply_focus_on_f_key`], so the camera can be tested without the panels.
+fn follow_shown_view(
+    ui_state: Option<Res<UiState>>,
+    cameras: Query<(Entity, Option<&FrozenOrigin>), With<EditorCamera>>,
+    mut candidates: Query<&mut FloatingOriginCandidate>,
+) {
+    let Some(ui_state) = ui_state else {
+        return;
+    };
+    let priority = match ui_state.active_viewport {
+        ActiveViewport::Scene => EDITOR_CAMERA_ORIGIN_PRIORITY,
+        ActiveViewport::Game => HIDDEN_EDITOR_CAMERA_ORIGIN_PRIORITY,
+    };
+    for (camera, frozen) in &cameras {
+        let anchor = frozen.map(|FrozenOrigin(anchor)| *anchor);
+        for entity in std::iter::once(camera).chain(anchor) {
+            if let Ok(mut candidate) = candidates.get_mut(entity)
+                && candidate.0 != priority
+            {
+                candidate.0 = priority;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
