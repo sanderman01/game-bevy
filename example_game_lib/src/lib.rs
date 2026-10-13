@@ -6,6 +6,7 @@
 //! See `docs/design/crate-layout.md`.
 
 pub mod airship;
+pub mod sky;
 
 use bevy::{app::PluginGroupBuilder, prelude::*};
 use ename_engine::stage::open_stage;
@@ -19,6 +20,7 @@ impl PluginGroup for GamePlugins {
         PluginGroupBuilder::start::<Self>()
             .add(StartPlugin)
             .add(airship::AirshipMovementPlugin)
+            .add(sky::SkyPlugin)
     }
 }
 
