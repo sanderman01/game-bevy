@@ -1,0 +1,19 @@
+docs/assets-aliases.md
+  s_87c4bd4556ecf6::t_520badefae89cd 114-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bad857ac7beb8314848522946d2120c251cbf09c",
+  "prompts": {},
+  "sessions": {
+    "s_87c4bd4556ecf6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ef5de0df-d5c7-4451-a84c-d6bbfba9e3c5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
