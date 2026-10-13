@@ -7,6 +7,8 @@
 //! A handle is keyed on the alias rather than on the resolved path, so which package won an
 //! override is invisible to game code and to anything serialized.
 //!
+//! The source watches for edits wherever Bevy watches the default source; see [`crate::watcher`].
+//!
 //! **Whatever fills the cells this reader awaits must never read through this source.** It has to
 //! read the default source directly. Going through `alias://` would await a cell only that code
 //! can fill, and hang.
@@ -14,12 +16,13 @@
 use crate::{
     ContentIndex,
     shader::{AliasShaderLoader, AliasShaderSettings, SHADER_EXTENSIONS},
+    watcher::alias_watcher,
 };
 use async_lock::OnceCell;
 use bevy::{
     app::{App, Plugin, Startup},
     asset::{
-        AssetApp, AssetServer,
+        AssetApp, AssetServer, AssetServerMode,
         io::{
             AssetReader, AssetReaderError, AssetSource, AssetSourceBuilder, AssetSourceId,
             ErasedAssetReader, PathStream, Reader, VecReader,
@@ -58,6 +61,11 @@ pub struct ContentIndexCell(pub Arc<OnceCell<ContentIndex>>);
 /// loader lookup it has no other way to reach. See [`AliasReader::synthesized_meta`].
 #[derive(Resource, Clone, Default)]
 struct AssetServerCell(Arc<OnceCell<AssetServer>>);
+
+/// The server's mode, for the watcher to tell whether anything reads its events. Filled on
+/// `Startup` alongside [`AssetServerCell`].
+#[derive(Resource, Clone, Default)]
+struct AssetServerModeCell(Arc<OnceCell<AssetServerMode>>);
 
 /// Resolves an alias to a path under the asset root, then delegates to `inner`.
 pub(crate) struct AliasReader {
@@ -252,6 +260,7 @@ impl Plugin for AliasSourcePlugin {
 
         let cell = ContentIndexCell::default();
         let server_cell = AssetServerCell::default();
+        let mode_cell = AssetServerModeCell::default();
 
         // Both readers get registered: `with_reader` supplies the unprocessed one and
         // `with_processed_reader` the processed one, and Bevy picks by mode. Registering only the
@@ -279,10 +288,18 @@ impl Plugin for AliasSourcePlugin {
                     processed_server.clone(),
                     make_processed_reader(),
                 ))
-            }),
+            })
+            // Unprocessed only: in processed mode aliased assets do not reload.
+            .with_watcher(alias_watcher(
+                cell.0.clone(),
+                mode_cell.0.clone(),
+                self.asset_root.clone(),
+            ))
+            .with_watch_warning(AssetSource::get_default_watch_warning()),
         )
         .insert_resource(cell)
         .insert_resource(server_cell)
+        .insert_resource(mode_cell)
         .add_systems(Startup, capture_asset_server);
     }
 }
@@ -295,7 +312,12 @@ impl Plugin for AliasSourcePlugin {
 /// synthesized meta awaits the cell, so it can never ask for the loader before it exists. Doing it
 /// here rather than in a plugin of its own means every user of this source gets it, with no second
 /// plugin to order after `AssetPlugin`.
-fn capture_asset_server(cell: Res<AssetServerCell>, server: Res<AssetServer>) {
+fn capture_asset_server(
+    cell: Res<AssetServerCell>,
+    mode: Res<AssetServerModeCell>,
+    server: Res<AssetServer>,
+) {
     server.register_loader(AliasShaderLoader);
     let _ = cell.0.set_blocking(server.clone());
+    let _ = mode.0.set_blocking(server.mode());
 }

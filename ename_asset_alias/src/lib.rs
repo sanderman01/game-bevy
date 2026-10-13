@@ -30,6 +30,8 @@ mod reader;
 mod scan_plugin;
 #[cfg(feature = "bevy")]
 mod shader;
+#[cfg(feature = "bevy")]
+mod watcher;
 
 pub use crate::alias_file::{ALIAS_EXTENSION, AliasFile, AliasOrigin, alias_sidecar_target};
 pub use crate::discovery::{AliasScan, DiscoveredAsset, Problem, ProblemKind, scan_aliases};

@@ -25,6 +25,7 @@ undocumented_unsafe_blocks = "warn"
 # `[patch]` silently does nothing against a bare `path` dependency.
 [workspace.dependencies]
 anyhow = "1.0.100"
+async-channel = "2.5.0"
 async-lock = "3.4.2"
 avian3d = "0.7.0"
 bevy = { version = "0.19.1", default-features = true, features = ["jpeg"] }

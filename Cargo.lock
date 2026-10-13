@@ -2960,11 +2960,13 @@ dependencies = [
 name = "ename_asset_alias"
 version = "0.0.0"
 dependencies = [
+ "async-channel",
  "async-lock",
  "bevy",
  "futures-lite",
  "glob",
  "serde",
+ "tempfile",
  "thiserror 2.0.20",
  "toml",
  "uuid",
@@ -2978,6 +2980,7 @@ dependencies = [
  "bevy",
  "ename_asset_alias",
  "ename_asset_package",
+ "tempfile",
 ]
 
 [[package]]
