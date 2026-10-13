@@ -1,0 +1,21 @@
+docs/design/floating-origin.md
+  s_a6f020d57c567a::t_e2fcb109605b23 47-52,71-72
+ename_editor/src/camera.rs
+  s_a6f020d57c567a::t_6de5788b922cb1 13-14,82-83,85-90,92,192-195,845-868
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "413ec49f23751b57cc8a0f0d223cf4363fb9f4d0",
+  "prompts": {},
+  "sessions": {
+    "s_a6f020d57c567a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f66589a8-1928-44c4-9ab0-b9aaed1ad815",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
