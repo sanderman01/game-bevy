@@ -103,8 +103,11 @@ impl UiState {
             selection: &mut self.selection,
             console: &mut self.console,
         };
+        // No collapse buttons: egui_dock 0.19 can collapse a leaf or minimize a window but has
+        // no public way to expand or restore one, so `show_viewport` could not undo it.
         DockArea::new(&mut self.state)
             .style(Style::from_egui(ui.style().as_ref()))
+            .show_leaf_collapse_buttons(false)
             .show_inside(ui, &mut tab_viewer);
 
         // After `show_inside`, which is where a click this pass moves the dock's focus.
@@ -142,6 +145,18 @@ impl UiState {
             .state
             .find_tab(&tab)
             .ok_or_else(|| format!("the {tab:?} tab was closed and the editor cannot reopen it"))?;
+        // Unreachable with the collapse buttons hidden, but a selected tab in a collapsed leaf
+        // would report success and never draw.
+        let tree = &self.state[path.surface];
+        let mut node = Some(path.node);
+        while let Some(index) = node {
+            if tree[index].is_collapsed() {
+                return Err(format!(
+                    "the {tab:?} tab is in a collapsed dock panel; expand it first"
+                ));
+            }
+            node = index.parent();
+        }
         self.state
             .set_active_tab(path)
             .map_err(|err| format!("cannot show the {tab:?} tab: {err:?}"))?;
@@ -470,6 +485,16 @@ mod tests {
         pass(&mut state, &mut world, &ctx);
         assert_eq!(state.active_viewport, ActiveViewport::Scene);
         assert_eq!(state.viewport_rect, scene_rect);
+    }
+
+    #[test]
+    fn showing_a_tab_in_a_collapsed_leaf_fails_and_changes_nothing() {
+        let mut state = split_leaves();
+        let path = state.state.find_tab(&EguiWindow::GameView).unwrap();
+        state.state[path.surface][path.node].set_collapsed(true);
+        assert!(state.show_viewport(ActiveViewport::Game).is_err());
+        assert_eq!(state.active_viewport, ActiveViewport::Scene);
+        assert_eq!(state.state.focused_leaf(), None);
     }
 
     #[test]
