@@ -91,6 +91,9 @@ struct ResponseError {
     message: String,
 }
 
+/// JSON-RPC's code for a method the server does not have.
+pub const METHOD_NOT_FOUND: i32 = -32601;
+
 /// BRP's code for an id that names no entity in the world.
 pub const ENTITY_NOT_FOUND: i32 = -23401;
 

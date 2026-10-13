@@ -10,7 +10,7 @@
 //!    remember to check.
 //! 5. A tool's name and one sentence are all the model gets. Write them that way.
 //!
-//! Names are prefixed by group (`world_`, `run_`, `log_`) so a dispatching meta-tool could be
+//! Names are prefixed by group (`world_`, `time_`, `log_`, `editor_`) so a dispatching meta-tool could be
 //! added later without renaming anything. At this size the indirection would only cost a round
 //! trip.
 
@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::{
-    brp::BrpClient,
+    brp::{BrpClient, BrpError, METHOD_NOT_FOUND},
     entity::{self, EntitySelector, ResolvedEntity},
     staleness,
 };
@@ -374,6 +374,19 @@ pub enum TimeAction {
     Step,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetViewParams {
+    /// "scene" is the editor's own free camera, "game" is the loaded stage's MainCamera.
+    pub view: EditorView,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EditorView {
+    Scene,
+    Game,
+}
+
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
 pub struct GetLogsParams {
     /// Lowest level to return: TRACE, DEBUG, INFO, WARN or ERROR. Defaults to TRACE.
@@ -714,6 +727,70 @@ impl GameServer {
     }
 
     #[tool(
+        description = "Which editor view is shown, Scene View (the editor's free camera) or Game \
+                       View (the stage's MainCamera), and whether the Game View has a camera to \
+                       show."
+    )]
+    async fn editor_get_view(&self) -> ToolResult<Value> {
+        let view = self.call_editor_view("editor.view.get", json!({})).await?;
+        self.tag(view).await
+    }
+
+    #[tool(
+        description = "Show the editor's Scene View or Game View, as clicking its tab would. \
+                       Returns after the game has run a few frames with it, so a screenshot taken \
+                       next shows it."
+    )]
+    async fn editor_set_view(
+        &self,
+        Parameters(params): Parameters<SetViewParams>,
+    ) -> ToolResult<Value> {
+        self.call_editor_view("editor.view.set", json!({ "view": params.view }))
+            .await?;
+        self.await_frames(VIEW_SETTLE_FRAMES).await.map_err(fail)?;
+        // Read back rather than echo the set: a layout or a click can still override it.
+        let view = self.call_editor_view("editor.view.get", json!({})).await?;
+        self.tag(view).await
+    }
+
+    /// Calls an `editor.view.*` method, explaining a game build that does not have it.
+    async fn call_editor_view(&self, method: &str, params: Value) -> Result<Value, ErrorData> {
+        self.brp
+            .call_raw(method, params)
+            .await
+            .map_err(explain_missing_editor_method)
+            .map_err(fail)
+    }
+
+    /// Waits until the game has advanced `frames` frames from now, or gives up after 10 seconds.
+    ///
+    /// The frame counter is the main loop's, so this shows the loop ran, not that the GPU
+    /// presented anything. It keeps counting while virtual time is paused.
+    async fn await_frames(&self, frames: u32) -> anyhow::Result<()> {
+        #[derive(Deserialize)]
+        struct Frame {
+            frame: u32,
+        }
+        let wait = async {
+            let start: Frame = self.brp.call("game.time.get", json!({})).await?;
+            loop {
+                let now: Frame = self.brp.call("game.time.get", json!({})).await?;
+                if now.frame.wrapping_sub(start.frame) >= frames {
+                    return anyhow::Ok(());
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(10), wait)
+            .await
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "the game did not advance {frames} frames within 10 seconds; it may be hung"
+                )
+            })?
+    }
+
+    #[tool(
         description = "Read the game's recent log events, filtered by level, emitting module and \
                        message. The game's stderr is not otherwise visible."
     )]
@@ -978,6 +1055,24 @@ fn reject_position_write(component: &str, path: &str) -> Result<(), ErrorData> {
     Ok(())
 }
 
+/// Frames `editor_set_view` waits for: one for the egui pass that applies the switch, one for
+/// the render world, which runs a frame behind under pipelined rendering, and one to spare.
+const VIEW_SETTLE_FRAMES: u32 = 3;
+
+/// Rewords "method not found" from an `editor.view.*` call. It means a game binary without the
+/// editor, or one built before the editor had these methods, never that the game is down.
+fn explain_missing_editor_method(error: anyhow::Error) -> anyhow::Error {
+    match error.downcast_ref::<BrpError>() {
+        Some(brp) if brp.code == METHOD_NOT_FOUND && brp.method.starts_with("editor.view.") => {
+            anyhow::anyhow!(
+                "this game build does not expose editor view switching. Run the editor binary, \
+                 rebuilt against the current ename_editor."
+            )
+        }
+        _ => error,
+    }
+}
+
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for GameServer {
     fn get_info(&self) -> ServerInfo {
@@ -998,7 +1093,44 @@ impl ServerHandler for GameServer {
 mod tests {
     use serde_json::json;
 
-    use super::{CELL_COORD as CELL, TRANSFORM, crate_matches, reject_position_write};
+    use super::{
+        CELL_COORD as CELL, TRANSFORM, crate_matches, explain_missing_editor_method,
+        reject_position_write,
+    };
+    use crate::brp::{BrpError, METHOD_NOT_FOUND};
+
+    fn brp_error(method: &str, code: i32) -> anyhow::Error {
+        BrpError {
+            method: method.to_owned(),
+            code,
+            message: "Method not found".to_owned(),
+        }
+        .into()
+    }
+
+    #[test]
+    fn a_missing_editor_method_says_the_build_lacks_it() {
+        let error = explain_missing_editor_method(brp_error("editor.view.set", METHOD_NOT_FOUND));
+        assert!(
+            error
+                .to_string()
+                .contains("does not expose editor view switching")
+        );
+    }
+
+    #[test]
+    fn other_errors_pass_through_unchanged() {
+        for (method, code) in [
+            ("editor.view.set", -23402),
+            ("game.time.get", METHOD_NOT_FOUND),
+        ] {
+            let error = explain_missing_editor_method(brp_error(method, code));
+            assert!(
+                error.downcast_ref::<BrpError>().is_some(),
+                "{method} {code}"
+            );
+        }
+    }
 
     #[test]
     fn refuses_writes_that_would_move_half_a_position() {
