@@ -16,11 +16,14 @@ use bevy::{
 };
 use ename_engine::{
     camera::MainCamera,
-    screenshot::{RetainScreenshotOutcome, ScreenshotOutcome, ScreenshotRequest, ScreenshotSource},
+    screenshot::{
+        RetainScreenshotOutcome, ScreenshotError, ScreenshotOutcome, ScreenshotRequest,
+        ScreenshotSource, check_png_path,
+    },
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::path::PathBuf;
+use serde_json::{Value, json};
+use std::path::{Path, PathBuf};
 
 pub const CAPTURE_METHOD: &str = "game.screenshot.capture";
 pub const RESULT_METHOD: &str = "game.screenshot.result";
@@ -82,7 +85,8 @@ pub(crate) fn result(In(params): In<Option<Value>>, world: &mut World) -> BrpRes
         return Err(BrpError {
             code: error_codes::INVALID_PARAMS,
             message: format!(
-                "{request} is not a screenshot request, or it finished more than 30 s ago"
+                "{} is not a screenshot request, or it finished more than 30 s ago",
+                request.to_bits()
             ),
             data: None,
         });
@@ -97,23 +101,38 @@ pub(crate) fn result(In(params): In<Option<Value>>, world: &mut World) -> BrpRes
         Some(ScreenshotOutcome(Err(err))) => Err(BrpError {
             code: error_codes::INTERNAL_ERROR,
             message: err.to_string(),
-            data: None,
+            data: Some(json!({ "kind": error_kind(err) })),
         }),
+    }
+}
+
+/// A stable name for each failure, in the error's `data`, so a client can react to one without
+/// matching on the message.
+fn error_kind(error: &ScreenshotError) -> &'static str {
+    match error {
+        ScreenshotError::NotPng(_) => "not_png",
+        ScreenshotError::NotACamera(_) => "not_a_camera",
+        ScreenshotError::CameraInactive(_) => "camera_inactive",
+        ScreenshotError::UnsupportedTarget(_) => "unsupported_target",
+        ScreenshotError::NoWindow => "no_window",
+        ScreenshotError::UnsupportedFormat(_) => "unsupported_format",
+        ScreenshotError::EmptyCrop { .. } => "empty_crop",
+        ScreenshotError::TimedOut(_) => "timed_out",
+        ScreenshotError::Convert(_) => "convert",
+        ScreenshotError::Write { .. } => "write",
     }
 }
 
 /// Relative paths are refused: the game's working directory is not the caller's, and a file
 /// landing somewhere unexpected is worse than an error.
-fn check_path(path: &std::path::Path) -> Result<(), BrpError> {
-    let message = if !path.is_absolute() {
-        format!("`{}` is not an absolute path", path.display())
-    } else if !path
-        .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
-    {
-        format!("`{}` is not a .png path", path.display())
+fn check_path(path: &Path) -> Result<(), BrpError> {
+    let message = if path.is_absolute() {
+        match check_png_path(path) {
+            Ok(()) => return Ok(()),
+            Err(err) => err.to_string(),
+        }
     } else {
-        return Ok(());
+        format!("`{}` is not an absolute path", path.display())
     };
     Err(BrpError {
         code: error_codes::INVALID_PARAMS,
@@ -150,7 +169,7 @@ fn internal(message: String) -> BrpError {
 mod tests {
     use super::*;
 
-    use ename_engine::screenshot::{SavedScreenshot, ScreenshotError};
+    use ename_engine::screenshot::SavedScreenshot;
     use serde_json::json;
 
     fn call<M>(
@@ -257,6 +276,7 @@ mod tests {
         }
         let err = call(&mut world, result, json!({ "request": failed })).unwrap_err();
         assert_eq!(err.message, ScreenshotError::NoWindow.to_string());
+        assert_eq!(err.data, Some(json!({ "kind": "no_window" })));
     }
 
     #[test]
@@ -268,6 +288,11 @@ mod tests {
         for request in [other, gone] {
             let err = call(&mut world, result, json!({ "request": request })).unwrap_err();
             assert_eq!(err.code, error_codes::INVALID_PARAMS);
+            assert!(
+                err.message.starts_with(&request.to_bits().to_string()),
+                "{}",
+                err.message
+            );
         }
     }
 }

@@ -2,8 +2,8 @@
 //! `editor.screenshot.capture`: the Scene View's camera to a PNG.
 //!
 //! The editor registers these itself rather than `ename_remote` doing it, because the dock and
-//! camera they use are private to this crate and neither crate may depend on the other. They go into Bevy's
-//! own `RemoteMethods`, so this module needs `bevy_remote` and nothing first-party.
+//! camera they use are private to this crate and neither crate may depend on the other. They go
+//! into Bevy's own `RemoteMethods`, so this module needs `bevy_remote` and no `ename_remote`.
 //!
 //! # Timing
 //!
@@ -19,7 +19,9 @@ use bevy::{
         error_codes,
     },
 };
-use ename_engine::screenshot::{RetainScreenshotOutcome, ScreenshotRequest, ScreenshotSource};
+use ename_engine::screenshot::{
+    RetainScreenshotOutcome, ScreenshotRequest, ScreenshotSource, check_png_path,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -151,15 +153,13 @@ fn capture_screenshot(In(params): In<Option<Value>>, world: &mut World) -> BrpRe
 /// The same rule as `game.screenshot.capture`: absolute, because the game's working directory is
 /// not the caller's, and `.png`.
 fn check_screenshot_path(path: &Path) -> Result<(), BrpError> {
-    let message = if !path.is_absolute() {
-        format!("`{}` is not an absolute path", path.display())
-    } else if !path
-        .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
-    {
-        format!("`{}` is not a .png path", path.display())
+    let message = if path.is_absolute() {
+        match check_png_path(path) {
+            Ok(()) => return Ok(()),
+            Err(err) => err.to_string(),
+        }
     } else {
-        return Ok(());
+        format!("`{}` is not an absolute path", path.display())
     };
     Err(BrpError {
         code: error_codes::INVALID_PARAMS,
@@ -304,5 +304,19 @@ mod tests {
             .unwrap_err();
             assert_eq!(err.code, error_codes::INVALID_PARAMS, "{path}");
         }
+    }
+
+    #[test]
+    fn screenshot_without_an_editor_camera_is_an_error() {
+        let mut world = world();
+        let err = call(
+            &mut world,
+            capture_screenshot,
+            Some(json!({ "path": "/tmp/scene.png" })),
+        )
+        .unwrap_err();
+        assert!(err.message.contains("editor camera"), "{}", err.message);
+        let requests = world.query::<&ScreenshotRequest>().iter(&world).count();
+        assert_eq!(requests, 0);
     }
 }
