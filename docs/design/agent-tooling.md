@@ -60,6 +60,14 @@ method that exists only when the editor is linked. A successful `set` means the 
 has changed. The cameras follow on the next frame's egui pass, so the MCP tool waits a few frames
 and reads the view back before answering.
 
+**A screenshot is a request plus a poll.** The capture lives in `ename_engine::screenshot`, so
+game code has it too. Bevy reads a frame back from the GPU a frame or two after it is asked, and
+an instant BRP method has to answer in the frame it runs. So `game.screenshot.capture` (and the
+editor's `editor.screenshot.capture`, for its private camera) spawns a request entity and returns
+it. `game.screenshot.result` then reads the outcome the engine keeps on that entity for 30
+seconds. A watching method could hold one HTTP call open instead, but it would still need the
+request id from a separate call. The sidecar already polls the same way for `time_set` steps.
+
 ## What the agent can actually see
 
 Type registration is a correctness requirement for MCP, not a convenience for the inspector. An

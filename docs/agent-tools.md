@@ -80,6 +80,7 @@ cannot become a crate that ships by accident.
 | `time_get` / `time_set` | Read the virtual clock; pause, resume, or step N frames. |
 | `log_get_entries` | Recent tracing events, filtered by level, target and message. |
 | `editor_get_view` / `editor_set_view` | Which editor view is shown, Scene View or Game View; switch it as clicking its tab would. |
+| `screenshot_capture` | Write the game window, the game camera or the editor camera to a PNG file. |
 
 Every result also carries `pid`, three letters naming the run of the game process that answered
 it. See "Noticing a restart".
@@ -175,6 +176,36 @@ not prove the GPU presented the frame. It works while time is paused, because fr
 
 These methods belong to the editor, so a binary without it reports that the build "does not expose
 editor view switching". An editor built before the methods existed reports the same.
+
+## Screenshots
+
+`screenshot_capture` takes a `path` and a `source`, writes a PNG, and returns the absolute path
+and its size in physical pixels. Open the file to look at it; the image is not returned inline.
+
+| `source` | What is in the PNG |
+| --- | --- |
+| `window` | The whole game window, editor panels included. |
+| `game_camera` | What the stage's `MainCamera` rendered. In the editor, the Game View. |
+| `editor_camera` | The editor's Scene View, cropped from the window, gizmos and grid included. |
+
+A camera only renders while its view is shown, so `game_camera` needs Game View and
+`editor_camera` needs Scene View. The wrong one fails with a hint naming the `editor_set_view`
+call that fixes it. The tool never switches the view itself, because that changes what the user
+is looking at.
+
+A camera that draws into the window, the Scene View's included, is captured as a crop of the
+finished window, so anything drawn over it inside that rect is in the picture too.
+
+A relative `path` resolves against the MCP server's working directory, normally the project
+root, not against the game's. Missing directories are created, an existing file is replaced, and
+the file appears whole or not at all. Only `.png` is accepted.
+
+The capture is a GPU readback that finishes a frame or two later, and the tool waits for it. A
+minimized window may never present a frame; the game gives up after 5 seconds and the tool after
+10. Capturing works while time is paused, because frames keep running.
+
+Game code uses the same capture through `ename_engine::screenshot`: spawn a `ScreenshotRequest`
+and observe `ScreenshotFinished`.
 
 ## What the agent cannot see
 
