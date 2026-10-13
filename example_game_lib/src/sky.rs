@@ -11,7 +11,8 @@ use thiserror::Error;
 /// The sky settings the example loads.
 const SKY: &str = "alias://examples::backdrop";
 
-/// Loads [`SkySettings`] on startup and applies them to [`ClearColor`] whenever they load or change.
+/// Loads the sky settings on startup and applies them to [`ClearColor`] whenever they load or
+/// change.
 pub struct SkyPlugin;
 
 impl Plugin for SkyPlugin {
@@ -25,9 +26,9 @@ impl Plugin for SkyPlugin {
 
 /// How the sky looks.
 #[derive(Asset, TypePath, Deserialize, Debug, Clone, Copy)]
-pub struct SkySettings {
+struct SkySettings {
     /// sRGB, each channel in `0.0..=1.0`.
-    pub clear_color: (f32, f32, f32),
+    clear_color: (f32, f32, f32),
 }
 
 #[derive(Resource)]
@@ -43,17 +44,25 @@ fn apply_sky(
     settings: Res<Assets<SkySettings>>,
     mut clear_color: ResMut<ClearColor>,
 ) {
-    let changed = events.read().any(|event| match event {
-        AssetEvent::LoadedWithDependencies { id } | AssetEvent::Modified { id } => {
-            *id == sky.0.id()
+    // `Added` on first load, `Modified` on each reload. Not `LoadedWithDependencies`, which a
+    // reload sends as well and would apply everything twice.
+    let mut changed = false;
+    for event in events.read() {
+        if let AssetEvent::Added { id } | AssetEvent::Modified { id } = event {
+            changed |= *id == sky.0.id();
         }
-        _ => false,
-    });
-    let Some(settings) = settings.get(&sky.0).filter(|_| changed) else {
+    }
+    if !changed {
+        return;
+    }
+    let Some(settings) = settings.get(&sky.0) else {
         return;
     };
     let (r, g, b) = settings.clear_color;
-    clear_color.0 = Color::srgb(r, g, b);
+    let color = Color::srgb(r, g, b);
+    if clear_color.0 != color {
+        clear_color.0 = color;
+    }
     info!("Applied sky settings: {settings:?}");
 }
 
