@@ -3005,6 +3005,8 @@ dependencies = [
  "egui_dock",
  "ename_engine",
  "rfd",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

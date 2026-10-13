@@ -66,7 +66,7 @@ pub(crate) struct UiState {
 }
 
 impl UiState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let mut state = DockState::new(vec![EguiWindow::SceneView, EguiWindow::GameView]);
         let tree = state.main_surface_mut();
         let [game, _inspector] =

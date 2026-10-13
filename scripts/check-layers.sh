@@ -34,7 +34,7 @@ check ename_asset_alias 'ename_.*'
 check ename_asset_package 'ename_asset_content|ename_engine|ename_editor|example_game_lib|ename_remote|ename_mcp'
 # The glue may name both asset crates and nothing above it.
 check ename_asset_content 'ename_engine|ename_editor|example_game_lib'
-check ename_editor 'example_game_lib'
+check ename_editor 'example_game_lib|ename_remote'
 check example_game_lib 'ename_editor'
 check ename_remote 'ename_editor|example_game_lib'
 # The sidecar is a separate process. A first-party dependency here would mean it had started

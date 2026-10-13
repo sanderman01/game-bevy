@@ -44,6 +44,20 @@ impl Plugin for GameViewPlugin {
     }
 }
 
+/// The cameras the Game View can show. Exactly one must match; [`resize_game_view`] and
+/// [`camera_available`] both use this, so what the tab shows and what the agent is told agree.
+type GameViewCameraFilter = (With<MainCamera>, With<Camera>, With<RenderTarget>);
+
+/// Whether the Game View has a camera to show: exactly one entity matches
+/// [`GameViewCameraFilter`]. A `MainCamera` marker on an entity with no `Camera` does not count.
+pub(crate) fn camera_available(world: &mut World) -> bool {
+    world
+        .query_filtered::<(), GameViewCameraFilter>()
+        .iter(world)
+        .count()
+        == 1
+}
+
 /// The image the stage camera renders into, and the egui texture that paints it.
 #[derive(Resource)]
 pub(crate) struct GameViewTarget {
@@ -98,7 +112,7 @@ fn resize_game_view(
     ui_state: Res<UiState>,
     window: Single<&Window, With<PrimaryWindow>>,
     zoom_factor: Single<&EguiZoomFactor, With<PrimaryEguiContext>>,
-    camera: Option<Single<(&mut Camera, &mut RenderTarget), With<MainCamera>>>,
+    camera: Option<Single<(&mut Camera, &mut RenderTarget), GameViewCameraFilter>>,
     mut target: ResMut<GameViewTarget>,
     mut images: ResMut<Assets<Image>>,
 ) {
