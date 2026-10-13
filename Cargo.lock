@@ -3021,7 +3021,9 @@ dependencies = [
  "big_space",
  "ename_asset_alias",
  "ename_asset_content",
+ "image",
  "ron",
+ "tempfile",
  "thiserror 2.0.20",
  "uuid",
 ]

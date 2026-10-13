@@ -48,6 +48,8 @@ ename_remote = { path = "ename_remote", version = "0.0.0" }
 example_game_lib = { path = "example_game_lib", version = "0.0.0" }
 futures-lite = "2.6.1"
 glob = "0.3.4"
+# The version `bevy_image` already uses, so `Image::try_into_dynamic` hands back this crate's type.
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 reqwest = { version = "0.12.24", default-features = false, features = ["json", "rustls-tls"] }
 rfd = "0.17.2"
 rmcp = { version = "3.2.0", default-features = false }

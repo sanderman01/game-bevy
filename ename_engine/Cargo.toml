@@ -12,7 +12,9 @@ bevy.workspace = true
 big_space.workspace = true
 ename_asset_alias.workspace = true
 ename_asset_content.workspace = true
+image.workspace = true
 ron.workspace = true
+tempfile.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 
