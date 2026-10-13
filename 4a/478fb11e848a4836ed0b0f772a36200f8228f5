@@ -1,0 +1,24 @@
+ename_mcp/src/brp.rs
+  s_baf869300155eb::t_ecb3f342ac129a 77-81,85,97-98,115-116,125
+ename_mcp/src/server.rs
+  s_baf869300155eb::t_4064c165a005b8 854-855,890,898,919-930,1395-1404,1610
+  s_baf869300155eb::t_ecb3f342ac129a 1252-1256,1299
+  s_baf869300155eb::t_2e51c0938e4079 1418-1421,1425-1430,1434-1438,1543,1554-1558,1564-1566,1570,1572,1577,1583-1609
+  s_baf869300155eb::t_7e8cf7c7e782a0 1405-1407,1611
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4a478fb11e848a4836ed0b0f772a36200f8228f5",
+  "prompts": {},
+  "sessions": {
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
