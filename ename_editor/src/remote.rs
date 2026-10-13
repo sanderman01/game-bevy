@@ -1,7 +1,8 @@
-//! `editor.view.get` / `.set`: which of Scene View and Game View is shown, over BRP.
+//! `editor.view.get` / `.set`: which of Scene View and Game View is shown, over BRP. And
+//! `editor.screenshot.capture`: the Scene View's camera to a PNG.
 //!
-//! The editor registers these itself rather than `ename_remote` doing it, because the dock they
-//! drive is private to this crate and neither crate may depend on the other. They go into Bevy's
+//! The editor registers these itself rather than `ename_remote` doing it, because the dock and
+//! camera they use are private to this crate and neither crate may depend on the other. They go into Bevy's
 //! own `RemoteMethods`, so this module needs `bevy_remote` and nothing first-party.
 //!
 //! # Timing
@@ -18,13 +19,20 @@ use bevy::{
         error_codes,
     },
 };
+use ename_engine::screenshot::{RetainScreenshotOutcome, ScreenshotRequest, ScreenshotSource};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::path::{Path, PathBuf};
 
-use crate::panels::{ActiveViewport, UiState};
+use crate::{
+    camera::EditorCamera,
+    panels::{ActiveViewport, UiState},
+};
 
 pub const GET_METHOD: &str = "editor.view.get";
 pub const SET_METHOD: &str = "editor.view.set";
+/// The outcome is read with `ename_remote`'s `game.screenshot.result`.
+pub const SCREENSHOT_METHOD: &str = "editor.screenshot.capture";
 
 /// Adds the `editor.view.*` methods to the BRP server, when the target has one.
 pub(crate) struct RemoteViewPlugin;
@@ -41,9 +49,11 @@ impl Plugin for RemoteViewPlugin {
         }
         let get = world.register_system(get);
         let set = world.register_system(set);
+        let screenshot = world.register_system(capture_screenshot);
         let mut methods = world.resource_mut::<RemoteMethods>();
         methods.insert(GET_METHOD, RemoteMethodSystemId::Instant(get));
         methods.insert(SET_METHOD, RemoteMethodSystemId::Instant(set));
+        methods.insert(SCREENSHOT_METHOD, RemoteMethodSystemId::Instant(screenshot));
     }
 }
 
@@ -101,6 +111,63 @@ fn set(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
     read(world)
 }
 
+#[derive(Deserialize)]
+struct ScreenshotParams {
+    path: PathBuf,
+}
+
+#[derive(Serialize)]
+struct ScreenshotResponse {
+    request: Entity,
+}
+
+fn capture_screenshot(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
+    let ScreenshotParams { path } = parse_some(params)?;
+    check_screenshot_path(&path)?;
+    let camera = world
+        .query_filtered::<Entity, With<EditorCamera>>()
+        .single(world)
+        .map_err(|err| BrpError {
+            code: error_codes::INTERNAL_ERROR,
+            message: format!("the editor camera is missing: {err}"),
+            data: None,
+        })?;
+    let request = world
+        .spawn((
+            ScreenshotRequest {
+                source: ScreenshotSource::Camera(camera),
+                path,
+            },
+            RetainScreenshotOutcome,
+        ))
+        .id();
+    serde_json::to_value(ScreenshotResponse { request }).map_err(|err| BrpError {
+        code: error_codes::INTERNAL_ERROR,
+        message: err.to_string(),
+        data: None,
+    })
+}
+
+/// The same rule as `game.screenshot.capture`: absolute, because the game's working directory is
+/// not the caller's, and `.png`.
+fn check_screenshot_path(path: &Path) -> Result<(), BrpError> {
+    let message = if !path.is_absolute() {
+        format!("`{}` is not an absolute path", path.display())
+    } else if !path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
+    {
+        format!("`{}` is not a .png path", path.display())
+    } else {
+        return Ok(());
+    };
+    Err(BrpError {
+        code: error_codes::INVALID_PARAMS,
+        message,
+        data: None,
+    })
+}
+
 fn read(world: &mut World) -> BrpResult {
     let response = ViewResponse {
         view: world.resource::<UiState>().active_viewport.into(),
@@ -138,6 +205,7 @@ mod tests {
             let methods = app.world().resource::<RemoteMethods>();
             assert!(methods.get(GET_METHOD).is_some(), "{remote_first}");
             assert!(methods.get(SET_METHOD).is_some(), "{remote_first}");
+            assert!(methods.get(SCREENSHOT_METHOD).is_some(), "{remote_first}");
         }
     }
 
@@ -202,5 +270,39 @@ mod tests {
         // Two, which the Game View treats as none.
         world.spawn((MainCamera, Camera::default(), RenderTarget::default()));
         assert_eq!(game_camera(&mut world), json!(false));
+    }
+
+    #[test]
+    fn screenshot_captures_the_editor_camera() {
+        let mut world = world();
+        let camera = world.spawn(EditorCamera).id();
+        let response = call(
+            &mut world,
+            capture_screenshot,
+            Some(json!({ "path": "/tmp/scene.png" })),
+        )
+        .unwrap();
+        let request: Entity = serde_json::from_value(response["request"].clone()).unwrap();
+        let request = world.entity(request);
+        assert_eq!(
+            request.get::<ScreenshotRequest>().unwrap().source,
+            ScreenshotSource::Camera(camera)
+        );
+        assert!(request.contains::<RetainScreenshotOutcome>());
+    }
+
+    #[test]
+    fn screenshot_rejects_relative_and_non_png_paths() {
+        let mut world = world();
+        world.spawn(EditorCamera);
+        for path in ["scene.png", "/tmp/scene.jpg"] {
+            let err = call(
+                &mut world,
+                capture_screenshot,
+                Some(json!({ "path": path })),
+            )
+            .unwrap_err();
+            assert_eq!(err.code, error_codes::INVALID_PARAMS, "{path}");
+        }
     }
 }

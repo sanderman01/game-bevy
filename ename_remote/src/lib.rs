@@ -20,17 +20,19 @@
 //! | `game.time.get` / `.set` | Nothing in BRP can freeze the world, and reading a world that is still advancing answers a different question. |
 //! | `game.logs.get` | Bevy's logs go to stderr, which a JSON-RPC client cannot see. |
 //! | `game.pid.get` | Nothing in BRP says which run of the process answered, so a restart between two calls is invisible. |
+//! | `game.screenshot.capture` / `.result` | Capture is a GPU readback that completes frames later, so it is a request plus a poll. |
 //!
 //! It also replaces `world.mutate_components` with a guarded version. See [`mutate`].
 //!
-//! `editor.view.get` / `.set` are not here. They drive the editor's dock, so `ename_editor`
-//! registers them itself.
+//! `editor.view.get` / `.set` and `editor.screenshot.capture` are not here. They need the
+//! editor's dock and camera, which are private to it, so `ename_editor` registers them itself.
 
 mod entities;
 mod logs;
 mod mutate;
 mod position;
 mod run_id;
+mod screenshot;
 mod time;
 
 use bevy::{
@@ -67,6 +69,8 @@ impl PluginGroup for RemotePlugins {
             .with_method_main(time::SET_METHOD, time::set)
             .with_method_main(logs::GET_METHOD, logs::get)
             .with_method_main(run_id::GET_METHOD, run_id::get)
+            .with_method_main(screenshot::CAPTURE_METHOD, screenshot::capture)
+            .with_method_main(screenshot::RESULT_METHOD, screenshot::result)
             // Last, so it replaces the built-in of the same name.
             .with_method_main(mutate::METHOD, mutate::mutate_components);
 
