@@ -52,44 +52,47 @@ pub(crate) fn alias_watcher(
     }
 }
 
-/// Translates `events` onto `sink` until either channel closes.
+/// Translates `events` onto `sink` until the inner watcher closes `events`.
 ///
-/// Awaits nothing but `events`, so it can never hang on an index that never arrives. An event seen
-/// before the index and the server mode are known is dropped: every alias load waits for the index
-/// and reads the file after, so it sees the edit anyway, and forwarding it would start a second
-/// load racing the first.
+/// Awaits nothing but `events`, so it can never hang on an index that never arrives. It keeps
+/// draining `events` even once it stops sending: Bevy's file watcher unwraps its send, so a
+/// dropped receiver would panic the watcher's thread.
+///
+/// An event that arrives before the index exists is dropped: no alias has been read yet, and every
+/// alias load reads its file after the index fills. An edit made just before the fill can still
+/// reach `sink` after it and reload a file that was read fresh; that costs one redundant load.
 ///
 /// Under a processed server nothing reads this source's unprocessed events (the asset processor
-/// builds them regardless of `watch_for_changes_override`), so it stops rather than fill a queue
-/// nobody drains.
-pub(crate) async fn forward(
+/// builds them regardless of `watch_for_changes_override`), so once the mode is known to be
+/// processed it stops sending. Until `Startup` records the mode, events are forwarded.
+async fn forward(
     events: Receiver<AssetSourceEvent>,
     sink: Sender<AssetSourceEvent>,
     index: Arc<OnceCell<ContentIndex>>,
     mode: Arc<OnceCell<AssetServerMode>>,
 ) {
     let mut reverse = None;
+    let mut sending = true;
     while let Ok(event) = events.recv().await {
-        let (Some(index), Some(mode)) = (index.get(), mode.get()) else {
+        sending &= mode.get() != Some(&AssetServerMode::Processed);
+        let Some(index) = index.get().filter(|_| sending) else {
             continue;
         };
-        if *mode == AssetServerMode::Processed {
-            return;
-        }
         let reverse = reverse.get_or_insert_with(|| ReverseIndex::new(index));
         for event in translate(reverse, &event) {
             if sink.send(event).await.is_err() {
-                return;
+                sending = false;
+                break;
             }
         }
     }
 }
 
 /// Every alias resolving to each path. More than one alias may name a file.
-pub(crate) struct ReverseIndex(HashMap<PathBuf, Vec<String>>);
+struct ReverseIndex(HashMap<PathBuf, Vec<String>>);
 
 impl ReverseIndex {
-    pub(crate) fn new(index: &ContentIndex) -> Self {
+    fn new(index: &ContentIndex) -> Self {
         let mut map: HashMap<PathBuf, Vec<String>> = HashMap::new();
         for (alias, path) in index.iter() {
             map.entry(path.to_path_buf())
@@ -100,33 +103,44 @@ impl ReverseIndex {
     }
 }
 
-/// One file event in, an event per alias of that file out.
+/// One file event in, an event per affected alias out, sorted and without repeats.
 ///
 /// An added or renamed-onto file counts as modified: editors that save by writing a temp file and
 /// renaming it over the target produce exactly that, and Bevy ignores `RenamedAsset`. A removed
 /// file emits nothing, so the last good asset stays. A removed `.meta` reloads with the meta the
-/// reader synthesizes.
-pub(crate) fn translate(reverse: &ReverseIndex, event: &AssetSourceEvent) -> Vec<AssetSourceEvent> {
+/// reader synthesizes; a renamed one reloads both the asset it left and the one it now describes.
+fn translate(reverse: &ReverseIndex, event: &AssetSourceEvent) -> Vec<AssetSourceEvent> {
     use AssetSourceEvent as E;
-    let (path, make): (_, fn(PathBuf) -> AssetSourceEvent) = match event {
+    let (paths, meta) = match event {
         E::ModifiedAsset(path) | E::AddedAsset(path) | E::RenamedAsset { new: path, .. } => {
-            (path, E::ModifiedAsset)
+            ([Some(path), None], false)
         }
+        E::RenamedMeta { old, new } => ([Some(old), Some(new)], true),
         E::ModifiedMeta(path)
         | E::AddedMeta(path)
-        | E::RenamedMeta { new: path, .. }
         | E::RemovedMeta(path)
         | E::RemovedUnknown {
             path,
             is_meta: true,
-        } => (path, E::ModifiedMeta),
+        } => ([Some(path), None], true),
         _ => return Vec::new(),
     };
-    reverse
-        .0
-        .get(path)
+    let make = if meta {
+        E::ModifiedMeta
+    } else {
+        E::ModifiedAsset
+    };
+    let mut aliases: Vec<&str> = paths
         .into_iter()
         .flatten()
+        .filter_map(|path| reverse.0.get(path))
+        .flatten()
+        .map(String::as_str)
+        .collect();
+    aliases.sort_unstable();
+    aliases.dedup();
+    aliases
+        .into_iter()
         .map(|alias| make(PathBuf::from(alias)))
         .collect()
 }
@@ -152,11 +166,6 @@ mod tests {
 
     fn p(path: &str) -> PathBuf {
         PathBuf::from(path)
-    }
-
-    fn sorted(mut events: Vec<E>) -> Vec<E> {
-        events.sort_by_key(|event| format!("{event:?}"));
-        events
     }
 
     #[test]
@@ -188,7 +197,7 @@ mod tests {
             E::AddedMeta(path.clone()),
             E::RemovedMeta(path.clone()),
             E::RenamedMeta {
-                old: p("x.meta"),
+                old: p("base/core/unaliased.ron"),
                 new: path.clone(),
             },
             E::RemovedUnknown {
@@ -198,6 +207,31 @@ mod tests {
         ] {
             assert_eq!(translate(&reverse, &event), expected, "{event:?}");
         }
+    }
+
+    /// The asset the `.meta` left reloads with the synthesized meta, the one it moved to with it.
+    #[test]
+    fn a_renamed_meta_reloads_both_ends_once() {
+        let reverse = ReverseIndex::new(&index());
+        let rename = |old: &str, new: &str| E::RenamedMeta {
+            old: p(old),
+            new: p(new),
+        };
+        assert_eq!(
+            translate(&reverse, &rename("mods/big/ship.ron", "base/core/sky.ron")),
+            vec![
+                E::ModifiedMeta(p("core::ship")),
+                E::ModifiedMeta(p("core::sky"))
+            ]
+        );
+        // Both ends name the same aliases: each reloads once.
+        assert_eq!(
+            translate(
+                &reverse,
+                &rename("base/core/shared.ron", "base/core/shared.ron")
+            ),
+            vec![E::ModifiedMeta(p("core::a")), E::ModifiedMeta(p("core::b"))]
+        );
     }
 
     #[test]
@@ -235,9 +269,8 @@ mod tests {
     #[test]
     fn every_alias_of_a_shared_file_is_modified() {
         let reverse = ReverseIndex::new(&index());
-        let events = translate(&reverse, &E::ModifiedAsset(p("base/core/shared.ron")));
         assert_eq!(
-            sorted(events),
+            translate(&reverse, &E::ModifiedAsset(p("base/core/shared.ron"))),
             vec![
                 E::ModifiedAsset(p("core::a")),
                 E::ModifiedAsset(p("core::b"))
@@ -291,10 +324,14 @@ mod tests {
     }
 
     #[test]
-    fn forward_drops_events_before_the_index_and_mode_are_known() {
+    fn forward_drops_events_only_before_the_index() {
         let edit = || vec![E::ModifiedAsset(p("base/core/sky.ron"))];
         assert!(run_forward(edit(), None, Some(AssetServerMode::Unprocessed)).is_empty());
-        assert!(run_forward(edit(), Some(index()), None).is_empty());
+        // `Startup` has not recorded the mode yet, but an alias may already have been read.
+        assert_eq!(
+            run_forward(edit(), Some(index()), None),
+            vec![E::ModifiedAsset(p("core::sky"))]
+        );
     }
 
     #[test]
@@ -307,21 +344,53 @@ mod tests {
         assert!(out.is_empty());
     }
 
-    #[test]
-    fn forward_stops_when_the_sink_is_dropped() {
+    /// Runs `forward` on a thread with its input open, sending `edits` events one at a time, each
+    /// only after the previous one was drained. A `forward` that stopped receiving fails a send or
+    /// times out. Returns what reached the sink, or nothing if `drop_sink`.
+    fn assert_keeps_draining(mode: AssetServerMode, drop_sink: bool, edits: usize) -> Vec<E> {
         let (sender, receiver) = async_channel::unbounded();
         let (sink, out) = async_channel::unbounded();
-        drop(out);
-        // The input stays open: only the closed sink can end the loop.
-        sender
-            .send_blocking(E::ModifiedAsset(p("base/core/sky.ron")))
-            .unwrap();
         let index_cell = Arc::new(OnceCell::new());
         index_cell.set_blocking(index()).unwrap();
         let mode_cell = Arc::new(OnceCell::new());
-        mode_cell
-            .set_blocking(AssetServerMode::Unprocessed)
-            .unwrap();
-        block_on(forward(receiver, sink, index_cell, mode_cell));
+        mode_cell.set_blocking(mode).unwrap();
+        let out = if drop_sink {
+            drop(out);
+            None
+        } else {
+            Some(out)
+        };
+        let task = std::thread::spawn(move || {
+            block_on(forward(receiver, sink, index_cell, mode_cell));
+        });
+        for _ in 0..edits {
+            sender
+                .send_blocking(E::ModifiedAsset(p("base/core/sky.ron")))
+                .expect("forward dropped its receiver");
+            let start = std::time::Instant::now();
+            while !sender.is_empty() {
+                assert!(
+                    start.elapsed() < std::time::Duration::from_secs(5),
+                    "forward stopped draining"
+                );
+                std::thread::yield_now();
+            }
+        }
+        drop(sender);
+        task.join().expect("forward panicked");
+        out.map(|out| std::iter::from_fn(|| out.try_recv().ok()).collect())
+            .unwrap_or_default()
+    }
+
+    /// Bevy's file watcher unwraps its send, so `forward` must keep receiving after it decides
+    /// to stop sending.
+    #[test]
+    fn forward_keeps_draining_under_a_processed_server() {
+        assert!(assert_keeps_draining(AssetServerMode::Processed, false, 3).is_empty());
+    }
+
+    #[test]
+    fn forward_keeps_draining_after_the_sink_closes() {
+        assert_keeps_draining(AssetServerMode::Unprocessed, true, 3);
     }
 }
