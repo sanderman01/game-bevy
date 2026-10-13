@@ -851,6 +851,8 @@ impl GameServer {
     ) -> ToolResult<SavedScreenshot> {
         let path = absolute_png_path(&path, cwd)
             .map_err(|message| ErrorData::invalid_params(message, None))?;
+        // Whether the last answer was "pending", so a timeout can say which way the game failed.
+        let pending = std::sync::atomic::AtomicBool::new(false);
         let work = async {
             let (method, params) = match source {
                 ScreenshotSource::Window => (
@@ -885,6 +887,7 @@ impl GameServer {
                 },
             }
             loop {
+                pending.store(false, std::sync::atomic::Ordering::Relaxed);
                 let status: Status = self
                     .brp
                     .call("game.screenshot.result", request.clone())
@@ -892,6 +895,7 @@ impl GameServer {
                     .map_err(explain)?;
                 match status {
                     Status::Pending => {
+                        pending.store(true, std::sync::atomic::Ordering::Relaxed);
                         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
                     }
                     Status::Saved {
@@ -912,11 +916,18 @@ impl GameServer {
             }
         };
         tokio::time::timeout(deadline, work).await.map_err(|_| {
-            fail(anyhow::anyhow!(
-                "the game stopped answering: the screenshot did not finish within {} seconds. It \
-                 may be hung, stopped at a breakpoint, or minimized.",
-                deadline.as_secs_f32()
-            ))
+            let seconds = deadline.as_secs_f32();
+            fail(if pending.load(std::sync::atomic::Ordering::Relaxed) {
+                anyhow::anyhow!(
+                    "the screenshot was still pending after {seconds} seconds. The game is \
+                     answering, but the write has not finished; the file may still appear."
+                )
+            } else {
+                anyhow::anyhow!(
+                    "the game stopped answering: the screenshot did not finish within {seconds} \
+                     seconds. It may be hung or stopped at a breakpoint."
+                )
+            })
         })?
     }
 
@@ -1238,7 +1249,11 @@ fn explain_screenshot_error(error: anyhow::Error, source: ScreenshotSource) -> a
         ScreenshotSource::EditorCamera => "scene",
         ScreenshotSource::Window => return error,
     };
-    if format!("{error:#}").contains("is not active") {
+    let inactive = error
+        .downcast_ref::<BrpError>()
+        .and_then(|brp| brp.data.as_ref())
+        .is_some_and(|data| data["kind"] == "camera_inactive");
+    if inactive {
         anyhow::anyhow!(
             "{error:#}. That camera only renders while its view is shown: call editor_set_view \
              with view={view} first."
@@ -1281,6 +1296,7 @@ mod tests {
             method: method.to_owned(),
             code,
             message: "Method not found".to_owned(),
+            data: None,
         }
         .into()
     }
@@ -1377,6 +1393,19 @@ mod tests {
         String,
         std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
     ) {
+        screenshot_game_with(fail, None, false).await
+    }
+
+    /// [`screenshot_game`], plus: never answer the request with that method, or keep answering
+    /// `pending` forever.
+    async fn screenshot_game_with(
+        fail: Option<&'static str>,
+        stall_on: Option<&'static str>,
+        always_pending: bool,
+    ) -> (
+        String,
+        std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
+    ) {
         let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let log = seen.clone();
         let polls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -1386,19 +1415,27 @@ mod tests {
                 log.lock()
                     .unwrap()
                     .push((method.clone(), request["params"].clone()));
+                if stall_on == Some(method.as_str()) {
+                    return None;
+                }
+                let first_poll = || polls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0;
                 Some(match method.as_str() {
                     "game.pid.get" => json!({ "result": { "pid": "abc" } }),
                     "game.screenshot.result" => match fail {
-                        Some(message) => json!({ "error": { "code": -32603, "message": message } }),
-                        None if polls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 => {
+                        Some(kind) => json!({ "error": {
+                            "code": -32603,
+                            "message": format!("failed: {kind}"),
+                            "data": { "kind": kind },
+                        } }),
+                        None if always_pending || first_poll() => {
                             json!({ "result": { "status": "pending" } })
                         }
                         None => json!({ "result": {
-                        "status": "saved",
-                        "path": request["params"]["request"].to_string(),
-                        "width": 4,
-                        "height": 3,
-                    } }),
+                            "status": "saved",
+                            "path": request["params"]["request"].to_string(),
+                            "width": 4,
+                            "height": 3,
+                        } }),
                     },
                     _ => json!({ "result": { "request": 7 } }),
                 })
@@ -1503,7 +1540,7 @@ mod tests {
             (ScreenshotSource::GameCamera, "view=game"),
             (ScreenshotSource::EditorCamera, "view=scene"),
         ] {
-            let (url, _) = screenshot_game(Some("camera 5v1 is not active this frame")).await;
+            let (url, _) = screenshot_game(Some("camera_inactive")).await;
             let server = GameServer::new(BrpClient::new(url));
             let error = expect_err(
                 server
@@ -1514,28 +1551,62 @@ mod tests {
                     )
                     .await,
             );
-            assert!(error.message.contains("is not active"), "{}", error.message);
+            assert!(
+                error.message.contains("camera_inactive"),
+                "{}",
+                error.message
+            );
             assert!(error.message.contains(hint), "{}", error.message);
         }
     }
 
     #[tokio::test]
-    async fn screenshot_gives_up_when_the_game_stops_answering() {
-        let server = GameServer::new(BrpClient::new(fake_game(Some(0)).await));
+    async fn other_failures_get_no_view_hint() {
+        let (url, _) = screenshot_game(Some("timed_out")).await;
+        let server = GameServer::new(BrpClient::new(url));
         let error = expect_err(
             server
                 .capture_screenshot(
-                    screenshot("/a.png", ScreenshotSource::Window),
+                    screenshot("/a.png", ScreenshotSource::GameCamera),
                     std::path::Path::new("/"),
-                    Duration::from_millis(300),
+                    Duration::from_secs(5),
                 )
                 .await,
         );
         assert!(
-            error.message.contains("stopped answering"),
+            !error.message.contains("editor_set_view"),
             "{}",
             error.message
         );
+    }
+
+    /// The deadline covers the capture call, every poll and the run id, and says which way the
+    /// game failed.
+    #[tokio::test]
+    async fn screenshot_gives_up_wherever_the_game_stops() {
+        for (stall_on, always_pending, expected) in [
+            (Some("game.screenshot.capture"), false, "stopped answering"),
+            (Some("game.screenshot.result"), false, "stopped answering"),
+            (Some("game.pid.get"), false, "stopped answering"),
+            (None, true, "still pending"),
+        ] {
+            let (url, _) = screenshot_game_with(None, stall_on, always_pending).await;
+            let server = GameServer::new(BrpClient::new(url));
+            let error = expect_err(
+                server
+                    .capture_screenshot(
+                        screenshot("/a.png", ScreenshotSource::Window),
+                        std::path::Path::new("/"),
+                        Duration::from_millis(300),
+                    )
+                    .await,
+            );
+            assert!(
+                error.message.contains(expected),
+                "{stall_on:?} {always_pending}: {}",
+                error.message
+            );
+        }
     }
 
     #[test]

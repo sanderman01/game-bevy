@@ -74,10 +74,15 @@ impl BrpClient {
             return Ok(result.clone());
         }
         match body.get("error").cloned().map(serde_json::from_value) {
-            Some(Ok(ResponseError { code, message })) => Err(BrpError {
+            Some(Ok(ResponseError {
+                code,
+                message,
+                data,
+            })) => Err(BrpError {
                 method: method.to_owned(),
                 code,
                 message,
+                data,
             }
             .into()),
             _ => bail!("BRP `{method}` returned neither a result nor an error"),
@@ -89,6 +94,8 @@ impl BrpClient {
 struct ResponseError {
     code: i32,
     message: String,
+    #[serde(default)]
+    data: Option<Value>,
 }
 
 /// JSON-RPC's code for a method the server does not have.
@@ -105,6 +112,8 @@ pub struct BrpError {
     pub method: String,
     pub code: i32,
     pub message: String,
+    /// The error's structured detail, when the method sends one.
+    pub data: Option<Value>,
 }
 
 impl std::fmt::Display for BrpError {
@@ -113,6 +122,7 @@ impl std::fmt::Display for BrpError {
             method,
             code,
             message,
+            ..
         } = self;
         write!(f, "BRP `{method}` failed ({code}): {message}")
     }
