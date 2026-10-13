@@ -1,0 +1,22 @@
+docs/agent-tools.md
+  s_baf869300155eb::t_7965f84b4e0bee 83,180-208
+  s_baf869300155eb::t_6abbfcb5c899e9 209
+docs/design/agent-tooling.md
+  s_baf869300155eb::t_7965f84b4e0bee 63-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f0af83ee7a7c7cecbfb11836c6bb72aa563afce1",
+  "prompts": {},
+  "sessions": {
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
