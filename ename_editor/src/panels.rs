@@ -41,12 +41,12 @@ enum InspectorSelection {
     Asset(TypeId, String, UntypedAssetId),
 }
 
-/// Which of Scene View / Game View is the currently active tab in their shared dock leaf.
-/// `TabViewer::ui` only runs for the active tab, so `UiState::viewport_rect`/`pointer_in_viewport`
-/// are only ever fresh for whichever this says is current -- `viewport.rs` uses it to decide
-/// which camera is live, and `gizmo`/`selection` use it to confirm the pointer is over Scene
-/// View specifically, not merely over whatever rect Scene View last had before Game View was
-/// selected.
+/// Which of Scene View / Game View is shown, and so which camera is live.
+///
+/// Decided once per pass by [`resolve_viewport`], after the dock has drawn, rather than by
+/// whichever viewport tab happened to draw last: with the two tabs in separate splits both draw
+/// every pass. `viewport.rs` uses it to decide which camera is live, and `gizmo`/`selection` use
+/// it to confirm the pointer is over Scene View specifically.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum ActiveViewport {
     #[default]
@@ -95,22 +95,97 @@ impl UiState {
     }
 
     fn ui(&mut self, world: &mut World, ui: &mut egui::Ui) {
+        let mut drawn = DrawnViewports::default();
         let mut tab_viewer = TabViewer {
             world,
-            active_viewport: &mut self.active_viewport,
-            viewport_rect: &mut self.viewport_rect,
+            drawn: &mut drawn,
             selected_entities: &mut self.selected_entities,
             selection: &mut self.selection,
-            pointer_in_viewport: &mut self.pointer_in_viewport,
             console: &mut self.console,
         };
         DockArea::new(&mut self.state)
             .style(Style::from_egui(ui.style().as_ref()))
             .show_inside(ui, &mut tab_viewer);
+
+        // After `show_inside`, which is where a click this pass moves the dock's focus.
+        let focused = self.focused_viewport();
+        self.active_viewport = resolve_viewport(self.active_viewport, &drawn, focused);
+        if let Some(rect) = drawn.rect(self.active_viewport) {
+            self.viewport_rect = rect;
+        }
+        self.pointer_in_viewport = ui
+            .ctx()
+            .rect_contains_pointer(LayerId::background(), self.viewport_rect.shrink(16.));
+    }
+
+    /// The viewport whose tab is the active one in the dock's focused leaf, if either is.
+    fn focused_viewport(&self) -> Option<ActiveViewport> {
+        let path = self.state.focused_leaf()?;
+        let leaf = self.state.leaf(path).ok()?;
+        match leaf.tabs().get(leaf.active.0)? {
+            EguiWindow::SceneView => Some(ActiveViewport::Scene),
+            EguiWindow::GameView => Some(ActiveViewport::Game),
+            _ => None,
+        }
+    }
+
+    /// Shows `viewport` as clicking its tab would: makes it the active tab of its leaf and
+    /// focuses that leaf, so [`resolve_viewport`] keeps it on every later pass.
+    ///
+    /// Takes effect in `active_viewport` at once; the layout and cameras follow on the next pass.
+    pub(crate) fn show_viewport(&mut self, viewport: ActiveViewport) -> Result<(), String> {
+        let tab = match viewport {
+            ActiveViewport::Scene => EguiWindow::SceneView,
+            ActiveViewport::Game => EguiWindow::GameView,
+        };
+        let path = self
+            .state
+            .find_tab(&tab)
+            .ok_or_else(|| format!("the {tab:?} tab was closed and the editor cannot reopen it"))?;
+        self.state
+            .set_active_tab(path)
+            .map_err(|err| format!("cannot show the {tab:?} tab: {err:?}"))?;
+        self.state.set_focused_node_and_surface(path.node_path());
+        self.active_viewport = viewport;
+        Ok(())
     }
 }
 
-#[derive(Debug)]
+/// Where each viewport tab drew this pass, or `None` for a tab that did not draw.
+#[derive(Default)]
+struct DrawnViewports {
+    scene: Option<egui::Rect>,
+    game: Option<egui::Rect>,
+}
+
+impl DrawnViewports {
+    fn rect(&self, viewport: ActiveViewport) -> Option<egui::Rect> {
+        match viewport {
+            ActiveViewport::Scene => self.scene,
+            ActiveViewport::Game => self.game,
+        }
+    }
+}
+
+/// Which viewport is shown after a pass.
+///
+/// The only one drawn wins, which is every pass while the two share a leaf. When both drew, they
+/// are in separate splits, and the one in the focused leaf wins: egui_dock moves focus on a click
+/// on a tab or inside a leaf, and a remote switch focuses the leaf too. Otherwise nothing changes.
+fn resolve_viewport(
+    previous: ActiveViewport,
+    drawn: &DrawnViewports,
+    focused: Option<ActiveViewport>,
+) -> ActiveViewport {
+    match (drawn.scene.is_some(), drawn.game.is_some()) {
+        (true, false) => ActiveViewport::Scene,
+        (false, true) => ActiveViewport::Game,
+        (true, true) => focused.unwrap_or(previous),
+        (false, false) => previous,
+    }
+}
+
+#[derive(Debug, PartialEq)]
 enum EguiWindow {
     SceneView,
     GameView,
@@ -125,9 +200,7 @@ struct TabViewer<'a> {
     world: &'a mut World,
     selected_entities: &'a mut SelectedEntities,
     selection: &'a mut InspectorSelection,
-    active_viewport: &'a mut ActiveViewport,
-    viewport_rect: &'a mut egui::Rect,
-    pointer_in_viewport: &'a mut bool,
+    drawn: &'a mut DrawnViewports,
     console: &'a mut ConsoleState,
 }
 
@@ -139,13 +212,9 @@ impl egui_dock::TabViewer for TabViewer<'_> {
         let type_registry = type_registry.read();
 
         match window {
-            EguiWindow::SceneView => {
-                *self.active_viewport = ActiveViewport::Scene;
-                *self.viewport_rect = ui.clip_rect();
-            }
+            EguiWindow::SceneView => self.drawn.scene = Some(ui.clip_rect()),
             EguiWindow::GameView => {
-                *self.active_viewport = ActiveViewport::Game;
-                *self.viewport_rect = ui.clip_rect();
+                self.drawn.game = Some(ui.clip_rect());
                 crate::game_view::ui(ui, self.world);
             }
             EguiWindow::Hierarchy => {
@@ -184,10 +253,6 @@ impl egui_dock::TabViewer for TabViewer<'_> {
                 }
             },
         }
-
-        *self.pointer_in_viewport = ui
-            .ctx()
-            .rect_contains_pointer(LayerId::background(), self.viewport_rect.shrink(16.));
     }
 
     fn title(&mut self, window: &mut Self::Tab) -> egui_dock::egui::WidgetText {
@@ -325,4 +390,117 @@ fn spawn_egui_camera(mut commands: Commands, mut egui_global_settings: ResMut<Eg
             ..default()
         },
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ui_state(state: DockState<EguiWindow>) -> UiState {
+        UiState {
+            state,
+            ..UiState::new()
+        }
+    }
+
+    /// Two viewports in one leaf, as the default layout has them.
+    fn shared_leaf() -> UiState {
+        ui_state(DockState::new(vec![
+            EguiWindow::SceneView,
+            EguiWindow::GameView,
+        ]))
+    }
+
+    /// Scene View and Game View side by side, so both draw every pass.
+    fn split_leaves() -> UiState {
+        let mut state = DockState::new(vec![EguiWindow::SceneView]);
+        state
+            .main_surface_mut()
+            .split_right(NodeIndex::root(), 0.5, vec![EguiWindow::GameView]);
+        ui_state(state)
+    }
+
+    /// One headless egui pass over the dock, the same call `show_ui_system` makes.
+    fn pass(ui_state: &mut UiState, world: &mut World, ctx: &egui::Context) {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(800.0, 600.0),
+            )),
+            ..default()
+        };
+        let _ = ctx.run_ui(input, |ui| ui_state.ui(world, ui));
+    }
+
+    fn world() -> World {
+        let mut world = World::new();
+        world.init_resource::<AppTypeRegistry>();
+        world
+    }
+
+    #[test]
+    fn a_switch_in_a_shared_leaf_survives_later_passes() {
+        let (mut world, ctx, mut state) = (world(), egui::Context::default(), shared_leaf());
+        pass(&mut state, &mut world, &ctx);
+        assert_eq!(state.active_viewport, ActiveViewport::Scene);
+
+        state.show_viewport(ActiveViewport::Game).unwrap();
+        assert_eq!(state.active_viewport, ActiveViewport::Game);
+        pass(&mut state, &mut world, &ctx);
+        pass(&mut state, &mut world, &ctx);
+        assert_eq!(state.active_viewport, ActiveViewport::Game);
+        assert!(state.viewport_rect.is_positive());
+    }
+
+    #[test]
+    fn a_switch_between_split_leaves_survives_later_passes() {
+        let (mut world, ctx, mut state) = (world(), egui::Context::default(), split_leaves());
+        pass(&mut state, &mut world, &ctx);
+        assert_eq!(state.active_viewport, ActiveViewport::Scene);
+        let scene_rect = state.viewport_rect;
+
+        state.show_viewport(ActiveViewport::Game).unwrap();
+        pass(&mut state, &mut world, &ctx);
+        pass(&mut state, &mut world, &ctx);
+        assert_eq!(state.active_viewport, ActiveViewport::Game);
+        assert_ne!(state.viewport_rect, scene_rect);
+
+        state.show_viewport(ActiveViewport::Scene).unwrap();
+        pass(&mut state, &mut world, &ctx);
+        pass(&mut state, &mut world, &ctx);
+        assert_eq!(state.active_viewport, ActiveViewport::Scene);
+        assert_eq!(state.viewport_rect, scene_rect);
+    }
+
+    #[test]
+    fn showing_a_closed_tab_fails_and_changes_nothing() {
+        let mut state = ui_state(DockState::new(vec![EguiWindow::SceneView]));
+        assert!(state.show_viewport(ActiveViewport::Game).is_err());
+        assert_eq!(state.active_viewport, ActiveViewport::Scene);
+    }
+
+    #[test]
+    fn the_only_viewport_drawn_wins_and_the_focused_one_breaks_a_tie() {
+        use ActiveViewport::{Game, Scene};
+        let rect = Some(egui::Rect::EVERYTHING);
+        let scene = DrawnViewports {
+            scene: rect,
+            game: None,
+        };
+        let game = DrawnViewports {
+            scene: None,
+            game: rect,
+        };
+        let both = DrawnViewports {
+            scene: rect,
+            game: rect,
+        };
+        let neither = DrawnViewports::default();
+
+        assert_eq!(resolve_viewport(Game, &scene, Some(Game)), Scene);
+        assert_eq!(resolve_viewport(Scene, &game, None), Game);
+        assert_eq!(resolve_viewport(Scene, &both, Some(Game)), Game);
+        assert_eq!(resolve_viewport(Game, &both, None), Game);
+        assert_eq!(resolve_viewport(Game, &neither, Some(Scene)), Game);
+    }
 }
