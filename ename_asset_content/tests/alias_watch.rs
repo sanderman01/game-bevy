@@ -7,9 +7,11 @@
 use bevy::{
     app::{App, TaskPoolPlugin},
     asset::{
-        Asset, AssetApp, AssetLoader, AssetPlugin, AssetServer, Assets, Handle, LoadContext,
-        LoadState, io::Reader,
+        Asset, AssetApp, AssetEvent, AssetLoader, AssetPlugin, AssetServer, Assets, Handle,
+        LoadContext, LoadState, io::Reader,
     },
+    ecs::{message::MessageReader, resource::Resource, system::ResMut},
+    prelude::Update,
     reflect::TypePath,
     tasks::futures_lite::AsyncReadExt,
 };
@@ -49,6 +51,24 @@ impl AssetLoader for GreetingLoader {
     fn extensions(&self) -> &[&str] {
         &["txt"]
     }
+}
+
+/// `Modified` events seen for `Greeting`: a reload of the same text still counts.
+#[derive(Resource, Default)]
+struct GreetingModified(usize);
+
+fn count_greeting_modified(
+    mut events: MessageReader<AssetEvent<Greeting>>,
+    mut seen: ResMut<GreetingModified>,
+) {
+    seen.0 += events
+        .read()
+        .filter(|event| matches!(event, AssetEvent::Modified { .. }))
+        .count();
+}
+
+fn modified(app: &App) -> usize {
+    app.world().resource::<GreetingModified>().0
 }
 
 fn copy_tree(from: &Path, to: &Path) {
@@ -97,7 +117,9 @@ fn only_the_winning_file_reloads_an_overridden_alias() {
         ..Default::default()
     })
     .init_asset::<Greeting>()
-    .init_asset_loader::<GreetingLoader>();
+    .init_asset_loader::<GreetingLoader>()
+    .init_resource::<GreetingModified>()
+    .add_systems(Update, count_greeting_modified);
 
     let server = app.world().resource::<AssetServer>();
     if server
@@ -127,6 +149,7 @@ fn only_the_winning_file_reloads_an_overridden_alias() {
         std::thread::sleep(Duration::from_millis(1));
     }
     assert_eq!(greeting(&app, &handle), "HELLO FROM LOUD");
+    assert_eq!(modified(&app), 0);
 
     // The shadowed file: no reload.
     fs::write(dir.path().join("base/core/greeting.txt"), "edited core").unwrap();
@@ -136,11 +159,16 @@ fn only_the_winning_file_reloads_an_overridden_alias() {
         std::thread::sleep(Duration::from_millis(5));
     }
     assert_eq!(greeting(&app, &handle), "HELLO FROM LOUD");
+    assert_eq!(
+        modified(&app),
+        0,
+        "the shadowed file's edit reloaded the alias"
+    );
 
     // The winner: reloads.
     fs::write(dir.path().join("mods/loud/greeting.txt"), "EDITED LOUD").unwrap();
     let start = Instant::now();
-    while greeting(&app, &handle) != "EDITED LOUD" {
+    while modified(&app) == 0 {
         assert!(
             start.elapsed() < TIMEOUT,
             "the winning file's edit never reloaded"
@@ -148,4 +176,5 @@ fn only_the_winning_file_reloads_an_overridden_alias() {
         app.update();
         std::thread::sleep(Duration::from_millis(5));
     }
+    assert_eq!(greeting(&app, &handle), "EDITED LOUD");
 }

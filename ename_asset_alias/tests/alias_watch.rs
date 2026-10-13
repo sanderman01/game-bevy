@@ -13,15 +13,19 @@ mod bevy_support;
 
 use bevy::{
     app::{App, TaskPoolPlugin},
-    asset::{AssetEvent, AssetPlugin, AssetServer, Assets, Handle, io::AssetSourceId},
+    asset::{
+        Asset, AssetApp, AssetEvent, AssetLoadFailedEvent, AssetLoader, AssetPlugin, AssetServer,
+        Assets, Handle, LoadContext,
+        io::{AssetSourceId, Reader},
+    },
     ecs::{message::MessageReader, resource::Resource, system::ResMut},
     prelude::Update,
     reflect::TypePath,
+    tasks::futures_lite::AsyncReadExt,
 };
-use bevy_support::{
-    Shout, Text, TextLoader, assert_loaded, register_test_assets, run_until_settled, text,
-};
+use bevy_support::{Shout, Text, assert_loaded, register_test_assets, run_until_settled, text};
 use ename_asset_alias::{ALIAS_SOURCE, AliasPlugins};
+use serde::{Deserialize, Serialize};
 use std::{
     fs,
     path::Path,
@@ -34,26 +38,64 @@ const RELOAD_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long to watch for a reload that must not happen.
 const QUIET_WINDOW: Duration = Duration::from_millis(1500);
 
-/// `Modified` events seen for `Text`, so a test can tell a reload from no reload.
+/// `Modified` and failed-load events seen for `Text`, so a test can tell a reload from none.
 #[derive(Resource, Default)]
-struct TextModified(usize);
+struct TextEvents {
+    modified: usize,
+    failed: usize,
+}
 
-fn count_text_modified(
+fn count_text_events(
     mut events: MessageReader<AssetEvent<Text>>,
-    mut seen: ResMut<TextModified>,
+    mut failures: MessageReader<AssetLoadFailedEvent<Text>>,
+    mut seen: ResMut<TextEvents>,
 ) {
-    seen.0 += events
+    seen.modified += events
         .read()
         .filter(|event| matches!(event, AssetEvent::Modified { .. }))
         .count();
+    seen.failed += failures.read().count();
 }
 
-/// A temp asset root where every `.txt` and `.shout` is `t::{stem}`.
+/// Text with a prefix from its loader settings, so a test can see which `.meta` was applied.
+#[derive(Asset, TypePath, Debug)]
+struct Tagged(String);
+
+#[derive(Serialize, Deserialize, Default)]
+struct TagSettings {
+    prefix: String,
+}
+
+#[derive(Default, TypePath)]
+struct TaggedLoader;
+
+impl AssetLoader for TaggedLoader {
+    type Asset = Tagged;
+    type Settings = TagSettings;
+    type Error = std::io::Error;
+
+    async fn load(
+        &self,
+        reader: &mut dyn Reader,
+        settings: &TagSettings,
+        _load_context: &mut LoadContext<'_>,
+    ) -> Result<Tagged, Self::Error> {
+        let mut text = String::new();
+        reader.read_to_string(&mut text).await?;
+        Ok(Tagged(format!("{}{}", settings.prefix, text.trim())))
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["tag"]
+    }
+}
+
+/// A temp asset root where every `.txt`, `.shout` and `.tag` is `t::{stem}`.
 fn tree(files: &[(&str, &str)]) -> TempDir {
     let dir = tempfile::tempdir().expect("temp dir");
     fs::write(
         dir.path().join("_alias_rules.toml"),
-        "alias = \"t::{stem}\"\ninclude = [\"*.txt\", \"*.shout\"]\n",
+        "alias = \"t::{stem}\"\ninclude = [\"*.txt\", \"*.shout\", \"*.tag\"]\n",
     )
     .unwrap();
     for (name, contents) in files {
@@ -74,8 +116,10 @@ fn test_app(root: &Path, watch: bool) -> App {
             watch_for_changes_override: Some(watch),
             ..Default::default()
         })
-        .init_resource::<TextModified>()
-        .add_systems(Update, count_text_modified);
+        .init_resource::<TextEvents>()
+        .add_systems(Update, count_text_events)
+        .init_asset::<Tagged>()
+        .init_asset_loader::<TaggedLoader>();
     register_test_assets(&mut app);
     app
 }
@@ -130,8 +174,8 @@ fn run_for_quiet_window(app: &mut App) {
     }
 }
 
-fn modified(app: &App) -> usize {
-    app.world().resource::<TextModified>().0
+fn events(app: &App) -> &TextEvents {
+    app.world().resource::<TextEvents>()
 }
 
 #[test]
@@ -149,18 +193,17 @@ fn editing_an_aliased_file_reloads_it() {
 }
 
 /// Editors that write a temp file and rename it over the target produce a rename, not a write.
+/// The temp file exists before the watcher starts, so the only event is the rename itself.
 #[test]
 fn an_atomic_save_reloads() {
-    let dir = tree(&[("a.txt", "one")]);
+    let dir = tree(&[("a.txt", "one"), (".a.txt.swp", "two")]);
     let mut app = test_app(dir.path(), true);
     if !has_watcher(&app) {
         return;
     }
     let handle = load_text(&mut app, "alias://t::a");
 
-    let temp = dir.path().join(".a.txt.swp");
-    fs::write(&temp, "two").unwrap();
-    fs::rename(&temp, dir.path().join("a.txt")).unwrap();
+    fs::rename(dir.path().join(".a.txt.swp"), dir.path().join("a.txt")).unwrap();
     run_until(&mut app, "the atomic save", |app| {
         text(app, &handle) == "two"
     });
@@ -178,7 +221,7 @@ fn a_broken_edit_keeps_the_old_asset_until_a_good_one() {
 
     // Not UTF-8, so `TextLoader` fails.
     fs::write(dir.path().join("a.txt"), [0xff, 0xfe, 0xfd]).unwrap();
-    run_for_quiet_window(&mut app);
+    run_until(&mut app, "the failed reload", |app| events(app).failed > 0);
     assert_eq!(text(&app, &handle), "one");
 
     fs::write(dir.path().join("a.txt"), "two").unwrap();
@@ -205,31 +248,40 @@ fn delete_then_recreate_reloads() {
     });
 }
 
-/// Adding a `.meta` reloads with it, and removing it reloads with the synthesized default.
+/// Adding a `.meta` reloads with its settings, and removing it reloads with the synthesized
+/// default.
 #[test]
-fn adding_and_removing_a_meta_reloads() {
-    let dir = tree(&[("a.txt", "one")]);
+fn adding_and_removing_a_meta_reloads_with_its_settings() {
+    let dir = tree(&[("a.tag", "one")]);
     let mut app = test_app(dir.path(), true);
     if !has_watcher(&app) {
         return;
     }
-    let _handle = load_text(&mut app, "alias://t::a");
-    let before = modified(&app);
+    let handle: Handle<Tagged> = app.world().resource::<AssetServer>().load("alias://t::a");
+    assert_loaded(run_until_settled(&mut app, &handle));
+    let tagged = |app: &App| {
+        app.world()
+            .resource::<Assets<Tagged>>()
+            .get(&handle)
+            .unwrap()
+            .0
+            .clone()
+    };
+    assert_eq!(tagged(&app), "one");
 
-    let meta = dir.path().join("a.txt.meta");
+    let meta = dir.path().join("a.tag.meta");
     fs::write(
         &meta,
         format!(
-            "(meta_format_version: \"1.0\", asset: Load(loader: \"{}\", settings: ()))",
-            TextLoader::type_path()
+            "(meta_format_version: \"1.0\", asset: Load(loader: \"{}\", settings: (prefix: \"meta:\")))",
+            TaggedLoader::type_path()
         ),
     )
     .unwrap();
-    run_until(&mut app, "the added meta", |app| modified(app) > before);
+    run_until(&mut app, "the added meta", |app| tagged(app) == "meta:one");
 
-    let before = modified(&app);
     fs::remove_file(&meta).unwrap();
-    run_until(&mut app, "the removed meta", |app| modified(app) > before);
+    run_until(&mut app, "the removed meta", |app| tagged(app) == "one");
 }
 
 /// A labelled sub-asset reloads even when nothing holds the root asset.
@@ -265,5 +317,5 @@ fn nothing_reloads_with_watching_off() {
     fs::write(dir.path().join("a.txt"), "two").unwrap();
     run_for_quiet_window(&mut app);
     assert_eq!(text(&app, &handle), "one");
-    assert_eq!(modified(&app), 0);
+    assert_eq!(events(&app).modified, 0);
 }
