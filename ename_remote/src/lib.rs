@@ -22,6 +22,9 @@
 //! | `game.pid.get` | Nothing in BRP says which run of the process answered, so a restart between two calls is invisible. |
 //!
 //! It also replaces `world.mutate_components` with a guarded version. See [`mutate`].
+//!
+//! `editor.view.get` / `.set` are not here. They drive the editor's dock, so `ename_editor`
+//! registers them itself.
 
 mod entities;
 mod logs;

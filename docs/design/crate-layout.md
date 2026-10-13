@@ -125,6 +125,13 @@ A third-party type that crosses a boundary is re-exported by the crate that owns
 not avoid is that `bigspace::grid` exposes `big_space::Grid` in its signatures, so every consumer
 of `ename_engine` is pinned to that git revision. That is accepted deliberately for now.
 
+The editor's BRP methods do not cross the boundary at all. `editor.view.get` / `.set` read the
+dock, which is private to `ename_editor`, so the editor inserts them into Bevy's own
+`RemoteMethods` and never names `ename_remote`. It depends on `bevy_remote` for that, and the
+dependency is unconditional: the editor never ships, and `bevy_remote` binds no socket unless
+`RemotePlugin` is added. `scripts/check-layers.sh` rejects `ename_editor -> ename_remote` as well
+as the reverse.
+
 The captured log is a shared type that moved down. `ename_engine::log` owns the ring buffer and
 the `tracing` layer that fills it, and `EnginePlugins` installs both. Two crates above it read
 that buffer: the editor's Console panel and `ename_remote`'s `game.logs.get`. Neither can reach

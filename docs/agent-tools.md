@@ -79,6 +79,7 @@ cannot become a crate that ships by accident.
 | `world_set_position` | Move an entity to an absolute world position. |
 | `time_get` / `time_set` | Read the virtual clock; pause, resume, or step N frames. |
 | `log_get_entries` | Recent tracing events, filtered by level, target and message. |
+| `editor_get_view` / `editor_set_view` | Which editor view is shown, Scene View or Game View; switch it as clicking its tab would. |
 
 Every result also carries `pid`, three letters naming the run of the game process that answered
 it. See "Noticing a restart".
@@ -155,6 +156,25 @@ one usually being asked. The loop that makes an experiment:
 
 `elapsed_seconds` is virtual time and does not advance while paused. `frame` counts real frames
 and keeps climbing, because the renderer is still drawing.
+
+## Switching the view
+
+The editor shows either Scene View, its own free camera, or Game View, the loaded stage's
+`MainCamera`. `editor_set_view` with `view: "game"` switches to Game View the same way clicking
+its tab does: the tab becomes active and its dock leaf takes focus. Both tools return
+`{"view": "scene" | "game", "game_camera": bool}`.
+
+`game_camera` is true when exactly one entity has `MainCamera`, `Camera` and `RenderTarget`. That
+is the camera Game View renders. Switching to Game View still works when it is false; the tab then
+shows "The loaded stage has no Main Camera."
+
+`editor_set_view` returns after the game has run three more frames, and its result is read back
+from the editor rather than echoed. So a screenshot taken right after it shows the new view, and if
+something overrode the switch, the result says so. The frame count is the main loop's, so this does
+not prove the GPU presented the frame. It works while time is paused, because frames keep running.
+
+These methods belong to the editor, so a binary without it reports that the build "does not expose
+editor view switching". An editor built before the methods existed reports the same.
 
 ## What the agent cannot see
 

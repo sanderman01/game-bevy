@@ -52,6 +52,14 @@ it used to report `GameState` too, which was the one reason `ename_remote` depen
 `example_game_lib`. Dropping the field removed that arrow from the
 [layer graph](crate-layout.md#layer-graph), so the side channel now sits directly on the engine.
 
+**The editor registers its own methods.** `editor.view.get` / `.set` drive the editor's dock,
+and that state is private to `ename_editor`. `ename_remote` and `ename_editor` must not depend on
+each other, so the editor inserts these methods into Bevy's `RemoteMethods` itself, in
+`Plugin::finish`. A target without `RemotePlugins` gets nothing. The `editor.` prefix marks a
+method that exists only when the editor is linked. A successful `set` means the dock's selection
+has changed. The cameras follow on the next frame's egui pass, so the MCP tool waits a few frames
+and reads the view back before answering.
+
 ## What the agent can actually see
 
 Type registration is a correctness requirement for MCP, not a convenience for the inspector. An
