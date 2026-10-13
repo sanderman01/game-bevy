@@ -10,7 +10,7 @@
 //!    remember to check.
 //! 5. A tool's name and one sentence are all the model gets. Write them that way.
 //!
-//! Names are prefixed by group (`world_`, `time_`, `log_`, `editor_`) so a dispatching meta-tool could be
+//! Names are prefixed by group (`world_`, `time_`, `log_`, `editor_`, `screenshot_`) so a dispatching meta-tool could be
 //! added later without renaming anything. At this size the indirection would only cost a round
 //! trip.
 
@@ -385,6 +385,36 @@ pub struct SetViewParams {
 pub enum EditorView {
     Scene,
     Game,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ScreenshotParams {
+    /// Where to write the PNG. A relative path resolves against this MCP server's working
+    /// directory, normally the project root. The result gives the absolute path written.
+    pub path: String,
+    /// "window" is the whole game window, editor panels included. "game_camera" is what the
+    /// stage's MainCamera rendered (in the editor, the Game View). "editor_camera" is the
+    /// editor's Scene View. A camera source needs its view to be the one shown; see
+    /// editor_set_view.
+    pub source: ScreenshotSource,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ScreenshotSource {
+    Window,
+    GameCamera,
+    EditorCamera,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct SavedScreenshot {
+    /// Absolute.
+    path: String,
+    /// Physical pixels.
+    width: u32,
+    height: u32,
+    source: ScreenshotSource,
 }
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
@@ -799,6 +829,98 @@ impl GameServer {
     }
 
     #[tool(
+        description = "Capture the game window, the game camera or the editor camera to a PNG \
+                       file. Returns the absolute path written and its size in pixels."
+    )]
+    async fn screenshot_capture(
+        &self,
+        Parameters(params): Parameters<ScreenshotParams>,
+    ) -> ToolResult<SavedScreenshot> {
+        let cwd = std::env::current_dir()
+            .map_err(|err| fail(anyhow::anyhow!("cannot read the working directory: {err}")))?;
+        self.capture_screenshot(params, &cwd, SCREENSHOT_DEADLINE)
+            .await
+    }
+
+    /// `screenshot_capture` under one deadline covering every request, the run id included.
+    async fn capture_screenshot(
+        &self,
+        ScreenshotParams { path, source }: ScreenshotParams,
+        cwd: &std::path::Path,
+        deadline: std::time::Duration,
+    ) -> ToolResult<SavedScreenshot> {
+        let path = absolute_png_path(&path, cwd)
+            .map_err(|message| ErrorData::invalid_params(message, None))?;
+        let work = async {
+            let (method, params) = match source {
+                ScreenshotSource::Window => (
+                    "game.screenshot.capture",
+                    json!({ "path": path, "source": "window" }),
+                ),
+                ScreenshotSource::GameCamera => (
+                    "game.screenshot.capture",
+                    json!({ "path": path, "source": "main_camera" }),
+                ),
+                ScreenshotSource::EditorCamera => {
+                    ("editor.screenshot.capture", json!({ "path": path }))
+                }
+            };
+            let explain = |error| fail(explain_screenshot_error(error, source));
+            let started = self
+                .brp
+                .call_raw(method, params)
+                .await
+                .map_err(explain_missing_editor_method)
+                .map_err(explain)?;
+            let request = json!({ "request": started["request"] });
+
+            #[derive(Deserialize)]
+            #[serde(tag = "status", rename_all = "snake_case")]
+            enum Status {
+                Pending,
+                Saved {
+                    path: String,
+                    width: u32,
+                    height: u32,
+                },
+            }
+            loop {
+                let status: Status = self
+                    .brp
+                    .call("game.screenshot.result", request.clone())
+                    .await
+                    .map_err(explain)?;
+                match status {
+                    Status::Pending => {
+                        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                    }
+                    Status::Saved {
+                        path,
+                        width,
+                        height,
+                    } => {
+                        return self
+                            .tag(SavedScreenshot {
+                                path,
+                                width,
+                                height,
+                                source,
+                            })
+                            .await;
+                    }
+                }
+            }
+        };
+        tokio::time::timeout(deadline, work).await.map_err(|_| {
+            fail(anyhow::anyhow!(
+                "the game stopped answering: the screenshot did not finish within {} seconds. It \
+                 may be hung, stopped at a breakpoint, or minimized.",
+                deadline.as_secs_f32()
+            ))
+        })?
+    }
+
+    #[tool(
         description = "Read the game's recent log events, filtered by level, emitting module and \
                        message. The game's stderr is not otherwise visible."
     )]
@@ -1070,17 +1192,59 @@ const VIEW_SETTLE_FRAMES: u32 = 3;
 /// How long `editor_set_view` may take end to end.
 const VIEW_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// Rewords "method not found" from an `editor.view.*` call. It means a game binary without the
+/// How long `screenshot_capture` may take end to end. The engine gives up on a readback after
+/// 5 s, so this leaves room for the write.
+const SCREENSHOT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Rewords "method not found" from an `editor.*` call. It means a game binary without the
 /// editor, or one built before the editor had these methods, never that the game is down.
 fn explain_missing_editor_method(error: anyhow::Error) -> anyhow::Error {
     match error.downcast_ref::<BrpError>() {
-        Some(brp) if brp.code == METHOD_NOT_FOUND && brp.method.starts_with("editor.view.") => {
+        Some(brp) if brp.code == METHOD_NOT_FOUND && brp.method.starts_with("editor.") => {
+            let feature = if brp.method.starts_with("editor.screenshot.") {
+                "editor camera screenshots"
+            } else {
+                "editor view switching"
+            };
             anyhow::anyhow!(
-                "this game build does not expose editor view switching. Run the editor binary, \
-                 rebuilt against the current ename_editor."
+                "this game build does not expose {feature}. Run the editor binary, rebuilt \
+                 against the current ename_editor."
             )
         }
         _ => error,
+    }
+}
+
+/// Makes `path` absolute against `cwd`, the sidecar's working directory: the game's is not the
+/// agent's. Refuses anything that is not a `.png`.
+fn absolute_png_path(path: &str, cwd: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    let path = std::path::Path::new(path);
+    if !path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("png"))
+    {
+        return Err(format!(
+            "`{}` must end in .png; screenshots are only written as PNG",
+            path.display()
+        ));
+    }
+    Ok(cwd.join(path))
+}
+
+/// Points an inactive-camera failure at the view switch that fixes it.
+fn explain_screenshot_error(error: anyhow::Error, source: ScreenshotSource) -> anyhow::Error {
+    let view = match source {
+        ScreenshotSource::GameCamera => "game",
+        ScreenshotSource::EditorCamera => "scene",
+        ScreenshotSource::Window => return error,
+    };
+    if format!("{error:#}").contains("is not active") {
+        anyhow::anyhow!(
+            "{error:#}. That camera only renders while its view is shown: call editor_set_view \
+             with view={view} first."
+        )
+    } else {
+        error
     }
 }
 
@@ -1108,7 +1272,7 @@ mod tests {
         CELL_COORD as CELL, TRANSFORM, crate_matches, explain_missing_editor_method,
         reject_position_write,
     };
-    use super::{EditorView, GameServer};
+    use super::{EditorView, GameServer, ScreenshotParams, ScreenshotSource};
     use crate::brp::{BrpClient, BrpError, METHOD_NOT_FOUND};
     use std::time::Duration;
 
@@ -1124,6 +1288,29 @@ mod tests {
     /// A BRP server that answers `editor_set_view`'s requests in order and never answers
     /// request number `stall_at`, holding the connection open the way a hung game does.
     async fn fake_game(stall_at: Option<usize>) -> String {
+        serve(std::sync::Arc::new(
+            move |index, request: &serde_json::Value| {
+                if Some(index) == stall_at {
+                    return None;
+                }
+                let result = match request["method"].as_str().unwrap() {
+                    "game.time.get" => json!({ "frame": index * 3 }),
+                    "game.pid.get" => json!({ "pid": "abc" }),
+                    _ => json!({ "view": "game", "game_camera": true }),
+                };
+                Some(json!({ "result": result }))
+            },
+        ))
+        .await
+    }
+
+    /// The `index`th request and its body in; the response's `result` or `error` member out, or
+    /// `None` to never answer, holding the connection open the way a hung game does.
+    type Responder = std::sync::Arc<
+        dyn Fn(usize, &serde_json::Value) -> Option<serde_json::Value> + Send + Sync,
+    >;
+
+    async fn serve(respond: Responder) -> String {
         use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1133,6 +1320,7 @@ mod tests {
             loop {
                 let (mut socket, _) = listener.accept().await.unwrap();
                 let served = served.clone();
+                let respond = respond.clone();
                 tokio::spawn(async move {
                     let mut buffer = Vec::new();
                     loop {
@@ -1158,17 +1346,15 @@ mod tests {
                         buffer.drain(..end + 4 + length);
 
                         let index = served.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                        if Some(index) == stall_at {
+                        let Some(response) = respond(index, &request) else {
                             tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
-                        }
-                        let result = match request["method"].as_str().unwrap() {
-                            "game.time.get" => json!({ "frame": index * 3 }),
-                            "game.pid.get" => json!({ "pid": "abc" }),
-                            _ => json!({ "view": "game", "game_camera": true }),
+                            return;
                         };
-                        let body =
-                            json!({ "jsonrpc": "2.0", "id": request["id"], "result": result })
-                                .to_string();
+                        let mut body = json!({ "jsonrpc": "2.0", "id": request["id"] });
+                        body.as_object_mut()
+                            .unwrap()
+                            .extend(response.as_object().unwrap().clone());
+                        let body = body.to_string();
                         let response = format!(
                             "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
                              content-length: {}\r\n\r\n{body}",
@@ -1180,6 +1366,187 @@ mod tests {
             }
         });
         url
+    }
+
+    /// A game that answers screenshot calls: `capture` with request 7, `result` pending once
+    /// then `saved`, unless `fail` gives an error for the result. Records each method and its
+    /// params.
+    async fn screenshot_game(
+        fail: Option<&'static str>,
+    ) -> (
+        String,
+        std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
+    ) {
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = seen.clone();
+        let polls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let url = serve(std::sync::Arc::new(
+            move |_, request: &serde_json::Value| {
+                let method = request["method"].as_str().unwrap().to_owned();
+                log.lock()
+                    .unwrap()
+                    .push((method.clone(), request["params"].clone()));
+                Some(match method.as_str() {
+                    "game.pid.get" => json!({ "result": { "pid": "abc" } }),
+                    "game.screenshot.result" => match fail {
+                        Some(message) => json!({ "error": { "code": -32603, "message": message } }),
+                        None if polls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 => {
+                            json!({ "result": { "status": "pending" } })
+                        }
+                        None => json!({ "result": {
+                        "status": "saved",
+                        "path": request["params"]["request"].to_string(),
+                        "width": 4,
+                        "height": 3,
+                    } }),
+                    },
+                    _ => json!({ "result": { "request": 7 } }),
+                })
+            },
+        ))
+        .await;
+        (url, seen)
+    }
+
+    fn expect_err<T>(result: Result<T, rmcp::ErrorData>) -> rmcp::ErrorData {
+        match result {
+            Ok(_) => panic!("the call succeeded"),
+            Err(error) => error,
+        }
+    }
+
+    fn screenshot(path: &str, source: ScreenshotSource) -> ScreenshotParams {
+        ScreenshotParams {
+            path: path.to_owned(),
+            source,
+        }
+    }
+
+    #[tokio::test]
+    async fn screenshot_routes_each_source_and_polls_until_saved() {
+        let cwd = std::path::Path::new("/project");
+        for (source, method, params) in [
+            (
+                ScreenshotSource::Window,
+                "game.screenshot.capture",
+                json!({ "path": "/project/shots/a.png", "source": "window" }),
+            ),
+            (
+                ScreenshotSource::GameCamera,
+                "game.screenshot.capture",
+                json!({ "path": "/project/shots/a.png", "source": "main_camera" }),
+            ),
+            (
+                ScreenshotSource::EditorCamera,
+                "editor.screenshot.capture",
+                json!({ "path": "/project/shots/a.png" }),
+            ),
+        ] {
+            let (url, seen) = screenshot_game(None).await;
+            let server = GameServer::new(BrpClient::new(url));
+            let result = server
+                .capture_screenshot(
+                    screenshot("shots/a.png", source),
+                    cwd,
+                    Duration::from_secs(5),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                serde_json::to_value(result.0).unwrap(),
+                json!({ "pid": "abc", "path": "7", "width": 4, "height": 3, "source": source }),
+            );
+            let seen = seen.lock().unwrap();
+            assert_eq!(seen[0], (method.to_owned(), params), "{source:?}");
+            let polls = seen
+                .iter()
+                .filter(|(method, _)| method == "game.screenshot.result")
+                .collect::<Vec<_>>();
+            assert_eq!(polls.len(), 2, "{source:?}");
+            assert_eq!(polls[0].1, json!({ "request": 7 }));
+        }
+    }
+
+    #[tokio::test]
+    async fn screenshot_keeps_an_absolute_path_and_refuses_other_formats() {
+        let (url, seen) = screenshot_game(None).await;
+        let server = GameServer::new(BrpClient::new(url));
+        let cwd = std::path::Path::new("/project");
+        server
+            .capture_screenshot(
+                screenshot("/elsewhere/a.PNG", ScreenshotSource::Window),
+                cwd,
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+        assert_eq!(seen.lock().unwrap()[0].1["path"], "/elsewhere/a.PNG");
+
+        let (url, seen) = screenshot_game(None).await;
+        let server = GameServer::new(BrpClient::new(url));
+        let error = expect_err(
+            server
+                .capture_screenshot(
+                    screenshot("a.jpg", ScreenshotSource::Window),
+                    cwd,
+                    Duration::from_secs(5),
+                )
+                .await,
+        );
+        assert!(error.message.contains(".png"), "{}", error.message);
+        assert!(seen.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_inactive_camera_says_which_view_to_show() {
+        for (source, hint) in [
+            (ScreenshotSource::GameCamera, "view=game"),
+            (ScreenshotSource::EditorCamera, "view=scene"),
+        ] {
+            let (url, _) = screenshot_game(Some("camera 5v1 is not active this frame")).await;
+            let server = GameServer::new(BrpClient::new(url));
+            let error = expect_err(
+                server
+                    .capture_screenshot(
+                        screenshot("/a.png", source),
+                        std::path::Path::new("/"),
+                        Duration::from_secs(5),
+                    )
+                    .await,
+            );
+            assert!(error.message.contains("is not active"), "{}", error.message);
+            assert!(error.message.contains(hint), "{}", error.message);
+        }
+    }
+
+    #[tokio::test]
+    async fn screenshot_gives_up_when_the_game_stops_answering() {
+        let server = GameServer::new(BrpClient::new(fake_game(Some(0)).await));
+        let error = expect_err(
+            server
+                .capture_screenshot(
+                    screenshot("/a.png", ScreenshotSource::Window),
+                    std::path::Path::new("/"),
+                    Duration::from_millis(300),
+                )
+                .await,
+        );
+        assert!(
+            error.message.contains("stopped answering"),
+            "{}",
+            error.message
+        );
+    }
+
+    #[test]
+    fn a_missing_editor_screenshot_method_says_the_build_lacks_it() {
+        let error =
+            explain_missing_editor_method(brp_error("editor.screenshot.capture", METHOD_NOT_FOUND));
+        assert!(
+            error
+                .to_string()
+                .contains("does not expose editor camera screenshots")
+        );
     }
 
     /// set, two frame reads, readback, run id.
