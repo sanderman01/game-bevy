@@ -745,12 +745,28 @@ impl GameServer {
         &self,
         Parameters(params): Parameters<SetViewParams>,
     ) -> ToolResult<Value> {
-        self.call_editor_view("editor.view.set", json!({ "view": params.view }))
-            .await?;
-        self.await_frames(VIEW_SETTLE_FRAMES).await.map_err(fail)?;
-        // Read back rather than echo the set: a layout or a click can still override it.
-        let view = self.call_editor_view("editor.view.get", json!({})).await?;
-        self.tag(view).await
+        self.set_view(params.view, VIEW_DEADLINE).await
+    }
+
+    /// `editor_set_view` under one deadline covering every request it makes, the readback and
+    /// the run id included: the HTTP client has no timeout of its own, so a game that stops
+    /// answering mid-call would otherwise hang the agent.
+    async fn set_view(&self, view: EditorView, deadline: std::time::Duration) -> ToolResult<Value> {
+        let work = async {
+            self.call_editor_view("editor.view.set", json!({ "view": view }))
+                .await?;
+            self.await_frames(VIEW_SETTLE_FRAMES).await.map_err(fail)?;
+            // Read back rather than echo the set: a click can still override it.
+            let shown = self.call_editor_view("editor.view.get", json!({})).await?;
+            self.tag(shown).await
+        };
+        tokio::time::timeout(deadline, work).await.map_err(|_| {
+            fail(anyhow::anyhow!(
+                "the game stopped answering: switching the view did not finish within {} \
+                 seconds. It may be hung or stopped at a breakpoint.",
+                deadline.as_secs_f32()
+            ))
+        })?
     }
 
     /// Calls an `editor.view.*` method, explaining a game build that does not have it.
@@ -762,7 +778,8 @@ impl GameServer {
             .map_err(fail)
     }
 
-    /// Waits until the game has advanced `frames` frames from now, or gives up after 10 seconds.
+    /// Waits until the game has advanced `frames` frames from now. Unbounded: the caller sets
+    /// the deadline.
     ///
     /// The frame counter is the main loop's, so this shows the loop ran, not that the GPU
     /// presented anything. It keeps counting while virtual time is paused.
@@ -771,23 +788,14 @@ impl GameServer {
         struct Frame {
             frame: u32,
         }
-        let wait = async {
-            let start: Frame = self.brp.call("game.time.get", json!({})).await?;
-            loop {
-                let now: Frame = self.brp.call("game.time.get", json!({})).await?;
-                if now.frame.wrapping_sub(start.frame) >= frames {
-                    return anyhow::Ok(());
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        let start: Frame = self.brp.call("game.time.get", json!({})).await?;
+        loop {
+            let now: Frame = self.brp.call("game.time.get", json!({})).await?;
+            if now.frame.wrapping_sub(start.frame) >= frames {
+                return Ok(());
             }
-        };
-        tokio::time::timeout(std::time::Duration::from_secs(10), wait)
-            .await
-            .map_err(|_| {
-                anyhow::anyhow!(
-                    "the game did not advance {frames} frames within 10 seconds; it may be hung"
-                )
-            })?
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
     }
 
     #[tool(
@@ -1059,6 +1067,9 @@ fn reject_position_write(component: &str, path: &str) -> Result<(), ErrorData> {
 /// the render world, which runs a frame behind under pipelined rendering, and one to spare.
 const VIEW_SETTLE_FRAMES: u32 = 3;
 
+/// How long `editor_set_view` may take end to end.
+const VIEW_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// Rewords "method not found" from an `editor.view.*` call. It means a game binary without the
 /// editor, or one built before the editor had these methods, never that the game is down.
 fn explain_missing_editor_method(error: anyhow::Error) -> anyhow::Error {
@@ -1097,7 +1108,9 @@ mod tests {
         CELL_COORD as CELL, TRANSFORM, crate_matches, explain_missing_editor_method,
         reject_position_write,
     };
-    use crate::brp::{BrpError, METHOD_NOT_FOUND};
+    use super::{EditorView, GameServer};
+    use crate::brp::{BrpClient, BrpError, METHOD_NOT_FOUND};
+    use std::time::Duration;
 
     fn brp_error(method: &str, code: i32) -> anyhow::Error {
         BrpError {
@@ -1106,6 +1119,102 @@ mod tests {
             message: "Method not found".to_owned(),
         }
         .into()
+    }
+
+    /// A BRP server that answers `editor_set_view`'s requests in order and never answers
+    /// request number `stall_at`, holding the connection open the way a hung game does.
+    async fn fake_game(stall_at: Option<usize>) -> String {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let served = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let served = served.clone();
+                tokio::spawn(async move {
+                    let mut buffer = Vec::new();
+                    loop {
+                        let mut chunk = [0; 4096];
+                        let read = socket.read(&mut chunk).await.unwrap_or(0);
+                        if read == 0 {
+                            return;
+                        }
+                        buffer.extend_from_slice(&chunk[..read]);
+                        let Some(end) = buffer.windows(4).position(|w| w == b"\r\n\r\n") else {
+                            continue;
+                        };
+                        let head = String::from_utf8_lossy(&buffer[..end]).to_lowercase();
+                        let length: usize = head
+                            .lines()
+                            .find_map(|line| line.strip_prefix("content-length:"))
+                            .map_or(0, |value| value.trim().parse().unwrap());
+                        if buffer.len() < end + 4 + length {
+                            continue;
+                        }
+                        let request: serde_json::Value =
+                            serde_json::from_slice(&buffer[end + 4..end + 4 + length]).unwrap();
+                        buffer.drain(..end + 4 + length);
+
+                        let index = served.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        if Some(index) == stall_at {
+                            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                        }
+                        let result = match request["method"].as_str().unwrap() {
+                            "game.time.get" => json!({ "frame": index * 3 }),
+                            "game.pid.get" => json!({ "pid": "abc" }),
+                            _ => json!({ "view": "game", "game_camera": true }),
+                        };
+                        let body =
+                            json!({ "jsonrpc": "2.0", "id": request["id"], "result": result })
+                                .to_string();
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\
+                             content-length: {}\r\n\r\n{body}",
+                            body.len()
+                        );
+                        socket.write_all(response.as_bytes()).await.unwrap();
+                    }
+                });
+            }
+        });
+        url
+    }
+
+    /// set, two frame reads, readback, run id.
+    const SET_VIEW_REQUESTS: usize = 5;
+
+    #[tokio::test]
+    async fn set_view_reads_the_view_back() {
+        let server = GameServer::new(BrpClient::new(fake_game(None).await));
+        let result = server
+            .set_view(EditorView::Game, Duration::from_secs(5))
+            .await
+            .unwrap();
+        let value = serde_json::to_value(result.0).unwrap();
+        assert_eq!(
+            value,
+            json!({ "pid": "abc", "view": "game", "game_camera": true })
+        );
+    }
+
+    #[tokio::test]
+    async fn set_view_gives_up_wherever_the_game_stops_answering() {
+        for stall_at in 0..SET_VIEW_REQUESTS {
+            let server = GameServer::new(BrpClient::new(fake_game(Some(stall_at)).await));
+            let Err(error) = server
+                .set_view(EditorView::Game, Duration::from_millis(300))
+                .await
+            else {
+                panic!("stalled at request {stall_at}, yet the call succeeded");
+            };
+            assert!(
+                error.message.contains("stopped answering"),
+                "stalled at request {stall_at}: {}",
+                error.message
+            );
+        }
     }
 
     #[test]
