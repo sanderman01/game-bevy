@@ -93,6 +93,27 @@ with no Bevy in its graph, which is why both asset crates keep Bevy behind a def
 checks each builds without it. One walk over one trait keeps the tool and the game from drifting
 apart.
 
+## Live reload
+
+Wherever Bevy watches the default source (the `file_watcher` feature, which `bevy/dev` turns on),
+the `alias://` source watches too. Bevy reloads by path and source, and the default source's
+watcher reports `basegame/core/sky.ron` while every handle was loaded as `alias://core::sky`, so
+the alias source runs a second watcher over the asset root and forwards its events renamed to
+the aliases that resolve to each file. A consumer sees the usual `AssetEvent::Modified`.
+
+What reloads: content and `.meta` edits to a file that won its alias, including saves that write
+a temp file and rename it over the target. A removed `.meta` reloads with the synthesized one. A
+removed file keeps its last good asset, and so does a failed reload; the next good save replaces
+it. Editing a file another package overrides does nothing.
+
+What needs a restart: new or removed files, and edits to `.alias`, `_alias_rules.toml`,
+`manifest.toml` or the load order file. The index is filled once.
+
+Limits: processed mode does not reload aliased assets. A `.meta` saved by renaming a temp file
+that does not itself end in `.meta` is dropped by Bevy's watcher before the alias source sees it.
+Index paths outside the asset root never match. Shipping builds have no `file_watcher`, so they
+watch nothing.
+
 ## Ownership: `.alias` vs `.meta`
 
 We own `.alias`; Bevy owns `.meta`. Neither writes the other's. Bevy reconstructs a `.meta` from
