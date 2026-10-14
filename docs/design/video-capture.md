@@ -72,12 +72,16 @@ attachment is still the one it expects; a screenshot of the same target in the s
 the video frame is skipped. Screenshots still go through Bevy's `Screenshot`, one per target per
 frame, fanned out to every screenshot request.
 
-**Four buffers per recording, freed on every path.** A slot is reserved before rendering and
+**Eight buffers per recording, freed on every path.** Four ran out in a GPU-bound scene: the game
+keeps two or three frames queued, a map completes a frame later, and the writer holds the previous
+frame in time mode. Eight cost about 40 MB at 2560×1382. A slot is reserved before rendering and
 either reaches the writer (whose dropped frame unmaps and frees it) or is freed where the request
-ends: no free slot, a conflict, no swapchain, a size or format mismatch, a map error, or a writer
-that has gone. Each request ends in exactly one of `delivered` or `failed`, so draining a finished
-recording cannot hang. Map callbacks may fire on any polling thread and out of order; the writer
-orders frames by sequence number, and the pass polls the device itself.
+ends, counted by reason: no free slot, no source, a conflict, a mismatch, a map error, or a writer
+that has gone. A failed map leaves wgpu's side of the buffer marked as mapped, so the ring is
+replaced rather than unmapped. Each request ends in exactly one of `delivered` or a drop reason, so
+draining a finished recording cannot hang, and the reasons are logged when it finishes. Map
+callbacks may fire on any polling thread and out of order; the writer orders frames by sequence
+number, and the pass polls the device itself.
 
 **The game never waits on ffmpeg.** A frame with no free buffer is dropped and counted. ffmpeg runs
 at nice 10 on Linux (`setpriority` in `pre_exec`, the one `unsafe` function, because glibc documents

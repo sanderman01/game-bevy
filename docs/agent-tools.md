@@ -240,10 +240,13 @@ Encoding runs in an `ffmpeg` child process, which must be on the game's `PATH`. 
 first encoder that passes a test encode: VAAPI, NVENC or QSV on Linux, then `libx264`.
 `ENAME_VIDEO_ENCODER=libx264` (or another known encoder name) in the game's environment forces
 one. The GPU converts frames to NV12 before ffmpeg sees them. ffmpeg runs at below-normal CPU
-priority (nice 10 on Linux) and `libx264` uses at most 4 threads. When the encoder cannot keep up,
+priority (nice 10 on Linux; a process manager such as ananicy-cpp may renice it by name afterwards)
+and `libx264` uses at most 4 threads. When the encoder cannot keep up,
 or a screenshot of the same target is taken in the same frame, frames are dropped rather than
 slowing the game, and `dropped_frames` counts them. A timed recording reads back only one frame per
-output tick.
+output tick. When a recording ends with drops, the game logs them by reason (`no_slot`,
+`no_source`, `conflict`, `mismatch`, `unused`, `map_error`, `send_failed`, `out_of_order`,
+`screenshot`); read them with `log_get_entries` and `message_contains: "video:"`.
 
 Video needs the `video` cargo feature, which `example_game_editor_bin` enables by default. Game code
 uses the same recorder through `ename_engine::video`: spawn a `VideoRequest` and observe
