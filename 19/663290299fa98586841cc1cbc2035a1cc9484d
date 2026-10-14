@@ -1,0 +1,27 @@
+docs/design/crate-layout.md
+  s_afe90bd480135b::t_5587d5a3643405 92-95
+docs/agent-tools.md
+  s_afe90bd480135b::t_94e4a0f7e153c9 263-264
+example_game_editor_bin/Cargo.toml
+  s_afe90bd480135b::t_74953b215bab45 10
+ename_engine/Cargo.toml
+  s_afe90bd480135b::t_74953b215bab45 11
+ename_engine/src/lib.rs
+  s_afe90bd480135b::t_74953b215bab45 2,140-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "19663290299fa98586841cc1cbc2035a1cc9484d",
+  "prompts": {},
+  "sessions": {
+    "s_afe90bd480135b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3944c89-a826-4dd1-afb0-7b75e340888e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
