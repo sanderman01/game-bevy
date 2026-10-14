@@ -18,6 +18,13 @@ pub enum VideoLength {
 }
 
 impl VideoLength {
+    /// `frames` as a [`VideoLength::Frames`], if it is at least 1.
+    pub fn from_frames(frames: u32) -> Result<Self, VideoError> {
+        NonZeroU32::new(frames)
+            .map(Self::Frames)
+            .ok_or_else(|| VideoError::InvalidDuration("0 frames".into()))
+    }
+
     /// `seconds` as a [`VideoLength::Time`], if it is finite, positive and at most 24 h.
     pub fn from_seconds(seconds: f64) -> Result<Self, VideoError> {
         if !seconds.is_finite() || seconds <= 0.0 || seconds > MAX_LENGTH.as_secs_f64() {

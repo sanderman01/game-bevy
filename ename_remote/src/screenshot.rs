@@ -10,16 +10,12 @@
 //! an engine component.
 
 use bevy::{
-    camera::RenderTarget,
     prelude::*,
     remote::{BrpError, BrpResult, builtin_methods::parse_some, error_codes},
 };
-use ename_engine::{
-    camera::MainCamera,
-    screenshot::{
-        CaptureSource, RetainScreenshotOutcome, ScreenshotError, ScreenshotOutcome,
-        ScreenshotRequest, check_png_path,
-    },
+use ename_engine::screenshot::{
+    CaptureSource, RetainScreenshotOutcome, ScreenshotError, ScreenshotOutcome, ScreenshotRequest,
+    check_png_path,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -67,7 +63,7 @@ pub(crate) fn capture(In(params): In<Option<Value>>, world: &mut World) -> BrpRe
     check_path(&path)?;
     let source = match source {
         Source::Window => CaptureSource::PrimaryWindow,
-        Source::MainCamera => CaptureSource::Camera(main_camera(world)?),
+        Source::MainCamera => CaptureSource::Camera(crate::main_camera(world)?),
     };
     let request = world
         .spawn((ScreenshotRequest { source, path }, RetainScreenshotOutcome))
@@ -141,35 +137,12 @@ fn check_path(path: &Path) -> Result<(), BrpError> {
     })
 }
 
-/// The one camera the Game View would show. Same rule as the editor's `camera_available`.
-fn main_camera(world: &mut World) -> Result<Entity, BrpError> {
-    let cameras: Vec<Entity> = world
-        .query_filtered::<Entity, (With<MainCamera>, With<Camera>, With<RenderTarget>)>()
-        .iter(world)
-        .collect();
-    match cameras[..] {
-        [camera] => Ok(camera),
-        [] => Err(internal("the loaded stage has no MainCamera".to_owned())),
-        _ => Err(internal(format!(
-            "there are {} MainCameras, so which one is the game camera is ambiguous",
-            cameras.len()
-        ))),
-    }
-}
-
-fn internal(message: String) -> BrpError {
-    BrpError {
-        code: error_codes::INTERNAL_ERROR,
-        message,
-        data: None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use ename_engine::screenshot::SavedScreenshot;
+    use bevy::camera::RenderTarget;
+    use ename_engine::{camera::MainCamera, screenshot::SavedScreenshot};
     use serde_json::json;
 
     fn call<M>(

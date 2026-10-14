@@ -1,5 +1,6 @@
 //! `editor.view.get` / `.set`: which of Scene View and Game View is shown, over BRP. And
-//! `editor.screenshot.capture`: the Scene View's camera to a PNG.
+//! `editor.screenshot.capture`: the Scene View's camera to a PNG. And, with the `video` feature,
+//! `editor.video.record`: the Scene View's camera to a video.
 //!
 //! The editor registers these itself rather than `ename_remote` doing it, because the dock and
 //! camera they use are private to this crate and neither crate may depend on the other. They go
@@ -35,6 +36,9 @@ pub const GET_METHOD: &str = "editor.view.get";
 pub const SET_METHOD: &str = "editor.view.set";
 /// The outcome is read with `ename_remote`'s `game.screenshot.result`.
 pub const SCREENSHOT_METHOD: &str = "editor.screenshot.capture";
+/// Status and stop are `ename_remote`'s `game.video.status` / `.stop`.
+#[cfg(feature = "video")]
+pub const VIDEO_METHOD: &str = "editor.video.record";
 
 /// Adds the `editor.view.*` methods to the BRP server, when the target has one.
 pub(crate) struct RemoteViewPlugin;
@@ -52,10 +56,14 @@ impl Plugin for RemoteViewPlugin {
         let get = world.register_system(get);
         let set = world.register_system(set);
         let screenshot = world.register_system(capture_screenshot);
+        #[cfg(feature = "video")]
+        let video = world.register_system(video::record);
         let mut methods = world.resource_mut::<RemoteMethods>();
         methods.insert(GET_METHOD, RemoteMethodSystemId::Instant(get));
         methods.insert(SET_METHOD, RemoteMethodSystemId::Instant(set));
         methods.insert(SCREENSHOT_METHOD, RemoteMethodSystemId::Instant(screenshot));
+        #[cfg(feature = "video")]
+        methods.insert(VIDEO_METHOD, RemoteMethodSystemId::Instant(video));
     }
 }
 
@@ -126,14 +134,7 @@ struct ScreenshotResponse {
 fn capture_screenshot(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
     let ScreenshotParams { path } = parse_some(params)?;
     check_screenshot_path(&path)?;
-    let camera = world
-        .query_filtered::<Entity, With<EditorCamera>>()
-        .single(world)
-        .map_err(|err| BrpError {
-            code: error_codes::INTERNAL_ERROR,
-            message: format!("the editor camera is missing: {err}"),
-            data: None,
-        })?;
+    let camera = editor_camera(world)?;
     let request = world
         .spawn((
             ScreenshotRequest {
@@ -148,6 +149,138 @@ fn capture_screenshot(In(params): In<Option<Value>>, world: &mut World) -> BrpRe
         message: err.to_string(),
         data: None,
     })
+}
+
+fn editor_camera(world: &mut World) -> Result<Entity, BrpError> {
+    world
+        .query_filtered::<Entity, With<EditorCamera>>()
+        .single(world)
+        .map_err(|err| BrpError {
+            code: error_codes::INTERNAL_ERROR,
+            message: format!("the editor camera is missing: {err}"),
+            data: None,
+        })
+}
+
+/// `editor.video.record`, with the same params and rules as `game.video.record` minus `source`.
+#[cfg(feature = "video")]
+mod video {
+    use super::*;
+    use ename_engine::video::{
+        CaptureSource, RetainVideoOutcome, VideoError, VideoLength, VideoRequest, check_frame_rate,
+        check_video_path, parse_timecode,
+    };
+
+    /// One key, so the unit is never guessed from how a number is written.
+    #[derive(Deserialize)]
+    #[serde(rename_all = "snake_case", deny_unknown_fields)]
+    enum Duration {
+        Frames(u32),
+        Seconds(f64),
+        Timecode(String),
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Params {
+        path: PathBuf,
+        duration: Duration,
+        frame_rate: Option<u32>,
+    }
+
+    pub(super) fn record(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
+        let Params {
+            path,
+            duration,
+            frame_rate,
+        } = parse_some(params)?;
+        let invalid = |message: String| BrpError {
+            code: error_codes::INVALID_PARAMS,
+            message,
+            data: None,
+        };
+        if !path.is_absolute() {
+            return Err(invalid(format!(
+                "`{}` is not an absolute path",
+                path.display()
+            )));
+        }
+        let checked = (|| -> Result<VideoRequest, VideoError> {
+            check_video_path(&path)?;
+            let length = match duration {
+                Duration::Frames(frames) => VideoLength::from_frames(frames)?,
+                Duration::Seconds(seconds) => VideoLength::from_seconds(seconds)?,
+                Duration::Timecode(text) => VideoLength::Time(parse_timecode(&text)?),
+            };
+            let mut request = VideoRequest::new(CaptureSource::PrimaryWindow, path, length);
+            if let Some(frame_rate) = frame_rate {
+                request.frame_rate = check_frame_rate(frame_rate)?;
+            }
+            Ok(request)
+        })();
+        let mut request = checked.map_err(|err| invalid(err.to_string()))?;
+        request.source = CaptureSource::Camera(editor_camera(world)?);
+        let request = world.spawn((request, RetainVideoOutcome)).id();
+        serde_json::to_value(ScreenshotResponse { request }).map_err(|err| BrpError {
+            code: error_codes::INTERNAL_ERROR,
+            message: err.to_string(),
+            data: None,
+        })
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use serde_json::json;
+
+        #[test]
+        fn records_the_editor_camera() {
+            let mut world = World::new();
+            let camera = world.spawn(EditorCamera).id();
+            let response = world
+                .run_system_cached_with(
+                    record,
+                    Some(
+                        json!({ "path": "/tmp/scene.mp4", "duration": { "timecode": "00:00:03" } }),
+                    ),
+                )
+                .unwrap()
+                .unwrap();
+            let request: Entity = serde_json::from_value(response["request"].clone()).unwrap();
+            let request = world.entity(request);
+            let video = request.get::<VideoRequest>().unwrap();
+            assert_eq!(video.source, CaptureSource::Camera(camera));
+            assert_eq!(
+                video.length,
+                VideoLength::Time(std::time::Duration::from_secs(3))
+            );
+            assert!(request.contains::<RetainVideoOutcome>());
+        }
+
+        #[test]
+        fn rejects_bad_params_and_a_missing_camera() {
+            let mut world = World::new();
+            for params in [
+                json!({ "path": "scene.mp4", "duration": { "frames": 1 } }),
+                json!({ "path": "/tmp/scene.png", "duration": { "frames": 1 } }),
+                json!({ "path": "/tmp/scene.mp4", "duration": 10 }),
+            ] {
+                let err = world
+                    .run_system_cached_with(record, Some(params.clone()))
+                    .unwrap()
+                    .unwrap_err();
+                assert_eq!(err.code, error_codes::INVALID_PARAMS, "{params}");
+            }
+            let err = world
+                .run_system_cached_with(
+                    record,
+                    Some(json!({ "path": "/tmp/scene.mp4", "duration": { "frames": 1 } })),
+                )
+                .unwrap()
+                .unwrap_err();
+            assert!(err.message.contains("editor camera"), "{}", err.message);
+        }
+    }
 }
 
 /// The same rule as `game.screenshot.capture`: absolute, because the game's working directory is
@@ -206,6 +339,8 @@ mod tests {
             assert!(methods.get(GET_METHOD).is_some(), "{remote_first}");
             assert!(methods.get(SET_METHOD).is_some(), "{remote_first}");
             assert!(methods.get(SCREENSHOT_METHOD).is_some(), "{remote_first}");
+            #[cfg(feature = "video")]
+            assert!(methods.get(VIDEO_METHOD).is_some(), "{remote_first}");
         }
     }
 

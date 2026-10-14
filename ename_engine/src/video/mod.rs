@@ -250,6 +250,13 @@ pub fn check_video_path(path: &Path) -> Result<(), VideoError> {
     }
 }
 
+/// `frame_rate` if it is between 1 and 240.
+pub fn check_frame_rate(frame_rate: u32) -> Result<NonZeroU32, VideoError> {
+    NonZeroU32::new(frame_rate)
+        .filter(|rate| rate.get() <= MAX_FRAME_RATE)
+        .ok_or(VideoError::InvalidFrameRate(frame_rate))
+}
+
 /// Records [`VideoRequest`]s.
 pub struct VideoPlugin;
 
@@ -407,10 +414,7 @@ fn start_recordings(
             let container = Container::from_path(&request.path)
                 .ok_or_else(|| VideoError::UnsupportedContainer(request.path.clone()))?;
             request.length.validate()?;
-            let frame_rate = request.frame_rate.get();
-            if frame_rate > MAX_FRAME_RATE {
-                return Err(VideoError::InvalidFrameRate(frame_rate));
-            }
+            check_frame_rate(request.frame_rate.get())?;
             resolve_source(request.source, &cameras, primary_window)?;
             Ok(container)
         })();
