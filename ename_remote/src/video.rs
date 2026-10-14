@@ -162,7 +162,7 @@ fn read_status(world: &World, request: Entity) -> BrpResult {
                 height: saved.size.y,
                 frames: saved.frames,
                 frame_rate: saved.frame_rate,
-                duration_seconds: saved.duration.as_secs_f64(),
+                duration_seconds: seconds(saved.duration),
                 dropped_frames: saved.dropped_frames,
                 encoder: saved.encoder.clone(),
                 ended: end_name(saved.ended),
@@ -178,7 +178,7 @@ fn read_status(world: &World, request: Entity) -> BrpResult {
     let body = Progress {
         frames: progress.frames,
         dropped_frames: progress.dropped_frames,
-        elapsed_seconds: progress.elapsed.as_secs_f64(),
+        elapsed_seconds: seconds(progress.elapsed),
     };
     crate::to_value(match progress.phase {
         VideoPhase::Starting => StatusResponse::Starting(body),
@@ -186,6 +186,12 @@ fn read_status(world: &World, request: Entity) -> BrpResult {
         // Done without an outcome only lasts until the outcome's insert is applied.
         VideoPhase::Finalizing | VideoPhase::Done => StatusResponse::Finalizing(body),
     })
+}
+
+/// Seconds rounded to the millisecond, so 115 frames at 60 fps read as 1.917 rather than float
+/// noise.
+fn seconds(duration: std::time::Duration) -> f64 {
+    (duration.as_secs_f64() * 1000.0).round() / 1000.0
 }
 
 pub(crate) fn end_name(end: VideoEnd) -> &'static str {
@@ -373,7 +379,7 @@ mod tests {
             size: UVec2::new(640, 360),
             frames: 600,
             frame_rate: 60,
-            duration: StdDuration::from_secs(10),
+            duration: StdDuration::from_secs_f64(115.0 / 60.0),
             dropped_frames: 2,
             encoder: "h264_vaapi".into(),
             ended: VideoEnd::Stopped,
@@ -382,7 +388,7 @@ mod tests {
             call(&mut world, status, json!({ "request": entity })).unwrap(),
             json!({
                 "status": "saved", "path": "/tmp/a.mp4", "width": 640, "height": 360,
-                "frames": 600, "frame_rate": 60, "duration_seconds": 10.0, "dropped_frames": 2,
+                "frames": 600, "frame_rate": 60, "duration_seconds": 1.917, "dropped_frames": 2,
                 "encoder": "h264_vaapi", "ended": "stopped",
             })
         );
