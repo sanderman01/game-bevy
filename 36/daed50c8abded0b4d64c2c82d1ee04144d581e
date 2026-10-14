@@ -1,0 +1,65 @@
+ename_asset_alias/Cargo.toml
+  s_12bb6d3148530d::t_8583562f1a3dbe 14,21
+ename_asset_alias/tests/support/mod.rs
+  s_12bb6d3148530d::t_8583562f1a3dbe 8
+ename_xtask/src/scan.rs
+  s_12bb6d3148530d::t_85686b385eb01b 4,6
+ename_asset_package/src/lib.rs
+  s_12bb6d3148530d::t_85686b385eb01b 32
+ename_xtask/tests/list.rs
+  s_12bb6d3148530d::t_61055683dfacb1 5
+  s_12bb6d3148530d::t_85686b385eb01b 3
+ename_asset_vfs/Cargo.toml
+  s_12bb6d3148530d::t_84386b5e73e3c9 1-19
+ename_asset_alias/src/scan_plugin.rs
+  s_12bb6d3148530d::t_8583562f1a3dbe 144
+ename_asset_package/tests/package_scan.rs
+  s_12bb6d3148530d::t_85686b385eb01b 7
+  s_12bb6d3148530d::t_61055683dfacb1 9
+ename_asset_vfs/src/vfs.rs
+  s_12bb6d3148530d::t_84386b5e73e3c9 1-214
+ename_asset_alias/src/lib.rs
+  s_12bb6d3148530d::t_0c655b6198958f 3-5
+ename_asset_vfs/src/lib.rs
+  s_12bb6d3148530d::t_84386b5e73e3c9 1-12
+ename_asset_content/src/lib.rs
+  s_12bb6d3148530d::t_85686b385eb01b 31,33
+ename_xtask/Cargo.toml
+  s_12bb6d3148530d::t_85686b385eb01b 14
+ename_asset_content/Cargo.toml
+  s_12bb6d3148530d::t_85686b385eb01b 14
+ename_asset_package/src/scan.rs
+  s_12bb6d3148530d::t_85686b385eb01b 19-20
+ename_asset_alias/src/discovery.rs
+  s_12bb6d3148530d::t_8583562f1a3dbe 14-15,17,415
+Cargo.toml
+  s_12bb6d3148530d::t_8583562f1a3dbe 45-47
+ename_asset_package/src/load_order.rs
+  s_12bb6d3148530d::t_0c655b6198958f 4-6
+.github/workflows/ci.yml
+  s_12bb6d3148530d::t_8a4c5bdba072b1 48-54
+scripts/check-layers.sh
+  s_12bb6d3148530d::t_f1f6e531cbbb1f 31-35
+  s_12bb6d3148530d::t_b2b3446f3dc399 36
+ename_asset_package/Cargo.toml
+  s_12bb6d3148530d::t_85686b385eb01b 19
+  s_12bb6d3148530d::t_0c655b6198958f 11
+Cargo.lock
+  s_12bb6d3148530d::t_b7a376dccbfc24 2966,2984,2994,3003-3010,3081
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "36daed50c8abded0b4d64c2c82d1ee04144d581e",
+  "prompts": {},
+  "sessions": {
+    "s_12bb6d3148530d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40e810f9-e7ef-41d6-a981-60e9ac69dd44",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
