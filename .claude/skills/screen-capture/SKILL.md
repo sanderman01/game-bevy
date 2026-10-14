@@ -11,6 +11,12 @@ Run the editor, `cargo run -p example_game_editor_bin`. It is the only binary wi
 the `game` MCP server talks to; `example_game_bin` has none. `docs/agent-tools.md` has the full
 reference.
 
+`screenshot_capture`, `video_record` and `editor_set_view` are commands the game registers, so
+those tools appear once the game is running (the server re-lists every two seconds). If they are
+missing although the game runs, call them through `command_call` with the dotted name:
+`command_call { "command": "screenshot.capture", "params": { ... } }`. `command_list` shows what
+the build has.
+
 The game renders captures itself, so focus, window stacking, desktop scaling and other windows do
 not matter, and nothing but the game is captured. None of the tools need window focus: never
 activate the game window just to capture it, because that steals the user's focus. Write output
@@ -52,8 +58,9 @@ video_record { "path": "scratch/video/flight.mp4", "source": "game_camera", "dur
 
 - A bare number is refused. `frame_rate` defaults to 30 (max 240). `path` ends in `.mp4` or
   `.mkv`; the output is H.264.
-- The call waits up to 50 s. A longer recording returns `status: "recording"` and a `request` id:
-  collect it with `video_status` (`wait_seconds` up to 50), or end it early with `video_stop`.
+- The call waits up to 50 s. A longer recording returns `state: "running"` and a `job` id:
+  collect it with `job_wait` (`wait_seconds` up to 50), or end it early with `job_cancel`, which
+  keeps what was recorded.
 - The result reports `frames`, `dropped_frames`, `encoder` and `ended`. `ended` other than
   `completed` means it stopped early but kept what it had: `stopped`, `source_resized`,
   `camera_inactive`, `source_lost` or `stalled`. Resizing the window or switching the editor view
@@ -62,8 +69,9 @@ video_record { "path": "scratch/video/flight.mp4", "source": "game_camera", "dur
 - Seconds mode fills gaps with repeated frames, so a slow game or `dropped_frames` shows up as
   stutter, not a shorter clip. When it reports drops, `log_get_entries` with
   `message_contains: "video:"` lists them by reason.
-- `ffmpeg` must be on the game's `PATH` (`ffmpeg_missing` otherwise). Video needs the `video`
-  cargo feature, which `example_game_editor_bin` enables by default.
+- `ffmpeg` must be on the game's `PATH` (`ffmpeg_missing` otherwise). Video needs the editor
+  binary's `video` cargo feature, on by default; without it there is no `video_record` tool and
+  `command_call` reports `unknown_command`.
   `ENAME_VIDEO_ENCODER=libx264` in the game's environment forces the software encoder.
 
 Something has to move for a clip to show anything. The Main Camera is a child of the

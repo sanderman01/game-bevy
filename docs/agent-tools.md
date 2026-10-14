@@ -3,7 +3,7 @@
 The game can expose its running world to an MCP client. Two processes:
 
 ```
-agent  --stdio MCP-->  ename_mcp  --HTTP JSON-RPC-->  game  (bevy_remote + custom methods)
+agent  --stdio MCP-->  ename_mcp  --HTTP JSON-RPC-->  game  (bevy_remote + custom methods + commands)
 ```
 
 Why the design is shaped this way is in
@@ -79,12 +79,18 @@ cannot become a crate that ships by accident.
 | `world_set_position` | Move an entity to an absolute world position. |
 | `time_get` / `time_set` | Read the virtual clock; pause, resume, or step N frames. |
 | `log_get_entries` | Recent tracing events, filtered by level, target and message. |
+| `command_list` / `command_call` | The commands the game registers, and calling one by name. Always present. |
+| `job_list` / `job_wait` / `job_cancel` | Follow, collect or end the work a command started. |
+| one tool per game command | Present while the game runs; see "Commands and jobs". Today: |
 | `editor_get_view` / `editor_set_view` | Which editor view is shown, Scene View or Game View; switch it as clicking its tab would. |
 | `screenshot_capture` | Write the game window, the game camera or the editor camera to a PNG file. |
-| `video_record` / `video_status` / `video_stop` | Record the game window, the game camera or the editor camera to an `.mp4` or `.mkv` file; follow or stop a long recording. |
+| `video_record` | Record the game window, the game camera or the editor camera to an `.mp4` or `.mkv` file. |
 
-Every result also carries `pid`, three letters naming the run of the game process that answered
+Every result also carries `pid`, eight letters naming the run of the game process that answered
 it. See "Noticing a restart".
+
+A failed call comes back as a tool result marked as an error, with the reason, its stable kind in
+parentheses, and what to do about it when the game knows.
 
 A few things about them are worth knowing before reading the schemas.
 
@@ -128,17 +134,17 @@ sidecar does not: it keeps no connection and no cached state, so a call after a 
 works, with no reattach step. That is convenient and it is the hazard. A plan built against one
 run keeps being applied to the next, and the failures read as unrelated bugs.
 
-So every tool result carries `pid`, three lowercase letters naming the run:
+So every tool result carries `pid`, eight lowercase letters naming the run:
 
 ```json
-{"pid": "uuq", "entity": 4294966691, "name": "Cube", "position": [0, 1, 0]}
+{"pid": "kqvzmbta", "entity": 4294966691, "name": "Cube", "position": [0, 1, 0]}
 ```
 
 If it differs from the previous call, the game restarted. Discard every id you were holding and
-re-resolve by name. The value comes from the process id mixed with the process start time, so
-two runs differ whatever the scheduler does with pids. It is three letters because it rides on
-every response; 17576 values means two successive runs collide about once in 17576, which costs
-a missed warning and never gives a false one.
+re-resolve by name. The value comes from the process id, the start time and an OS-seeded hash, so
+two runs share one essentially never. Job ids start with it (`kqvzmbta-3`), so a job id from an
+earlier run is recognisably stale. A command result's `pid` comes from the same answer as the
+result, so it cannot belong to a different run than the result does.
 
 A dead game is a different signal: the call fails with "cannot reach the game's remote server".
 "Connection refused" means the process is gone. "Connection closed before message completed"
@@ -170,13 +176,15 @@ its tab does: the tab becomes active and its dock leaf takes focus. Both tools r
 is the camera Game View renders. Switching to Game View still works when it is false; the tab then
 shows "The loaded stage has no Main Camera."
 
-`editor_set_view` returns after the game has run three more frames, and its result is read back
-from the editor rather than echoed. So a screenshot taken right after it shows the new view, and if
-something overrode the switch, the result says so. The frame count is the main loop's, so this does
-not prove the GPU presented the frame. It works while time is paused, because frames keep running.
+`editor_set_view` returns once the shown view's camera is active and one more frame has run (at
+most ten frames, for a Game View with no camera), and its result is read back from the editor
+rather than echoed. So a screenshot taken right after it shows the new view, and if something
+overrode the switch, the result says so. The frame count is the main loop's, so this does not
+prove the GPU presented the frame. It works while time is paused, because frames keep running.
+Cancelling it with `job_cancel` only stops the wait: the view has already changed.
 
-These methods belong to the editor, so a binary without it reports that the build "does not expose
-editor view switching". An editor built before the methods existed reports the same.
+These are editor commands, so a binary without the editor has no `editor_*` tools, and
+`command_call` reports `unknown_command`.
 
 ## Screenshots
 
@@ -190,20 +198,23 @@ and its size in physical pixels. Open the file to look at it; the image is not r
 | `editor_camera` | The editor's Scene View, cropped from the window, gizmos and grid included. |
 
 A camera only renders while its view is shown, so `game_camera` needs Game View and
-`editor_camera` needs Scene View. The wrong one fails with a hint naming the `editor_set_view`
-call that fixes it. The tool never switches the view itself, because that changes what the user
-is looking at.
+`editor_camera` needs Scene View. The wrong one fails with `camera_inactive` and a hint naming
+the `editor_set_view` call that fixes it. The tool never switches the view itself, because that
+changes what the user is looking at. `source` takes whatever the game registers: the editor adds
+`editor_camera`, and the tool's schema lists the names.
 
 A camera that draws into the window, the Scene View's included, is captured as a crop of the
 finished window, so anything drawn over it inside that rect is in the picture too.
 
 A relative `path` resolves against the MCP server's working directory, normally the project
-root, not against the game's. Missing directories are created, an existing file is replaced, and
-the file appears whole or not at all. Only `.png` is accepted.
+root, not against the game's: the sidecar sends its directory with every command, and the game
+resolves against that. Missing directories are created, an existing file is replaced, and the
+file appears whole or not at all. Only `.png` is accepted.
 
 The capture is a GPU readback that finishes a frame or two later, and the tool waits for it. A
-minimized window may never present a frame; the game gives up after 5 seconds and the tool after
-10. Capturing works while time is paused, because frames keep running.
+minimized window may never present a frame; the game gives up after 5 seconds. Capturing works
+while time is paused, because frames keep running. `job_cancel` on a screenshot is best effort: a
+PNG already being encoded is still written.
 
 Game code uses the same capture through `ename_engine::screenshot`: spawn a `ScreenshotRequest`
 and observe `ScreenshotFinished`.
@@ -226,9 +237,10 @@ column. ffmpeg's default conversion treats 4:2:0 chroma as centre-sited, so a st
 a plain `ffmpeg -i clip.mp4 frame.png` can show a sub-pixel colour shift at sharp edges.
 
 The tool waits for the file for up to 50 seconds. A longer recording comes back with
-`status: "recording"`, its `request` id and a note; `video_status` with `wait_seconds` (up to 50)
-collects it, and `video_stop` ends it early and waits up to 50 seconds for the file. `wait: false`
-returns as soon as the recording has started.
+`state: "running"`, its `job` id, its progress and a note; `job_wait` with `wait_seconds` (up to
+50) collects it, and `job_cancel` ends it early, keeps what was recorded, and waits up to 50
+seconds for the file. A recording cancelled before its first frame ends `cancelled`, with no file.
+`wait_seconds: 0` returns at once.
 
 The recording follows real time, so it continues while the world is paused. A camera source must
 stay visible: switching the view, resizing the window or the tab, or five seconds without a frame
@@ -248,9 +260,34 @@ output tick. When a recording ends with drops, the game logs them by reason (`no
 `no_source`, `conflict`, `mismatch`, `unsupported`, `unused`, `map_error`, `send_failed`,
 `out_of_order`, `screenshot`); read them with `log_get_entries` and `message_contains: "video:"`.
 
-Video needs the `video` cargo feature, which `example_game_editor_bin` enables by default. Game code
-uses the same recorder through `ename_engine::video`: spawn a `VideoRequest` and observe
-`VideoFinished`.
+Video needs `ename_engine`'s `video` cargo feature, which `example_game_editor_bin`'s own `video`
+feature turns on by default. Without it there is no `video_record` tool, and `command_call`
+reports `unknown_command`. Game code uses the same recorder through `ename_engine::video`: spawn a
+`VideoRequest` and observe `VideoFinished`.
+
+## Commands and jobs
+
+Functionality a game crate exposes on purpose -- screenshots, video, the editor's views -- is a
+command registered in the game, not a tool written into the sidecar. `command_list` lists what the
+running build has; each command also becomes its own tool, named after it with the dot replaced
+(`screenshot.capture` is `screenshot_capture`), with the schema the game describes. The sidecar
+re-reads the list every two seconds and tells the client when the tools change, so a game started
+after the session gains its tools without a reconnect. Until then, or if a client does not
+re-list, `command_call` with the dotted name reaches any command.
+
+A command either answers at once or starts a job. A job tool waits up to `wait_seconds` (default
+and maximum 50) and then returns `{"job", "state": "running", "progress", "note"}`; `job_wait`
+picks it up, `job_cancel` ends it early, and `job_list` shows running jobs and finished ones kept
+for five minutes. What cancelling keeps depends on the job, as its section here says.
+
+A tool built from one run of the game is refused by the next: if the game restarted since the
+tools were listed, the call fails with "nothing was run", the tools are refreshed, and calling
+again runs it against the new run. A call is never repeated automatically, because it may change
+the world.
+
+The BRP methods behind this, for a raw client: `game.command.list`, `game.command.call`,
+`game.job.status`, `game.job.list` and `game.job.cancel`. See
+[design/commands.md](design/commands.md) for why it is shaped this way.
 
 ## What the agent cannot see
 
