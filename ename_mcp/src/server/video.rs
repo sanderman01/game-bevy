@@ -27,8 +27,6 @@ use crate::brp::{BrpError, METHOD_NOT_FOUND};
 const MAX_BLOCK: Duration = Duration::from_secs(50);
 /// Room on top of a soft cap for the last status call and the run id.
 const HARD_MARGIN: Duration = Duration::from_secs(10);
-/// The engine's finalize deadline. `video_stop` waits this long for the file.
-const FINALIZE: Duration = Duration::from_secs(60);
 const POLL: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -177,17 +175,19 @@ impl GameServer {
     }
 
     #[tool(
-        description = "Stop a video recording early and wait for its file. What was recorded is \
-                       kept."
+        description = "Stop a video recording early and wait for its file, up to 50 seconds. \
+                       What was recorded is kept."
     )]
     async fn video_stop(
         &self,
         Parameters(params): Parameters<VideoStopParams>,
     ) -> ToolResult<VideoStatus> {
+        // Finalizing may take up to the engine's 60 s deadline; past the cap the note says to
+        // collect the file with video_status.
         let follow = Follow {
             until_started: false,
-            soft: FINALIZE,
-            hard: FINALIZE + HARD_MARGIN,
+            soft: MAX_BLOCK,
+            hard: MAX_BLOCK + HARD_MARGIN,
         };
         self.follow_video(params.request, None, follow, Some("game.video.stop"))
             .await
@@ -336,6 +336,10 @@ fn note(status: &VideoStatus) -> Option<String> {
         ("saved", Some(ended)) => Some(format!(
             "ended early ({ended}) after {} frames; the file holds what was recorded",
             status.frames
+        )),
+        ("finalizing", _) => Some(format!(
+            "still finalizing; call video_status with request {} to wait for the file",
+            status.request
         )),
         _ => Some(format!(
             "still {}; call video_status with request {} to wait for it, or video_stop to end \
@@ -623,6 +627,25 @@ mod tests {
         assert_eq!(
             seen.lock().unwrap()[0],
             ("game.video.stop".into(), json!({ "request": 7 }))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_slow_finalize_returns_with_a_note_at_the_cap() {
+        let (url, _) = video_game(vec![status("finalizing", 3)], None).await;
+        let server = GameServer::new(BrpClient::new(url));
+        let cap = follow(Duration::from_millis(250), Duration::from_secs(5));
+        let stopping = server
+            .follow_video(7, None, cap, Some("game.video.stop"))
+            .await
+            .unwrap();
+        let stopping = result(&stopping);
+        assert_eq!(stopping["status"], "finalizing");
+        assert!(
+            stopping["note"]
+                .as_str()
+                .unwrap()
+                .contains("still finalizing; call video_status")
         );
     }
 
