@@ -225,7 +225,7 @@ primaries and matrix, sRGB transfer). Odd sizes lose their last row or column.
 
 The tool waits for the file for up to 50 seconds. A longer recording comes back with
 `status: "recording"`, its `request` id and a note; `video_status` with `wait_seconds` (up to 50)
-collects it, and `video_stop` ends it early and waits for the file. `wait: false` returns as soon
+collects it, and `video_stop` ends it early and waits up to 50 seconds for the file. `wait: false` returns as soon
 as the recording has started.
 
 The recording follows real time, so it continues while the world is paused. A camera source must

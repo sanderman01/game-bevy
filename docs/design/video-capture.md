@@ -40,7 +40,8 @@ an integer-means-frames rule would turn ten seconds into a sixth of a second wit
 
 **Time is real time.** Frames are stamped with real time when they are requested, so pausing or
 slowing virtual time does not stop or stretch a recording. Seconds and timecodes resample to a
-constant frame rate, repeating or dropping frames. A frame count writes each accepted frame once.
+constant frame rate, repeating or dropping frames; each frame takes the tick nearest its stamp, so
+a game running at the output rate gets exactly one tick per frame despite jitter. A frame count writes each accepted frame once.
 
 **A change of source ends the recording and keeps it.** A resize, a camera that goes inactive or
 disappears, five seconds without a frame, or a stop each end the recording early and report
@@ -50,8 +51,10 @@ every frame. Failing would throw away what was recorded.
 **Screenshots and video share one readback per target per frame.** Bevy captures a target at most
 once per frame and silently drops a second `Screenshot`, so neither feature spawns its own: both
 queue requests, and one `Screenshot` per target is fanned out to every requester with the crop it
-asked with. At most three readbacks of a target are in flight for video, counted until Bevy
-actually delivers them, which bounds the GPU buffers and Bevy's unbounded delivery channel.
+asked with. At most four readbacks of a target are in flight for video, counted until Bevy
+delivers them or drops their `Screenshot` entity, which bounds the GPU buffers and Bevy's unbounded
+delivery channel. One that never arrives stops counting after 10 seconds, so lost readbacks cannot
+block a target until restart.
 
 **The game never waits on ffmpeg.** Frames go to the writer through an eight-frame queue. A full
 queue drops the frame and counts it. A watchdog fails a recording whose writer has been stuck in
