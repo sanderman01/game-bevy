@@ -1027,8 +1027,9 @@ mod tests {
             path.clone(),
             VideoLength::Time(Duration::from_secs(3600)),
         );
-        recording(&mut app, entity);
+        // Before `recording`, which already requests the first frame and so sets `t0`.
         let started = Instant::now();
+        recording(&mut app, entity);
         for _ in 0..2 {
             app.update();
             std::thread::sleep(Duration::from_millis(20));
@@ -1229,7 +1230,8 @@ mod tests {
         };
         assert_eq!(readbacks(&mut app), crate::readback::MAX_IN_FLIGHT as usize);
         std::thread::sleep(Duration::from_millis(300));
-        // The recording gives up on them and stalls, but the GPU slots stay taken.
+        // The recording gives up on them and stalls, but the GPU slots stay taken until Bevy
+        // delivers or drops them, or the 10 s reclaim time passes.
         assert_eq!(
             finished(&mut app),
             Err(VideoError::TimedOut(Duration::from_millis(200)))
@@ -1243,10 +1245,11 @@ mod tests {
         let key = RenderTarget::Window(bevy::window::WindowRef::Primary)
             .normalize(Some(window))
             .unwrap();
+        let now = app.world().resource::<Time<Real>>().elapsed();
         assert_eq!(
             app.world()
                 .resource::<ReadbackQueue>()
-                .outstanding(&key, Duration::ZERO),
+                .outstanding(&key, now),
             crate::readback::MAX_IN_FLIGHT
         );
     }
