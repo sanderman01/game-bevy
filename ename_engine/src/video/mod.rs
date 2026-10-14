@@ -1232,7 +1232,9 @@ mod tests {
             .normalize(Some(window))
             .unwrap();
         assert_eq!(
-            app.world().resource::<ReadbackQueue>().outstanding(&key),
+            app.world()
+                .resource::<ReadbackQueue>()
+                .outstanding(&key, Duration::ZERO),
             crate::readback::MAX_IN_FLIGHT
         );
     }

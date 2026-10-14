@@ -6,23 +6,31 @@
 //! [`ReadbackSystems::Spawn`] then spawns one `Screenshot` per target, and the delivered image
 //! comes back to each requester as a [`FrameReadBack`] carrying the tag it queued.
 //!
-//! Readbacks of one target in flight are counted from spawn until Bevy delivers them. A
-//! [`Limit::Bounded`] request is refused once [`MAX_IN_FLIGHT`] are out, which bounds the GPU
-//! buffers Bevy allocates and its unbounded delivery channel. A readback that never arrives
-//! keeps its slot for good.
+//! Readbacks of one target in flight are counted from spawn until Bevy delivers them or the
+//! `Screenshot` entity goes away undelivered (Bevy drops a second same-target `Screenshot` in a
+//! frame, such as one from a debug key). A [`Limit::Bounded`] request is refused once
+//! [`MAX_IN_FLIGHT`] are out, which bounds the GPU buffers Bevy allocates and its unbounded
+//! delivery channel. A readback that never arrives and is never despawned stops counting after
+//! [`RECLAIM_AFTER`], so a target is never blocked for good.
 
 use std::{sync::Arc, time::Duration};
 
 use bevy::{
     camera::{NormalizedRenderTarget, RenderTarget},
+    ecs::{lifecycle::HookContext, world::DeferredWorld},
     platform::collections::HashMap,
     prelude::*,
     render::view::screenshot::{Screenshot, ScreenshotCaptured},
     window::WindowRef,
 };
 
-/// Readbacks of one target that may be in flight before a bounded request is refused.
-pub(crate) const MAX_IN_FLIGHT: u32 = 3;
+/// Readbacks of one target that may be in flight before a bounded request is refused. A
+/// readback takes two to three frames under pipelined rendering, so four leaves one to spare.
+pub(crate) const MAX_IN_FLIGHT: u32 = 4;
+
+/// After this long an undelivered readback no longer counts against its target. Far longer than
+/// any real delivery, which takes a few frames.
+const RECLAIM_AFTER: Duration = Duration::from_secs(10);
 
 /// What to capture.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -118,8 +126,9 @@ struct QueuedReadback {
 #[derive(Resource, Default)]
 pub(crate) struct ReadbackQueue {
     queued: Vec<QueuedReadback>,
-    /// Readbacks spawned and not yet delivered, by target.
-    outstanding: HashMap<NormalizedRenderTarget, u32>,
+    /// `Screenshot` entities spawned and not yet delivered or despawned, by target, with the
+    /// real time they were spawned.
+    outstanding: HashMap<NormalizedRenderTarget, Vec<(Entity, Duration)>>,
 }
 
 impl ReadbackQueue {
@@ -136,7 +145,9 @@ impl ReadbackQueue {
             queued.members.push((entity, tag));
             return true;
         }
-        if limit == Limit::Bounded && self.outstanding(&source.key) >= MAX_IN_FLIGHT {
+        if limit == Limit::Bounded
+            && self.outstanding(&source.key, tag.requested_at) >= MAX_IN_FLIGHT
+        {
             return false;
         }
         self.queued.push(QueuedReadback {
@@ -147,13 +158,27 @@ impl ReadbackQueue {
         true
     }
 
-    pub(crate) fn outstanding(&self, key: &NormalizedRenderTarget) -> u32 {
-        self.outstanding.get(key).copied().unwrap_or(0)
+    /// Readbacks of `key` that still count at real time `now`.
+    pub(crate) fn outstanding(&self, key: &NormalizedRenderTarget, now: Duration) -> u32 {
+        self.outstanding.get(key).map_or(0, |spawned| {
+            spawned
+                .iter()
+                .filter(|(_, at)| now.saturating_sub(*at) < RECLAIM_AFTER)
+                .count() as u32
+        })
+    }
+
+    /// Gives back `screenshot`'s slot. Idempotent: delivery and despawn both call it.
+    fn release(&mut self, key: &NormalizedRenderTarget, screenshot: Entity) {
+        if let Some(spawned) = self.outstanding.get_mut(key) {
+            spawned.retain(|(entity, _)| *entity != screenshot);
+        }
     }
 }
 
 /// The requests one Bevy `Screenshot` entity delivers to.
 #[derive(Component)]
+#[component(on_remove = release_on_remove)]
 pub(crate) struct ReadbackFanOut {
     key: NormalizedRenderTarget,
     pub members: Vec<(Entity, ReadbackTag)>,
@@ -195,7 +220,12 @@ pub(crate) fn add_readback_plugin(app: &mut App) {
     }
 }
 
-fn spawn_readbacks(mut commands: Commands, mut queue: ResMut<ReadbackQueue>) {
+fn spawn_readbacks(
+    mut commands: Commands,
+    mut queue: ResMut<ReadbackQueue>,
+    time: Res<Time<Real>>,
+) {
+    let now = time.elapsed();
     let queue = &mut *queue;
     for QueuedReadback {
         key,
@@ -203,10 +233,28 @@ fn spawn_readbacks(mut commands: Commands, mut queue: ResMut<ReadbackQueue>) {
         members,
     } in queue.queued.drain(..)
     {
-        *queue.outstanding.entry(key.clone()).or_default() += 1;
-        commands
+        let spawned = queue.outstanding.entry(key.clone()).or_default();
+        // Forget readbacks long past reclaiming, so the list cannot grow without bound.
+        spawned.retain(|(_, at)| now.saturating_sub(*at) < RECLAIM_AFTER);
+        let screenshot = commands
             .spawn((Screenshot(target), ReadbackFanOut { key, members }))
-            .observe(fan_out_readback);
+            .observe(fan_out_readback)
+            .id();
+        spawned.push((screenshot, now));
+    }
+}
+
+/// A `Screenshot` despawned without delivering, such as one Bevy dropped as a same-frame
+/// duplicate, gives its slot back.
+fn release_on_remove(mut world: DeferredWorld, context: HookContext) {
+    let Some(key) = world
+        .get::<ReadbackFanOut>(context.entity)
+        .map(|fan_out| fan_out.key.clone())
+    else {
+        return;
+    };
+    if let Some(mut queue) = world.get_resource_mut::<ReadbackQueue>() {
+        queue.release(&key, context.entity);
     }
 }
 
@@ -222,9 +270,7 @@ fn fan_out_readback(
     let Ok(fan_out) = fan_outs.get(captured.entity) else {
         return;
     };
-    if let Some(count) = queue.outstanding.get_mut(&fan_out.key) {
-        *count = count.saturating_sub(1);
-    }
+    queue.release(&fan_out.key, captured.entity);
     // Taken, not cloned: this observer is the image's only consumer.
     let image = Arc::new(std::mem::take(&mut captured.event_mut().image));
     for &(entity, tag) in &fan_out.members {
@@ -366,7 +412,7 @@ mod tests {
         assert_eq!(
             app.world()
                 .resource::<ReadbackQueue>()
-                .outstanding(&source.key),
+                .outstanding(&source.key, Duration::ZERO),
             MAX_IN_FLIGHT + 1
         );
 
@@ -384,9 +430,24 @@ mod tests {
         assert_eq!(
             app.world()
                 .resource::<ReadbackQueue>()
-                .outstanding(&source.key),
+                .outstanding(&source.key, Duration::ZERO),
             MAX_IN_FLIGHT
         );
+        // So does a `Screenshot` despawned undelivered, as Bevy does with a same-frame duplicate.
+        let undelivered = app
+            .world_mut()
+            .query_filtered::<Entity, With<ReadbackFanOut>>()
+            .iter(app.world())
+            .find(|entity| *entity != screenshot)
+            .unwrap();
+        app.world_mut().despawn(undelivered);
+        let queue = app.world().resource::<ReadbackQueue>();
+        assert_eq!(
+            queue.outstanding(&source.key, Duration::ZERO),
+            MAX_IN_FLIGHT - 1
+        );
+        // And one that never arrives stops counting in time.
+        assert_eq!(queue.outstanding(&source.key, RECLAIM_AFTER * 2), 0);
     }
 
     #[test]
