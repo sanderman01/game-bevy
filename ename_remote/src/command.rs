@@ -9,13 +9,13 @@ use std::path::PathBuf;
 
 use bevy::{
     prelude::*,
-    remote::{BrpError, BrpResult, builtin_methods::parse_some, error_codes},
+    remote::{BrpError, BrpResult, error_codes},
 };
 use ename_engine::command::{
     Caller, CommandError, CommandRegistry, CommandScope, CommandWorldExt, ErrorClass, JobId, Jobs,
     Reply, RunId,
 };
-use serde::Deserialize;
+use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
 pub const LIST_METHOD: &str = "game.command.list";
@@ -64,7 +64,7 @@ pub(crate) fn call(In(params): In<Option<Value>>, world: &mut World) -> BrpResul
         params,
         cwd,
         run: expected,
-    } = parse_some(params)?;
+    } = parse(params, world)?;
     let run = run(world);
     if let Some(expected) = expected
         && expected != run
@@ -96,7 +96,7 @@ pub(crate) fn call(In(params): In<Option<Value>>, world: &mut World) -> BrpResul
 }
 
 pub(crate) fn job_status(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
-    let JobParams { job } = parse_some(params)?;
+    let JobParams { job } = parse(params, world)?;
     let run = run(world);
     let Some(jobs) = world.get_resource::<Jobs>() else {
         return Err(no_jobs(&run));
@@ -117,12 +117,24 @@ pub(crate) fn job_list(In(_): In<Option<Value>>, world: &mut World) -> BrpResult
 }
 
 pub(crate) fn job_cancel(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
-    let JobParams { job } = parse_some(params)?;
+    let JobParams { job } = parse(params, world)?;
     let run = run(world);
     match world.cancel_job(&job, SCOPE) {
         Ok(status) => crate::to_value(json!({ "run": run, "job": status })),
         Err(err) => Err(brp_error(err, &run)),
     }
+}
+
+/// The method's own params. A malformed envelope is the caller's fault and gets the same
+/// `kind`/`class`/`run` data as every other error here.
+fn parse<T: DeserializeOwned>(params: Option<Value>, world: &World) -> Result<T, BrpError> {
+    let params = params.unwrap_or(Value::Null);
+    serde_json::from_value(params).map_err(|err| {
+        brp_error(
+            CommandError::invalid("invalid_params", format!("invalid params: {err}")),
+            &run(world),
+        )
+    })
 }
 
 fn run(world: &World) -> String {
@@ -282,6 +294,27 @@ mod tests {
 
         let err = method(&mut app, job_status, json!({ "job": "zzzzzzzz-1" })).unwrap_err();
         assert_eq!(err.data.unwrap()["kind"], "unknown_job");
+
+        // A malformed envelope keeps the same data.
+        for (handler, params) in [
+            ("call", json!({ "params": {} })),
+            ("call", json!({ "command": "test.fail", "extra": 1 })),
+            ("status", json!({ "job": 7 })),
+            ("cancel", json!({})),
+        ] {
+            let err = match handler {
+                "call" => method(&mut app, call, params.clone()),
+                "status" => method(&mut app, job_status, params.clone()),
+                _ => method(&mut app, job_cancel, params.clone()),
+            }
+            .unwrap_err();
+            assert_eq!(err.code, error_codes::INVALID_PARAMS, "{params}");
+            assert_eq!(
+                err.data.as_ref().map(|data| (&data["kind"], &data["run"])),
+                Some((&json!("invalid_params"), &json!(run))),
+                "{params}"
+            );
+        }
     }
 
     #[test]
