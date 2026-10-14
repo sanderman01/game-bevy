@@ -27,5 +27,9 @@ tempfile.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 
+[dev-dependencies]
+# Only for the headless GPU test of the video NV12 shader. Bevy's version, so it unifies.
+wgpu = { version = "29.0.3", default-features = false, features = ["wgsl", "vulkan", "metal", "dx12"] }
+
 [lints]
 workspace = true

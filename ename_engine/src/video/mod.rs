@@ -45,6 +45,8 @@
 
 mod encoder;
 mod length;
+#[allow(dead_code, reason = "used by the capture pass that follows")]
+mod nv12;
 
 use std::{
     collections::BTreeMap,
