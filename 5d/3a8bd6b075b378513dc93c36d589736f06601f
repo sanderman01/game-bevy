@@ -1,0 +1,29 @@
+Cargo.lock
+  s_12bb6d3148530d::t_f7afca60869841 3017
+Cargo.toml
+  s_12bb6d3148530d::t_363dae3b308ee0 67
+docs/assets-archives.md
+  s_12bb6d3148530d::t_f278a26b30e0dd 102-103,170-172
+ename_asset_vfs/Cargo.toml
+  s_12bb6d3148530d::t_bd07e610f8efcc 19-22
+ename_asset_vfs/src/mount/files.rs
+  s_12bb6d3148530d::t_dd1b8954c671ce 72,94-103
+ename_asset_vfs/src/mount/mod.rs
+  s_12bb6d3148530d::t_e96bc8c5b9c710 739
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5d3a8bd6b075b378513dc93c36d589736f06601f",
+  "prompts": {},
+  "sessions": {
+    "s_12bb6d3148530d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40e810f9-e7ef-41d6-a981-60e9ac69dd44",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
