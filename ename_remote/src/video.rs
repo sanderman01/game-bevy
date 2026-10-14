@@ -216,6 +216,7 @@ fn error_kind(error: &VideoError) -> &'static str {
         VideoError::UnsupportedTarget(_) => "unsupported_target",
         VideoError::NoWindow => "no_window",
         VideoError::UnsupportedFormat(_) => "unsupported_format",
+        VideoError::UnreadableTarget(_) => "unreadable_target",
         VideoError::EmptyCrop { .. } => "empty_crop",
         VideoError::TooSmall { .. } => "too_small",
         VideoError::TimedOut(_) => "timed_out",

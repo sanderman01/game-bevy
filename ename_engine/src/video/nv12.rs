@@ -9,9 +9,9 @@ use bevy::{
     prelude::*,
     render::{
         render_resource::{
-            BindGroupEntry, BindGroupLayout, BindGroupLayoutEntry, BindingResource, BindingType,
-            Buffer, BufferBindingType, BufferDescriptor, BufferInitDescriptor, BufferUsages,
-            CommandEncoder, ComputePassDescriptor, ComputePipeline, PipelineCompilationOptions,
+            BindGroup, BindGroupEntry, BindGroupLayout, BindGroupLayoutEntry, BindingResource,
+            BindingType, Buffer, BufferBindingType, BufferDescriptor, BufferUsages, CommandEncoder,
+            ComputePassDescriptor, ComputePipeline, PipelineCompilationOptions,
             PipelineLayoutDescriptor, RawComputePipelineDescriptor, ShaderModuleDescriptor,
             ShaderSource, ShaderStages, TextureSampleType, TextureView, TextureViewDimension,
         },
@@ -116,43 +116,29 @@ impl Nv12Pipelines {
         })
     }
 
-    /// Records the conversion of `rect` of `source` into `output`. `srgb_view` says whether
-    /// `source` is an sRGB view, which decodes on load and so needs re-encoding.
-    pub(crate) fn encode(
+    /// The two parameter buffers [`Self::encode`] reads, one per pass. Reused every frame:
+    /// write [`params`] into them before each submit.
+    pub(crate) fn params_buffers(device: &RenderDevice) -> [Buffer; 2] {
+        std::array::from_fn(|_| {
+            device.create_buffer(&BufferDescriptor {
+                label: Some("video_nv12_params"),
+                size: PARAMS_LEN,
+                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        })
+    }
+
+    /// Bind groups for converting `source` into `output`. Cache them while both stay the same.
+    pub(crate) fn bind_groups(
         &self,
         device: &RenderDevice,
-        encoder: &mut CommandEncoder,
         source: &TextureView,
-        srgb_view: bool,
-        rect: URect,
         output: &Buffer,
-    ) {
-        let size = rect.size();
-        let luma_words = size.x * size.y / 4;
-        let chroma_words = (size.x / 2 * (size.y / 2)).div_ceil(2);
-        let groups = |words: u32| {
-            let groups = words.div_ceil(WORKGROUP).max(1);
-            let x = groups.min(MAX_GROUPS);
-            (x, groups.div_ceil(x))
-        };
-        for (pipeline, words) in [(&self.luma, luma_words), (&self.chroma, chroma_words)] {
-            let (x, y) = groups(words);
-            let params: [u32; 8] = [
-                rect.min.x,
-                rect.min.y,
-                size.x,
-                size.y,
-                x,
-                u32::from(srgb_view),
-                luma_words,
-                0,
-            ];
-            let params = device.create_buffer_with_data(&BufferInitDescriptor {
-                label: Some("video_nv12_params"),
-                contents: &params.map(u32::to_le_bytes).concat(),
-                usage: BufferUsages::UNIFORM,
-            });
-            let bind_group = device.create_bind_group(
+        params: &[Buffer; 2],
+    ) -> [BindGroup; 2] {
+        std::array::from_fn(|pass| {
+            device.create_bind_group(
                 "video_nv12",
                 &self.layout,
                 &[
@@ -166,19 +152,74 @@ impl Nv12Pipelines {
                     },
                     BindGroupEntry {
                         binding: 2,
-                        resource: params.as_entire_binding(),
+                        resource: params[pass].as_entire_binding(),
                     },
                 ],
-            );
-            let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor {
+            )
+        })
+    }
+
+    /// Records the conversion of a frame of `size`. The parameter buffers must hold
+    /// [`params`] for the same size.
+    pub(crate) fn encode(
+        &self,
+        encoder: &mut CommandEncoder,
+        bind_groups: &[BindGroup; 2],
+        size: UVec2,
+    ) {
+        for (pass, (pipeline, words)) in [&self.luma, &self.chroma]
+            .into_iter()
+            .zip(words(size))
+            .enumerate()
+        {
+            let (x, y) = groups(words);
+            let mut compute = encoder.begin_compute_pass(&ComputePassDescriptor {
                 label: Some("video_nv12"),
                 timestamp_writes: None,
             });
-            pass.set_pipeline(pipeline);
-            pass.set_bind_group(0, &*bind_group, &[]);
-            pass.dispatch_workgroups(x, y, 1);
+            compute.set_pipeline(pipeline);
+            compute.set_bind_group(0, &*bind_groups[pass], &[]);
+            compute.dispatch_workgroups(x, y, 1);
         }
     }
+}
+
+const PARAMS_LEN: u64 = 32;
+
+/// Words each pass writes: luma, then chroma.
+fn words(size: UVec2) -> [u32; 2] {
+    [size.x * size.y / 4, (size.x / 2 * (size.y / 2)).div_ceil(2)]
+}
+
+/// A 2D grid of 256-wide groups covering `words`, within the 65535-per-dimension limit.
+fn groups(words: u32) -> (u32, u32) {
+    let groups = words.div_ceil(WORKGROUP).max(1);
+    let x = groups.min(MAX_GROUPS);
+    (x, groups.div_ceil(x))
+}
+
+/// The bytes of both passes' parameter buffers for converting `rect`. `srgb_view` says whether
+/// the source view is sRGB, which decodes on load and so needs re-encoding.
+pub(crate) fn params(rect: URect, srgb_view: bool) -> [[u8; PARAMS_LEN as usize]; 2] {
+    let size = rect.size();
+    let [luma_words, _] = words(size);
+    words(size).map(|words| {
+        let params: [u32; 8] = [
+            rect.min.x,
+            rect.min.y,
+            size.x,
+            size.y,
+            groups(words).0,
+            u32::from(srgb_view),
+            luma_words,
+            0,
+        ];
+        let mut bytes = [0; PARAMS_LEN as usize];
+        for (chunk, value) in bytes.as_chunks_mut::<4>().0.iter_mut().zip(params) {
+            chunk.copy_from_slice(&value.to_le_bytes());
+        }
+        bytes
+    })
 }
 
 /// The shader's maths on the CPU, for tests. `pixels` is RGBA8 holding sRGB-encoded values,
@@ -220,7 +261,7 @@ pub(crate) fn reference(pixels: &[u8], width: u32, rect: URect) -> Vec<u8> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -273,107 +314,161 @@ mod tests {
         data
     }
 
+    /// A headless device and queue, or `None` without a GPU adapter.
+    pub(crate) fn gpu() -> Option<(RenderDevice, wgpu::Queue)> {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter = bevy::tasks::block_on(
+            instance.request_adapter(&wgpu::RequestAdapterOptions::default()),
+        )
+        .ok()?;
+        let (device, queue) =
+            bevy::tasks::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+                .ok()?;
+        Some((RenderDevice::from(device), queue))
+    }
+
+    /// Runs the shader on `rect` of a `width` x `height` texture and returns its NV12 bytes.
+    /// `raw` binds a non-sRGB view of the sRGB texture, as the window path does.
+    fn convert_on_gpu(
+        (device, queue): &(RenderDevice, wgpu::Queue),
+        format: bevy::render::render_resource::TextureFormat,
+        data: &[u8],
+        width: u32,
+        rect: URect,
+        raw: bool,
+    ) -> Vec<u8> {
+        use bevy::render::render_resource::{
+            Extent3d, MapMode, PollType, TexelCopyBufferLayout, TexelCopyTextureInfo,
+            TextureAspect, TextureDescriptor, TextureDimension, TextureUsages,
+            TextureViewDescriptor,
+        };
+        let height = data.len() as u32 / (width * 4);
+        let size = Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        let raw_format = format.remove_srgb_suffix();
+        let texture = device.create_texture(&TextureDescriptor {
+            label: None,
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+            view_formats: &[raw_format],
+        });
+        queue.write_texture(
+            TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: Default::default(),
+                aspect: TextureAspect::All,
+            },
+            data,
+            TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: None,
+            },
+            size,
+        );
+        let view = texture.create_view(&TextureViewDescriptor {
+            format: raw.then_some(raw_format),
+            ..Default::default()
+        });
+        let pipelines = Nv12Pipelines::new(device);
+        let output = Nv12Pipelines::output_buffer(device, rect.size());
+        let staging = device.create_buffer(&BufferDescriptor {
+            label: None,
+            size: buffer_len(rect.size()),
+            usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let params_buffers = Nv12Pipelines::params_buffers(device);
+        for (buffer, bytes) in params_buffers.iter().zip(params(rect, !raw)) {
+            queue.write_buffer(buffer, 0, &bytes);
+        }
+        let bind_groups = pipelines.bind_groups(device, &view, &output, &params_buffers);
+        let mut encoder = device.create_command_encoder(&Default::default());
+        pipelines.encode(&mut encoder, &bind_groups, rect.size());
+        encoder.copy_buffer_to_buffer(&output, 0, &staging, 0, buffer_len(rect.size()));
+        queue.submit([encoder.finish()]);
+        staging
+            .slice(..)
+            .map_async(MapMode::Read, |result| result.unwrap());
+        device.poll(PollType::wait_indefinitely()).unwrap();
+        let bytes = staging.slice(..).get_mapped_range().to_vec();
+        staging.unmap();
+        bytes
+    }
+
+    /// Compares the GPU's frame with [`reference`], allowing the one-value differences sRGB
+    /// decode/re-encode and GPU rounding can each cause.
+    fn assert_matches(actual: &[u8], expected: &[u8], what: &str) {
+        for (i, (a, e)) in actual.iter().zip(expected).enumerate() {
+            assert!(a.abs_diff(*e) <= 1, "{what}: byte {i} is {a}, expected {e}");
+        }
+    }
+
     /// Runs the shader on a real GPU and compares with [`reference`]. Skipped without an adapter.
     #[test]
     fn the_shader_matches_the_reference_on_a_gpu() {
-        use bevy::render::render_resource::{
-            Extent3d, MapMode, PollType, TexelCopyBufferLayout, TexelCopyTextureInfo,
-            TextureAspect, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
-            TextureViewDescriptor,
-        };
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let Ok(adapter) = bevy::tasks::block_on(
-            instance.request_adapter(&wgpu::RequestAdapterOptions::default()),
-        ) else {
+        use bevy::render::render_resource::TextureFormat;
+        let Some(gpu) = gpu() else {
             eprintln!("no GPU adapter; skipping");
             return;
         };
-        let (device, queue) =
-            bevy::tasks::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-                .unwrap();
-        let device = RenderDevice::from(device);
-        let pipelines = Nv12Pipelines::new(&device);
-
-        // An odd-sized texture, so the crop's edges and a chroma row that ends mid-word are both
-        // exercised: 6x4 at (1, 1) of a 9x7 image.
-        let (width, height) = (9, 7);
-        let rect = URect::new(1, 1, 7, 5);
-        let rgba = pattern(width, height);
+        let width = 9;
+        let rgba = pattern(width, 7);
         let bgra: Vec<u8> = rgba
             .chunks(4)
             .flat_map(|p| [p[2], p[1], p[0], p[3]])
             .collect();
-        let expected = reference(&rgba, width, rect);
-
-        for (format, data, raw) in [
-            (TextureFormat::Rgba8UnormSrgb, &rgba, false),
-            (TextureFormat::Bgra8UnormSrgb, &bgra, false),
-            (TextureFormat::Rgba8UnormSrgb, &rgba, true),
-        ] {
-            let raw_format = format.remove_srgb_suffix();
-            let texture = device.create_texture(&TextureDescriptor {
-                label: None,
-                size: Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: TextureDimension::D2,
-                format,
-                usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-                view_formats: &[raw_format],
-            });
-            queue.write_texture(
-                TexelCopyTextureInfo {
-                    texture: &texture,
-                    mip_level: 0,
-                    origin: Default::default(),
-                    aspect: TextureAspect::All,
-                },
-                data,
-                TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(width * 4),
-                    rows_per_image: None,
-                },
-                Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-            );
-            let view = texture.create_view(&TextureViewDescriptor {
-                format: raw.then_some(raw_format),
-                ..Default::default()
-            });
-            let output = Nv12Pipelines::output_buffer(&device, rect.size());
-            let staging = device.create_buffer(&BufferDescriptor {
-                label: None,
-                size: buffer_len(rect.size()),
-                usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-            let mut encoder = device.create_command_encoder(&Default::default());
-            pipelines.encode(&device, &mut encoder, &view, !raw, rect, &output);
-            encoder.copy_buffer_to_buffer(&output, 0, &staging, 0, buffer_len(rect.size()));
-            queue.submit([encoder.finish()]);
-            staging
-                .slice(..)
-                .map_async(MapMode::Read, |result| result.unwrap());
-            device.poll(PollType::wait_indefinitely()).unwrap();
-            let actual = staging.slice(..).get_mapped_range()[..expected.len()].to_vec();
-            staging.unmap();
-
-            // sRGB decode and re-encode, and GPU rounding, may each move a value by one.
-            for (i, (a, e)) in actual.iter().zip(&expected).enumerate() {
-                assert!(
-                    a.abs_diff(*e) <= 1,
-                    "{format:?} raw={raw}: byte {i} is {a}, expected {e}"
+        // 6x4 at (1, 1): crop edges, and a chroma row that ends mid-word. 6x2: a chroma plane
+        // of three samples, so the last word is half padding.
+        for rect in [URect::new(1, 1, 7, 5), URect::new(2, 3, 8, 5)] {
+            let expected = reference(&rgba, width, rect);
+            for (format, data, raw) in [
+                (TextureFormat::Rgba8UnormSrgb, &rgba, false),
+                (TextureFormat::Bgra8UnormSrgb, &bgra, false),
+                (TextureFormat::Rgba8UnormSrgb, &rgba, true),
+            ] {
+                let actual = convert_on_gpu(&gpu, format, data, width, rect, raw);
+                assert_eq!(actual.len() as u64, buffer_len(rect.size()));
+                assert_matches(
+                    &actual,
+                    &expected,
+                    &format!("{format:?} raw={raw} {rect:?}"),
                 );
+                // The padding past the frame is zero.
+                assert!(actual[expected.len()..].iter().all(|&b| b == 0), "{rect:?}");
             }
         }
+    }
+
+    /// Every 8-bit grey level survives the sRGB decode and re-encode of an sRGB view.
+    #[test]
+    fn every_srgb_level_round_trips_on_a_gpu() {
+        use bevy::render::render_resource::TextureFormat;
+        let Some(gpu) = gpu() else {
+            eprintln!("no GPU adapter; skipping");
+            return;
+        };
+        let mut ramp = Vec::new();
+        for _ in 0..2 {
+            for v in 0..=255u8 {
+                ramp.extend([v, v, v, 255]);
+            }
+        }
+        let rect = URect::new(0, 0, 256, 2);
+        let expected = reference(&ramp, 256, rect);
+        let decoded = convert_on_gpu(&gpu, TextureFormat::Rgba8UnormSrgb, &ramp, 256, rect, false);
+        let raw = convert_on_gpu(&gpu, TextureFormat::Rgba8UnormSrgb, &ramp, 256, rect, true);
+        assert_matches(&decoded, &expected, "sRGB view");
+        // The raw view reads the stored bytes exactly; the decoded view must agree with it.
+        assert_matches(&decoded, &raw, "sRGB view against raw view");
     }
 
     /// Encodes an NV12 frame losslessly with the real ffmpeg, decodes it back to RGB, and

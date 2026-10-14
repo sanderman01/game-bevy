@@ -61,7 +61,10 @@ use std::{
 };
 
 use bevy::{
-    camera::RenderTarget, prelude::*, render::render_resource::TextureFormat, window::PrimaryWindow,
+    camera::RenderTarget,
+    prelude::*,
+    render::render_resource::{TextureFormat, TextureUsages},
+    window::PrimaryWindow,
 };
 
 pub use crate::readback::CaptureSource;
@@ -197,6 +200,11 @@ pub enum VideoError {
     NoWindow,
     #[error("the captured texture is {0:?}; only Rgba8UnormSrgb and Bgra8UnormSrgb are supported")]
     UnsupportedFormat(TextureFormat),
+    #[error(
+        "the camera's target image has usages {0:?}, without TEXTURE_BINDING, so the GPU cannot \
+         read it"
+    )]
+    UnreadableTarget(TextureUsages),
     #[error("the viewport {crop:?} has no area inside the {size} image")]
     EmptyCrop { crop: URect, size: UVec2 },
     #[error("the {size} source is too small to encode once rounded down to even sizes")]
@@ -396,9 +404,7 @@ impl Recorder {
     }
 
     fn dropped(&self) -> u64 {
-        self.capture.failed.load(Ordering::Acquire)
-            + self.writer.0.rejected.load(Ordering::Acquire)
-            + self.skipped
+        self.capture.failed() + self.writer.0.rejected.load(Ordering::Acquire) + self.skipped
     }
 }
 
@@ -551,18 +557,30 @@ fn request_frames(
     settings: Res<VideoSettings>,
     time: Res<Time<Real>>,
 ) {
-    pending.0.clear();
+    pending.jobs.clear();
+    pending.warm = false;
     let now = time.elapsed();
     let primary_window = windows.single().ok();
     for (request, mut stage) in &mut requests {
-        let RecordingStage::Recording(recorder) = &mut *stage else {
-            continue;
+        let recorder = match &mut *stage {
+            RecordingStage::Recording(recorder) => recorder,
+            RecordingStage::Starting { .. } => {
+                pending.warm = true;
+                continue;
+            }
+            _ => continue,
         };
+        pending.warm = true;
         if recorder.end.is_some() || recorder.failure.is_some() {
             continue;
         }
         if let Some(error) = recorder.capture.error.get() {
             recorder.failure = Some(error.clone());
+            continue;
+        }
+        // First, so a source that never resolves or never lays out still stalls out.
+        if recorder.writer.0.since_accepted() > settings.stall_timeout {
+            recorder.end(VideoEnd::Stalled, now);
             continue;
         }
 
@@ -613,18 +631,24 @@ fn request_frames(
             }
             Some(_) => {}
         }
-        if recorder.writer.0.since_accepted() > settings.stall_timeout {
-            recorder.end(VideoEnd::Stalled, now);
-            continue;
-        }
-
         let t0 = *recorder.t0.get_or_insert(now);
         let stamp = now - t0;
         let mut completes = false;
         match recorder.length {
             VideoLength::Frames(limit) => {
-                if recorder.writer.0.accepted.load(Ordering::Acquire) >= u64::from(limit.get()) {
+                let limit = u64::from(limit.get());
+                if recorder.writer.0.accepted.load(Ordering::Acquire) >= limit {
                     recorder.end(VideoEnd::Completed, now);
+                    continue;
+                }
+                // Enough is already on its way; asking for more would only be surplus.
+                let live = recorder
+                    .capture
+                    .requested
+                    .load(Ordering::Acquire)
+                    .saturating_sub(recorder.capture.failed())
+                    .saturating_sub(recorder.writer.0.rejected.load(Ordering::Acquire));
+                if live >= limit {
                     continue;
                 }
             }
@@ -646,7 +670,7 @@ fn request_frames(
                 Some(encoder::ticks_until(stamp, recorder.frame_rate, 0, u64::MAX).end);
         }
         recorder.capture.requested.fetch_add(1, Ordering::AcqRel);
-        pending.0.push(CaptureJob {
+        pending.jobs.push(CaptureJob {
             shared: recorder.capture.clone(),
             key: source.key,
             rect,
@@ -726,13 +750,15 @@ fn finish_recordings(
                 deadline,
                 skipped,
             } => match writer.0.result.get() {
-                Some(result) => Some(result.clone().map(|mut saved| {
-                    let dropped = capture.failed.load(Ordering::Acquire)
-                        + writer.0.rejected.load(Ordering::Acquire)
-                        + *skipped;
-                    saved.dropped_frames = dropped as u32;
-                    saved
-                })),
+                Some(result) => {
+                    log_drops(capture, &writer.0, *skipped);
+                    Some(result.clone().map(|mut saved| {
+                        let dropped =
+                            capture.failed() + writer.0.rejected.load(Ordering::Acquire) + *skipped;
+                        saved.dropped_frames = dropped as u32;
+                        saved
+                    }))
+                }
                 None if now >= *deadline => Some(Err(stalled_ffmpeg(&format!(
                     "finalizing took longer than {:?}",
                     settings.finalize_timeout
@@ -783,6 +809,33 @@ fn close(stage: &mut RecordingStage, reason: VideoEnd, deadline: Duration) {
         deadline,
         skipped,
     };
+}
+
+/// Logs why frames were dropped, by reason, so a recording with drops can be diagnosed from the
+/// log (`log_get_entries` with `target_contains: "video"`).
+fn log_drops(capture: &CaptureShared, writer: &WriterShared, skipped: u64) {
+    let mut reasons: Vec<String> = capture
+        .drops()
+        .filter(|(_, count)| *count > 0)
+        .map(|(name, count)| format!("{name}={count}"))
+        .collect();
+    let rejected = writer.rejected.load(Ordering::Acquire);
+    if rejected > 0 {
+        reasons.push(format!("out_of_order={rejected}"));
+    }
+    if skipped > 0 {
+        reasons.push(format!("screenshot={skipped}"));
+    }
+    let requested = capture.requested.load(Ordering::Acquire);
+    let delivered = capture.delivered.load(Ordering::Acquire);
+    if reasons.is_empty() {
+        debug!("video: {delivered} of {requested} requested frames delivered, none dropped");
+    } else {
+        info!(
+            "video: {delivered} of {requested} requested frames delivered; dropped {}",
+            reasons.join(" ")
+        );
+    }
 }
 
 fn stalled_ffmpeg(status: &str) -> VideoError {
@@ -949,7 +1002,7 @@ mod tests {
 
     /// This frame's capture requests, as the render world would see them.
     fn jobs(app: &App) -> Vec<CaptureJob> {
-        app.world().resource::<PendingCaptures>().0.clone()
+        app.world().resource::<PendingCaptures>().jobs.clone()
     }
 
     /// Delivers `jobs` as completed maps would, in one go.
@@ -992,13 +1045,13 @@ mod tests {
         let path = dir.path().join("a.mp4");
         let entity = record(&mut app, path.clone(), frames(2));
         recording(&mut app, entity);
-        // Nothing delivered yet, so every frame is requested; then four arrive at once.
+        // Nothing delivered yet: only n frames are asked for, then they arrive together.
         let mut batch = jobs(&app);
         for _ in 0..3 {
             app.update();
             batch.extend(jobs(&app));
         }
-        assert_eq!(batch.len(), 4);
+        assert_eq!(batch.len(), 2);
         assert!(batch.iter().all(|job| job.rect.size() == SIZE));
         deliver(&batch);
         let saved = finished(&mut app).unwrap();
@@ -1096,6 +1149,7 @@ mod tests {
 
     #[test]
     fn time_mode_requests_once_per_output_tick() {
+        use bevy::time::TimeUpdateStrategy;
         let _guard = lock_processes();
         let dir = tempfile::tempdir().unwrap();
         let mut app = app(dir.path(), "exit 0", CAT, |_| {});
@@ -1111,20 +1165,15 @@ mod tests {
             })
             .id();
         recording(&mut app, entity);
+        // From here on, real time advances 5 ms per update regardless of the machine's load.
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_millis(5)));
         let mut requested = jobs(&app).len();
         deliver(&jobs(&app));
-        let (mut updates, started) = (0, Instant::now());
-        while started.elapsed() < Duration::from_millis(330) {
-            std::thread::sleep(Duration::from_millis(5));
+        for _ in 0..66 {
             requested += update_and_deliver(&mut app);
-            updates += 1;
         }
-        // Ticks 0..=3 at 10 fps (rounded to the nearest tick), at most one request each.
-        assert!(updates > 20, "{updates}");
-        assert!(
-            (3..=5).contains(&requested),
-            "{requested} requests in {updates} updates"
-        );
+        // About 330 ms at 10 fps: the frames that round into ticks 0, 1, 2 and 3, one each.
+        assert!((4..=5).contains(&requested), "{requested} requests");
     }
 
     #[test]
@@ -1137,7 +1186,7 @@ mod tests {
         deliver(&jobs(&app));
         app.update();
         for job in jobs(&app) {
-            job.shared.fail_for_test();
+            job.shared.fail(capture::DropReason::NoSlot);
         }
         update_and_deliver(&mut app);
         app.world_mut().trigger(VideoStopRequested { entity });
@@ -1155,7 +1204,7 @@ mod tests {
         let job = jobs(&app).remove(0);
         let error = VideoError::UnsupportedFormat(TextureFormat::Rgba16Float);
         job.shared.error.set(error.clone()).unwrap();
-        job.shared.fail_for_test();
+        job.shared.fail(capture::DropReason::NoSlot);
         assert_eq!(finished(&mut app), Err(error));
     }
 
