@@ -14,7 +14,10 @@
 use std::{
     collections::{BTreeMap, HashSet},
     hash::{DefaultHasher, Hash, Hasher},
-    sync::{Arc, Mutex, OnceLock, RwLock},
+    sync::{
+        Arc, Mutex, OnceLock, RwLock,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 
@@ -95,7 +98,10 @@ pub struct Catalog {
     /// Static tool names, which a command may not take over.
     static_tools: OnceLock<HashSet<String>>,
     legacy_peer: OnceLock<Peer<RoleServer>>,
-    subscriptions: Mutex<Vec<SubscriptionSink>>,
+    /// Open subscriptions by a stable id, so overlapping notifies and a `listen` ending remove
+    /// exactly the one they mean.
+    subscriptions: Mutex<BTreeMap<u64, SubscriptionSink>>,
+    next_subscription: AtomicU64,
     watching: OnceLock<()>,
 }
 
@@ -115,8 +121,12 @@ impl Catalog {
         self.state.read().unwrap().tools.get(tool_name).cloned()
     }
 
-    pub fn run(&self) -> Option<String> {
-        self.state.read().unwrap().run.clone()
+    /// A tool and the run its catalogue came from, read together, so a refresh in between cannot
+    /// pair a command listed by one run with another run's id.
+    pub fn lookup(&self, tool_name: &str) -> Option<(DynamicTool, String)> {
+        let state = self.state.read().unwrap();
+        let tool = state.tools.get(tool_name)?.clone();
+        Some((tool, state.run.clone()?))
     }
 
     pub fn is_loaded(&self) -> bool {
@@ -206,9 +216,21 @@ impl Catalog {
         let _ = self.legacy_peer.set(peer);
     }
 
-    /// A 2026-07-28 client opened a subscription that accepted `tools_list_changed`.
-    pub fn add_subscription(&self, sink: SubscriptionSink) {
-        self.subscriptions.lock().unwrap().push(sink);
+    /// A 2026-07-28 client opened a subscription that accepted `tools_list_changed`. Returns the
+    /// id to remove it with when it ends.
+    pub fn add_subscription(&self, sink: SubscriptionSink) -> u64 {
+        let id = self.next_subscription.fetch_add(1, Ordering::Relaxed);
+        self.subscriptions.lock().unwrap().insert(id, sink);
+        id
+    }
+
+    pub fn remove_subscription(&self, id: u64) {
+        self.subscriptions.lock().unwrap().remove(&id);
+    }
+
+    #[cfg(test)]
+    pub fn subscription_count(&self) -> usize {
+        self.subscriptions.lock().unwrap().len()
     }
 
     /// Tells every client channel that the tools changed, dropping closed subscriptions.
@@ -219,22 +241,12 @@ impl Catalog {
             tracing::warn!("failed to send tools/list_changed: {err}");
         }
         let sinks = self.subscriptions.lock().unwrap().clone();
-        let mut closed = Vec::new();
-        for (index, sink) in sinks.iter().enumerate() {
+        for (id, sink) in sinks {
             match sink.notify_tool_list_changed().await {
                 Ok(()) => {}
-                Err(SubscriptionSendError::SubscriptionClosed) => closed.push(index),
+                Err(SubscriptionSendError::SubscriptionClosed) => self.remove_subscription(id),
                 Err(err) => tracing::warn!("failed to send tools/list_changed: {err}"),
             }
-        }
-        if !closed.is_empty() {
-            let mut subscriptions = self.subscriptions.lock().unwrap();
-            let mut index = 0;
-            subscriptions.retain(|_| {
-                let keep = !closed.contains(&index);
-                index += 1;
-                keep
-            });
         }
     }
 

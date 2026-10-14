@@ -1042,7 +1042,8 @@ impl ServerHandler for GameServer {
         let mut tools = self.tool_router.list_all();
         tools.extend(self.catalog.tools());
         tools.sort_by(|a, b| a.name.cmp(&b.name));
-        // The cache hints `#[tool_handler]` emits, which only a 2026-07-28 peer understands.
+        // The version-gated cache hints `#[tool_handler]` emits, but private: the list depends on
+        // which game this one client's sidecar is talking to.
         let cache_hints = context
             .protocol_version()
             .is_some_and(|version| version >= ProtocolVersion::V_2026_07_28);
@@ -1052,7 +1053,7 @@ impl ServerHandler for GameServer {
             meta: None,
             next_cursor: None,
             ttl_ms: cache_hints.then_some(0),
-            cache_scope: cache_hints.then_some(CacheScope::Public),
+            cache_scope: cache_hints.then_some(CacheScope::Private),
         })
     }
 
@@ -1073,12 +1074,12 @@ impl ServerHandler for GameServer {
             });
         }
         let name = request.name.to_string();
-        let mut tool = self.catalog.get(&name);
-        if tool.is_none() {
+        let mut found = self.catalog.lookup(&name);
+        if found.is_none() {
             self.catalog.refresh_and_notify(&self.brp).await;
-            tool = self.catalog.get(&name);
+            found = self.catalog.lookup(&name);
         }
-        let Some(tool) = tool else {
+        let Some((tool, run)) = found else {
             return Err(ErrorData::invalid_params(
                 format!("no tool `{name}`; the game may not be running, or may not register it"),
                 None,
@@ -1086,7 +1087,7 @@ impl ServerHandler for GameServer {
         };
         let arguments = request.arguments.unwrap_or_default();
         Ok(self
-            .call_command(&tool.command.name, arguments, self.catalog.run())
+            .call_command(&tool.command.name, arguments, Some(run))
             .await
             .into())
     }
@@ -1121,10 +1122,13 @@ impl ServerHandler for GameServer {
 
     async fn listen(&self, context: SubscriptionContext) -> Result<(), ErrorData> {
         self.catalog.watch(&self.brp);
-        if context.accepted().tools_list_changed == Some(true) {
-            self.catalog.add_subscription(context.sink().clone());
+        if context.accepted().tools_list_changed != Some(true) {
+            context.cancelled().await;
+            return Ok(());
         }
+        let id = self.catalog.add_subscription(context.sink().clone());
         context.cancelled().await;
+        self.catalog.remove_subscription(id);
         Ok(())
     }
 }

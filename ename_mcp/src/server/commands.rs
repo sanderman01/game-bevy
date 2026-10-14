@@ -117,9 +117,9 @@ impl GameServer {
         &self,
         Parameters(params): Parameters<CommandListParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let answer = match self.brp.call_raw("game.command.list", json!({})).await {
+        let answer = match self.read("game.command.list").await {
             Ok(answer) => answer,
-            Err(err) => return Ok(self.brp_failure(err).await),
+            Err(failure) => return Ok(failure),
         };
         let run = answer["run"].as_str().unwrap_or_default().to_owned();
         let needle = params.contains.map(|text| text.to_lowercase());
@@ -178,12 +178,12 @@ impl GameServer {
 
     #[tool(description = "List the game's running jobs and the finished ones it still keeps.")]
     async fn job_list(&self) -> Result<CallToolResult, ErrorData> {
-        match self.brp.call_raw("game.job.list", json!({})).await {
+        match self.read("game.job.list").await {
             Ok(answer) => {
                 let run = answer["run"].as_str().unwrap_or_default().to_owned();
                 Ok(success(json!({ "jobs": answer["jobs"] }), &run))
             }
-            Err(err) => Ok(self.brp_failure(err).await),
+            Err(failure) => Ok(failure),
         }
     }
 
@@ -247,6 +247,19 @@ impl GameServer {
             }
         };
         self.under_deadline(wait, work, &seen).await
+    }
+
+    /// One parameterless read under the hard deadline, because the HTTP client has none.
+    async fn read(&self, method: &str) -> Result<Value, CallToolResult> {
+        match tokio::time::timeout(self.hard_margin, self.brp.call_raw(method, json!({}))).await {
+            Ok(Ok(answer)) => Ok(answer),
+            Ok(Err(err)) => Err(self.brp_failure(err).await),
+            Err(_) => Err(failure(format!(
+                "the game stopped answering: `{method}` had no answer within {} seconds. It may \
+                 be hung or stopped at a breakpoint.",
+                self.hard_margin.as_secs_f32()
+            ))),
+        }
     }
 
     /// `job_wait` and `job_cancel`: one call to `method`, then the follow loop.
@@ -461,11 +474,14 @@ mod tests {
     use rmcp::model::{CallToolResult, JsonObject};
     use serde_json::{Value, json};
 
+    use rmcp::handler::server::wrapper::Parameters;
+
     use super::super::{
         GameServer,
         catalog::Listing,
         tests::{Responder, serve},
     };
+    use super::CommandListParams;
     use crate::brp::BrpClient;
 
     type Seen = Arc<Mutex<Vec<(String, Value)>>>;
@@ -600,11 +616,16 @@ mod tests {
         assert!(!server.catalog.publish(again));
         let mut changed = listing("bbbbbbbb");
         changed["commands"][1]["read_only"] = json!(false);
-        assert!(
+        let publish = |value: &Value| {
             server
                 .catalog
-                .publish(serde_json::from_value(changed).unwrap())
-        );
+                .publish(serde_json::from_value(value.clone()).unwrap())
+        };
+        assert!(publish(&changed), "annotations changed");
+        assert!(!publish(&changed), "unchanged");
+        changed["commands"][1]["description"] = json!("Another view.");
+        assert!(publish(&changed), "description changed");
+        assert!(!publish(&changed), "unchanged again");
     }
 
     #[test]
@@ -788,7 +809,14 @@ mod tests {
             .await;
         assert_eq!(result.is_error, Some(true));
         assert!(text(&result).contains("call again"), "{}", text(&result));
-        assert_eq!(server.catalog.run().as_deref(), Some("bbbbbbbb"));
+        assert_eq!(
+            server
+                .catalog
+                .lookup("view_read")
+                .map(|(_, run)| run)
+                .as_deref(),
+            Some("bbbbbbbb")
+        );
         let calls = seen
             .lock()
             .unwrap()
@@ -832,6 +860,66 @@ mod tests {
                 text(&result)
             );
         }
+    }
+
+    #[tokio::test]
+    async fn the_list_tools_give_up_when_the_game_stops_answering() {
+        for stall in ["game.command.list", "game.job.list"] {
+            let (url, _) = game(HashMap::new(), Some(stall)).await;
+            let server = server(url);
+            let result = if stall == "game.command.list" {
+                server
+                    .command_list(Parameters(CommandListParams::default()))
+                    .await
+            } else {
+                server.job_list().await
+            }
+            .unwrap();
+            assert_eq!(result.is_error, Some(true), "{stall}");
+            assert!(
+                text(&result).contains("stopped answering"),
+                "{stall}: {}",
+                text(&result)
+            );
+        }
+    }
+
+    /// The tool and its run come from one snapshot: while refreshes publish runs A and B over and
+    /// over, every lookup must pair a tool with the run that listed it.
+    #[test]
+    fn a_tool_is_never_paired_with_another_runs_id() {
+        let server = GameServer::new(BrpClient::new("http://unused"));
+        let catalog = server.catalog.clone();
+        let listing_for = |run: &str| {
+            let mut value = listing(run);
+            // The description names the run, so a mismatched pair is detectable.
+            value["commands"][1]["description"] = json!(run);
+            serde_json::from_value::<Listing>(value).unwrap()
+        };
+        catalog.publish(listing_for("aaaaaaaa"));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let writer = {
+            let catalog = catalog.clone();
+            let stop = stop.clone();
+            std::thread::spawn(move || {
+                let mut index = 0;
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    let run = if index % 2 == 0 {
+                        "bbbbbbbb"
+                    } else {
+                        "aaaaaaaa"
+                    };
+                    catalog.publish(listing_for(run));
+                    index += 1;
+                }
+            })
+        };
+        for _ in 0..20_000 {
+            let (tool, run) = catalog.lookup("view_read").unwrap();
+            assert_eq!(tool.command.description, run);
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        writer.join().unwrap();
     }
 
     #[tokio::test]

@@ -108,6 +108,7 @@ async fn legacy_clients_hear_about_tools_when_the_game_starts() {
 async fn subscribed_clients_hear_about_tools_when_the_game_starts() {
     let up = Arc::new(AtomicBool::new(false));
     let server = GameServer::new(BrpClient::new(game(up.clone()).await));
+    let catalog = server.catalog.clone();
     let (server_io, client_io) = tokio::io::duplex(64 * 1024);
     tokio::spawn(async move {
         server.serve(server_io).await?.waiting().await?;
@@ -144,6 +145,17 @@ async fn subscribed_clients_hear_about_tools_when_the_game_starts() {
         call_get_view(client.peer()).await,
         json!({ "pid": "aaaaaaaa", "view": "game" })
     );
+
+    // Ending the subscription unregisters it, without waiting for a change to find it closed.
+    assert_eq!(catalog.subscription_count(), 1);
+    subscription.cancel().await.unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while catalog.subscription_count() != 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the ended subscription is still registered");
 }
 
 #[tokio::test]
