@@ -19,19 +19,22 @@
 //!
 //! # How it works
 //!
-//! Each frame the request asks for a GPU readback of its source through the readback queue it
-//! shares with screenshots. Delivered frames go over a bounded channel to a writer thread, which
-//! crops them and streams raw pixels to an `ffmpeg` child process. ffmpeg must be on `PATH`; the
-//! encoder is the first that works of the hardware ones and `libx264`, probed once per app.
-//! `ENAME_VIDEO_ENCODER` forces one by name. The game never waits on ffmpeg: a frame that would
-//! not fit in the queue is dropped and counted.
+//! When a frame is due, the render world converts the source to NV12 on the GPU after every
+//! camera has drawn (see `capture`), copies it into one of a few buffers kept for the recording,
+//! and hands the mapped buffer to a writer thread, which writes it straight into an `ffmpeg` child
+//! process's stdin. ffmpeg must be on `PATH`; the encoder is the first that works of the hardware
+//! ones and `libx264`, probed once per app, and `ENAME_VIDEO_ENCODER` forces one by name. ffmpeg
+//! runs at below-normal priority. The game never waits on ffmpeg: a frame with no free buffer is
+//! dropped and counted.
 //!
 //! Timing is real time, so a recording continues while virtual time is paused. In
-//! [`VideoLength::Time`] mode frames are resampled to a constant rate. In
-//! [`VideoLength::Frames`] mode each accepted frame is one video frame.
+//! [`VideoLength::Time`] mode a frame is captured only when it is the first to round into a new
+//! output tick, and the file is resampled to a constant rate. In [`VideoLength::Frames`] mode
+//! every frame is captured until the writer has `n`.
 //!
-//! The pixels are sRGB, and the file is tagged as such (BT.709 primaries and matrix, sRGB
-//! transfer). Odd sizes lose their last column or row.
+//! The samples are BT.709 at TV range on the sRGB-encoded values, chroma left-sited, and the file
+//! is tagged as such (BT.709 primaries and matrix, sRGB transfer). Odd sizes lose their last
+//! column or row. A screenshot of the same target in the same frame takes that frame.
 //!
 //! # Ending early
 //!
@@ -43,20 +46,16 @@
 //! without reporting. Once the writer has started moving the finished file into place, cancel
 //! loses: the file appears. A hard kill of the game can leave an `.ename-video-*` temp file.
 
+mod capture;
 mod encoder;
 mod length;
-#[allow(dead_code, reason = "used by the capture pass that follows")]
 mod nv12;
 
 use std::{
-    collections::BTreeMap,
     ffi::OsString,
     num::NonZeroU32,
     path::{Path, PathBuf},
-    sync::{
-        Arc, OnceLock,
-        mpsc::{SyncSender, TrySendError, sync_channel},
-    },
+    sync::{Arc, OnceLock, atomic::Ordering},
     thread::JoinHandle,
     time::Duration,
 };
@@ -66,18 +65,14 @@ use bevy::{
 };
 
 pub use crate::readback::CaptureSource;
-use crate::readback::{
-    FrameReadBack, Limit, ReadbackQueue, ReadbackSystems, ReadbackTag, SourceError,
-    add_readback_plugin, resolve_source,
-};
+use crate::readback::{ReadbackQueue, ReadbackSystems, SourceError, resolve_source};
+use capture::{CaptureJob, CaptureShared, PendingCaptures};
 use encoder::{
-    Container, EncoderSpec, End, Frame, WriterJob, WriterShared, encoded_rect, shutdown_writers,
+    Container, EncoderSpec, End, WriterJob, WriterShared, encoded_rect, shutdown_writers,
     spawn_writer,
 };
 pub use length::{VideoLength, parse_timecode};
 
-/// Frames queued for the writer before more are dropped. About 66 MB at 1080p.
-const FRAME_QUEUE: usize = 8;
 /// No frame accepted for this long ends a recording as stalled.
 const STALL_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long an ended recording waits for readbacks already in flight.
@@ -264,7 +259,7 @@ pub struct VideoPlugin;
 
 impl Plugin for VideoPlugin {
     fn build(&self, app: &mut App) {
-        add_readback_plugin(app);
+        crate::readback::add_readback_plugin(app);
         app.insert_resource(VideoSettings {
             forced_encoder: std::env::var("ENAME_VIDEO_ENCODER")
                 .ok()
@@ -272,6 +267,7 @@ impl Plugin for VideoPlugin {
             ..default()
         })
         .init_resource::<ActiveWriters>()
+        .init_resource::<PendingCaptures>()
         .add_systems(
             Update,
             (
@@ -285,14 +281,17 @@ impl Plugin for VideoPlugin {
         .add_systems(
             Last,
             (
+                // After this frame's screenshot requests, which it checks for conflicts, and
+                // before they are spawned and drained.
                 (start_recordings, request_frames)
                     .chain()
-                    .in_set(ReadbackSystems::Request),
+                    .after(ReadbackSystems::Request)
+                    .before(ReadbackSystems::Spawn),
                 shutdown_on_exit,
             ),
         )
-        .add_observer(receive_frame)
         .add_observer(stop_recording);
+        capture::build_render(app);
     }
 }
 
@@ -352,7 +351,7 @@ enum RecordingStage {
     /// The writer is choosing an encoder. Nothing is requested and no stall clock runs.
     Starting {
         writer: WriterHandle,
-        frames: SyncSender<Frame>,
+        capture: Arc<CaptureShared>,
         since: Duration,
         stop: bool,
     },
@@ -360,8 +359,9 @@ enum RecordingStage {
     /// The channel is closed; the writer encodes the tail and closes the file by `deadline`.
     Finalizing {
         writer: WriterHandle,
+        capture: Arc<CaptureShared>,
         deadline: Duration,
-        dropped: u32,
+        skipped: u64,
     },
     Done {
         expires: Duration,
@@ -370,26 +370,22 @@ enum RecordingStage {
 
 struct Recorder {
     writer: WriterHandle,
-    frames: SyncSender<Frame>,
+    capture: Arc<CaptureShared>,
     length: VideoLength,
-    frame_period: Duration,
-    /// The first request's crop size, to spot a resize before reading back.
-    first_crop: Option<Option<UVec2>>,
-    /// The first accepted frame's encoded size and format.
-    first: Option<(UVec2, TextureFormat)>,
+    frame_rate: u32,
+    /// The first request's encoded size, to spot a resize.
+    first_size: Option<UVec2>,
     /// Real time of the first request. Frame stamps are relative to it.
     t0: Option<Duration>,
-    last_accepted_at: Duration,
+    /// Time mode: the output tick of the last frame requested.
+    last_tick: Option<u64>,
     next_seq: u64,
-    /// Requested and not yet delivered: seq to request time. Bookkeeping for draining only.
-    pending: BTreeMap<u64, Duration>,
-    last_accepted: Option<(u64, Duration)>,
-    /// Time mode: the request at or after `t0 + length`. Later deliveries are ignored.
-    cutoff_seq: Option<u64>,
-    accepted: u32,
-    dropped: u32,
-    /// Why and when it ended. Requests stop; deliveries up to the last request still count.
+    /// Frames not requested because a screenshot took the target's readback that frame.
+    skipped: u64,
+    /// Why and when it ended. Requests stop; frames in flight still count.
     end: Option<(VideoEnd, Duration)>,
+    /// A problem that fails the recording.
+    failure: Option<VideoError>,
 }
 
 impl Recorder {
@@ -397,6 +393,12 @@ impl Recorder {
         if self.end.is_none() {
             self.end = Some((reason, now));
         }
+    }
+
+    fn dropped(&self) -> u64 {
+        self.capture.failed.load(Ordering::Acquire)
+            + self.writer.0.rejected.load(Ordering::Acquire)
+            + self.skipped
     }
 }
 
@@ -431,7 +433,7 @@ fn start_recordings(
             }
         };
 
-        let (sender, receiver) = sync_channel(FRAME_QUEUE);
+        let (capture, receiver) = CaptureShared::new();
         let (shared, thread) = spawn_writer(WriterJob {
             path: request.path.clone(),
             container,
@@ -449,7 +451,7 @@ fn start_recordings(
             .entity(entity)
             .try_insert(RecordingStage::Starting {
                 writer: WriterHandle(shared),
-                frames: sender,
+                capture,
                 since: now,
                 stop: false,
             });
@@ -505,59 +507,70 @@ fn advance_starting(
         if writer.0.ready.get().is_none() {
             continue;
         }
-        let RecordingStage::Starting { writer, frames, .. } = std::mem::replace(
+        let RecordingStage::Starting {
+            writer, capture, ..
+        } = std::mem::replace(
             &mut *stage,
             RecordingStage::Done {
                 expires: Duration::ZERO,
             },
-        ) else {
+        )
+        else {
             unreachable!();
         };
+        writer.0.reset_accepted_clock();
         *stage = RecordingStage::Recording(Box::new(Recorder {
             writer,
-            frames,
+            capture,
             length: request.length,
-            frame_period: Duration::from_secs_f64(1.0 / f64::from(request.frame_rate.get())),
-            first_crop: None,
-            first: None,
+            frame_rate: request.frame_rate.get(),
+            first_size: None,
             t0: None,
-            last_accepted_at: now,
+            last_tick: None,
             next_seq: 0,
-            pending: BTreeMap::new(),
-            last_accepted: None,
-            cutoff_seq: None,
-            accepted: 0,
-            dropped: 0,
+            skipped: 0,
             end: None,
+            failure: None,
         }));
     }
 }
 
+/// Asks the render world for this frame's captures.
+///
+/// Frames mode asks every frame until the writer has taken `n`. Time mode asks for the first frame
+/// whose stamp rounds into a new output tick (`round((now - t0) * fps)`, as `ticks_until` rounds),
+/// so readback and encoding run at the lower of the game's and the output's frame rate. At a high
+/// render rate the chosen frame can be up to half a tick early. A frame that is never delivered
+/// leaves its tick to the previous frame.
 fn request_frames(
-    mut requests: Query<(Entity, &VideoRequest, &mut RecordingStage)>,
+    mut requests: Query<(&VideoRequest, &mut RecordingStage)>,
     cameras: Query<(&Camera, &RenderTarget)>,
-    primary_window: Query<Entity, With<PrimaryWindow>>,
-    mut queue: ResMut<ReadbackQueue>,
+    windows: Query<(Entity, &Window), With<PrimaryWindow>>,
+    screenshots: Res<ReadbackQueue>,
+    mut pending: ResMut<PendingCaptures>,
     settings: Res<VideoSettings>,
     time: Res<Time<Real>>,
 ) {
+    pending.0.clear();
     let now = time.elapsed();
-    let primary_window = primary_window.single().ok();
-    for (entity, request, mut stage) in &mut requests {
+    let primary_window = windows.single().ok();
+    for (request, mut stage) in &mut requests {
         let RecordingStage::Recording(recorder) = &mut *stage else {
             continue;
         };
-        // Only stops this recording waiting; the GPU slot is the queue's to give back.
-        let before = recorder.pending.len();
-        recorder
-            .pending
-            .retain(|_, requested| now.saturating_sub(*requested) < settings.stall_timeout);
-        recorder.dropped += (before - recorder.pending.len()) as u32;
-        if recorder.end.is_some() {
+        if recorder.end.is_some() || recorder.failure.is_some() {
+            continue;
+        }
+        if let Some(error) = recorder.capture.error.get() {
+            recorder.failure = Some(error.clone());
             continue;
         }
 
-        let source = match resolve_source(request.source, &cameras, primary_window) {
+        let source = match resolve_source(
+            request.source,
+            &cameras,
+            primary_window.map(|(entity, _)| entity),
+        ) {
             Ok(source) => source,
             Err(SourceError::CameraInactive(_)) => {
                 recorder.end(VideoEnd::CameraInactive, now);
@@ -568,104 +581,82 @@ fn request_frames(
                 continue;
             }
         };
-        let crop_size = source.crop.map(|crop| crop.size());
-        match recorder.first_crop {
-            None => recorder.first_crop = Some(crop_size),
-            Some(first) if first != crop_size => {
+        let target_size = match request.source {
+            CaptureSource::PrimaryWindow => {
+                primary_window.map(|(_, window)| window.physical_size())
+            }
+            CaptureSource::Camera(camera) => cameras
+                .get(camera)
+                .ok()
+                .and_then(|(camera, _)| camera.physical_target_size()),
+        };
+        // Not laid out yet: nothing to capture this frame.
+        let Some(target_size) = target_size else {
+            continue;
+        };
+        let rect = match encoded_rect(target_size, source.crop) {
+            Ok(rect) => rect,
+            Err(_) if recorder.first_size.is_some() => {
+                recorder.end(VideoEnd::SourceResized, now);
+                continue;
+            }
+            Err(error) => {
+                recorder.failure = Some(error);
+                continue;
+            }
+        };
+        match recorder.first_size {
+            None => recorder.first_size = Some(rect.size()),
+            Some(first) if first != rect.size() => {
                 recorder.end(VideoEnd::SourceResized, now);
                 continue;
             }
             Some(_) => {}
         }
-        if now.saturating_sub(recorder.last_accepted_at) > settings.stall_timeout {
+        if recorder.writer.0.since_accepted() > settings.stall_timeout {
             recorder.end(VideoEnd::Stalled, now);
             continue;
         }
 
-        let seq = recorder.next_seq;
-        let tag = ReadbackTag {
-            crop: source.crop,
-            seq,
-            requested_at: now,
-        };
-        if !queue.request(&source, entity, tag, Limit::Bounded) {
-            recorder.dropped += 1;
-            continue;
-        }
-        recorder.next_seq += 1;
-        recorder.pending.insert(seq, now);
         let t0 = *recorder.t0.get_or_insert(now);
-        if let VideoLength::Time(length) = recorder.length
-            && now >= t0 + length
-        {
-            recorder.cutoff_seq = Some(seq);
-            recorder.end(VideoEnd::Completed, now);
-        }
-    }
-}
-
-/// Hands one delivered frame to the writer. Never blocks: a full queue drops the frame.
-fn receive_frame(
-    frame: On<FrameReadBack>,
-    mut requests: Query<&mut RecordingStage>,
-    time: Res<Time<Real>>,
-) {
-    let Ok(mut stage) = requests.get_mut(frame.entity) else {
-        return;
-    };
-    let RecordingStage::Recording(recorder) = &mut *stage else {
-        return;
-    };
-    let now = time.elapsed();
-    let seq = frame.tag.seq;
-    recorder.pending.remove(&seq);
-    if let VideoLength::Frames(limit) = recorder.length
-        && recorder.accepted >= limit.get()
-    {
-        return;
-    }
-    if recorder.cutoff_seq.is_some_and(|cutoff| seq > cutoff) {
-        return;
-    }
-    if recorder.last_accepted.is_some_and(|(last, _)| seq <= last) {
-        recorder.dropped += 1;
-        return;
-    }
-    let format = frame.image.texture_descriptor.format;
-    let size = encoded_rect(frame.image.size(), frame.tag.crop).map(|rect| rect.size());
-    match (recorder.first, size) {
-        (None, Ok(size)) => recorder.first = Some((size, format)),
-        (Some(first), Ok(size)) if first == (size, format) => {}
-        // The first frame's own errors are the writer's to report.
-        (None, Err(_)) => {}
-        (Some(_), _) => {
-            recorder.dropped += 1;
-            recorder.end(VideoEnd::SourceResized, now);
-            return;
-        }
-    }
-    let Some(t0) = recorder.t0 else {
-        return;
-    };
-    let stamp = frame.tag.requested_at.saturating_sub(t0);
-    match recorder.frames.try_send(Frame {
-        image: frame.image.clone(),
-        crop: frame.tag.crop,
-        stamp,
-    }) {
-        Ok(()) => {
-            recorder.accepted += 1;
-            recorder.last_accepted = Some((seq, stamp));
-            recorder.last_accepted_at = now;
-            if let VideoLength::Frames(limit) = recorder.length
-                && recorder.accepted >= limit.get()
-            {
-                recorder.end(VideoEnd::Completed, now);
+        let stamp = now - t0;
+        let mut completes = false;
+        match recorder.length {
+            VideoLength::Frames(limit) => {
+                if recorder.writer.0.accepted.load(Ordering::Acquire) >= u64::from(limit.get()) {
+                    recorder.end(VideoEnd::Completed, now);
+                    continue;
+                }
+            }
+            VideoLength::Time(length) => {
+                let tick = encoder::ticks_until(stamp, recorder.frame_rate, 0, u64::MAX).end;
+                if recorder.last_tick.is_some_and(|last| tick <= last) {
+                    continue;
+                }
+                completes = stamp >= length;
             }
         }
-        Err(TrySendError::Full(_)) => recorder.dropped += 1,
-        // The writer has stopped; `finish_recordings` reports why.
-        Err(TrySendError::Disconnected(_)) => {}
+        // A screenshot redirects the same target this frame; Bevy keeps one redirect.
+        if screenshots.is_queued(&source.key) {
+            recorder.skipped += 1;
+            continue;
+        }
+        if let VideoLength::Time(_) = recorder.length {
+            recorder.last_tick =
+                Some(encoder::ticks_until(stamp, recorder.frame_rate, 0, u64::MAX).end);
+        }
+        recorder.capture.requested.fetch_add(1, Ordering::AcqRel);
+        pending.0.push(CaptureJob {
+            shared: recorder.capture.clone(),
+            key: source.key,
+            rect,
+            seq: recorder.next_seq,
+            stamp,
+        });
+        recorder.next_seq += 1;
+        if completes {
+            recorder.end(VideoEnd::Completed, now);
+        }
     }
 }
 
@@ -716,11 +707,14 @@ fn finish_recordings(
                 if let Some(result) = recorder.writer.0.result.get() {
                     // The writer stopped on its own while frames were still coming: an error.
                     Some(result.clone())
+                } else if let Some(failure) = &recorder.failure {
+                    Some(Err(failure.clone()))
                 } else if recorder.writer.0.stuck_for() > settings.write_timeout {
                     Some(Err(stalled_ffmpeg("ffmpeg stopped reading frames")))
                 } else {
                     closing = recorder.end.and_then(|(reason, ended_at)| {
-                        (recorder.pending.is_empty() || now >= ended_at + settings.drain_timeout)
+                        (recorder.capture.in_flight() == 0
+                            || now >= ended_at + settings.drain_timeout)
                             .then_some(reason)
                     });
                     None
@@ -728,11 +722,15 @@ fn finish_recordings(
             }
             RecordingStage::Finalizing {
                 writer,
+                capture,
                 deadline,
-                dropped,
+                skipped,
             } => match writer.0.result.get() {
                 Some(result) => Some(result.clone().map(|mut saved| {
-                    saved.dropped_frames = *dropped;
+                    let dropped = capture.failed.load(Ordering::Acquire)
+                        + writer.0.rejected.load(Ordering::Acquire)
+                        + *skipped;
+                    saved.dropped_frames = dropped as u32;
                     saved
                 })),
                 None if now >= *deadline => Some(Err(stalled_ffmpeg(&format!(
@@ -748,6 +746,9 @@ fn finish_recordings(
         }
         if let Some(result) = outcome {
             // Dropping the writer handle cancels a writer that is still running.
+            if let RecordingStage::Recording(recorder) = &*stage {
+                recorder.capture.close();
+            }
             *stage = RecordingStage::Done {
                 expires: now + OUTCOME_TTL,
             };
@@ -757,7 +758,8 @@ fn finish_recordings(
     writers.0.retain(|(_, thread)| !thread.is_finished());
 }
 
-/// Closes the channel and gives the writer its end.
+/// Stops capturing and gives the writer its end. The writer's channel closes once every frame
+/// still in flight has been delivered or dropped.
 fn close(stage: &mut RecordingStage, reason: VideoEnd, deadline: Duration) {
     let RecordingStage::Recording(recorder) = std::mem::replace(
         stage,
@@ -769,26 +771,17 @@ fn close(stage: &mut RecordingStage, reason: VideoEnd, deadline: Duration) {
     };
     let Recorder {
         writer,
-        frames,
-        frame_period,
-        last_accepted,
-        dropped,
+        capture,
+        skipped,
         ..
     } = *recorder;
-    let cutoff = match reason {
-        VideoEnd::Completed => None,
-        _ => Some(
-            last_accepted
-                .map(|(_, stamp)| stamp + frame_period)
-                .unwrap_or_default(),
-        ),
-    };
-    writer.0.end(End { reason, cutoff });
-    drop(frames);
+    writer.0.end(End { reason });
+    capture.close();
     *stage = RecordingStage::Finalizing {
         writer,
+        capture,
         deadline,
-        dropped,
+        skipped,
     };
 }
 
@@ -824,8 +817,8 @@ fn update_progress(
             RecordingStage::Starting { .. } => VideoProgress::default(),
             RecordingStage::Recording(recorder) => VideoProgress {
                 phase: VideoPhase::Recording,
-                frames: recorder.accepted,
-                dropped_frames: recorder.dropped,
+                frames: recorder.writer.0.accepted.load(Ordering::Acquire) as u32,
+                dropped_frames: recorder.dropped() as u32,
                 elapsed: recorder.t0.map(|t0| now - t0).unwrap_or_default(),
             },
             RecordingStage::Finalizing { .. } => VideoProgress {
@@ -868,18 +861,18 @@ fn report(
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
-    use crate::{
-        readback::ReadbackFanOut,
-        screenshot::{ScreenshotPlugin, ScreenshotRequest},
-    };
-    use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
-    use encoder::tests::{fake_exited, fake_ffmpeg, lock_processes, test_image};
+    use crate::screenshot::{ScreenshotPlugin, ScreenshotRequest};
+    use bevy::window::WindowResolution;
+    use encoder::tests::{fake_exited, fake_ffmpeg, lock_processes};
+    use nv12::frame_len;
     use std::time::Instant;
 
     #[derive(Resource, Default)]
     struct Finished(Vec<(Entity, Result<SavedVideo, VideoError>)>);
 
     const CAT: &str = "exec cat > \"$out\"";
+    /// The test window: 320x240, so one NV12 frame (115 KB) fills a pipe.
+    const SIZE: UVec2 = UVec2::new(320, 240);
 
     fn app(
         dir: &Path,
@@ -900,7 +893,13 @@ mod tests {
         };
         settings(&mut video);
         app.insert_resource(video);
-        app.world_mut().spawn((Window::default(), PrimaryWindow));
+        app.world_mut().spawn((
+            Window {
+                resolution: WindowResolution::new(SIZE.x, SIZE.y),
+                ..default()
+            },
+            PrimaryWindow,
+        ));
         app
     }
 
@@ -948,22 +947,29 @@ mod tests {
         seen[0].1.clone()
     }
 
-    /// Delivers every readback spawned so far, in one go, then forgets them.
-    fn deliver_all(app: &mut App, size: u32) -> usize {
-        let screenshots: Vec<Entity> = app
-            .world_mut()
-            .query_filtered::<Entity, (With<Screenshot>, With<ReadbackFanOut>)>()
-            .iter(app.world())
-            .collect();
-        for &screenshot in &screenshots {
-            app.world_mut().trigger(ScreenshotCaptured {
-                entity: screenshot,
-                image: test_image(size, size, TextureFormat::Rgba8UnormSrgb),
-            });
-            app.world_mut().despawn(screenshot);
+    /// This frame's capture requests, as the render world would see them.
+    fn jobs(app: &App) -> Vec<CaptureJob> {
+        app.world().resource::<PendingCaptures>().0.clone()
+    }
+
+    /// Delivers `jobs` as completed maps would, in one go.
+    fn deliver(jobs: &[CaptureJob]) {
+        for job in jobs {
+            let len = frame_len(job.rect.size()) as usize;
+            job.shared.deliver_bytes(job, vec![128; len]);
         }
-        app.world_mut().flush();
-        screenshots.len()
+    }
+
+    /// One update, then delivers what it requested.
+    fn update_and_deliver(app: &mut App) -> usize {
+        app.update();
+        let jobs = jobs(app);
+        deliver(&jobs);
+        jobs.len()
+    }
+
+    fn file_frames(path: &Path) -> u64 {
+        std::fs::metadata(path).unwrap().len() / frame_len(SIZE)
     }
 
     #[test]
@@ -979,23 +985,26 @@ mod tests {
     }
 
     #[test]
-    fn frames_mode_accepts_exactly_n_from_one_batch() {
+    fn frames_mode_writes_exactly_n_from_a_late_batch() {
         let _guard = lock_processes();
         let dir = tempfile::tempdir().unwrap();
         let mut app = app(dir.path(), "exit 0", CAT, |_| {});
         let path = dir.path().join("a.mp4");
         let entity = record(&mut app, path.clone(), frames(2));
         recording(&mut app, entity);
-        for _ in 0..4 {
+        // Nothing delivered yet, so every frame is requested; then four arrive at once.
+        let mut batch = jobs(&app);
+        for _ in 0..3 {
             app.update();
+            batch.extend(jobs(&app));
         }
-        assert_eq!(
-            deliver_all(&mut app, 8),
-            crate::readback::MAX_IN_FLIGHT as usize
-        );
+        assert_eq!(batch.len(), 4);
+        assert!(batch.iter().all(|job| job.rect.size() == SIZE));
+        deliver(&batch);
         let saved = finished(&mut app).unwrap();
         assert_eq!((saved.frames, saved.ended), (2, VideoEnd::Completed));
-        assert_eq!(std::fs::metadata(&path).unwrap().len(), 2 * 8 * 8 * 4);
+        assert_eq!(saved.dropped_frames, 0);
+        assert_eq!(file_frames(&path), 2);
     }
 
     #[test]
@@ -1009,13 +1018,7 @@ mod tests {
             finished(&mut app),
             Err(VideoError::NoFrames(VideoEnd::Stopped))
         );
-        assert!(
-            app.world_mut()
-                .query::<&Screenshot>()
-                .iter(app.world())
-                .next()
-                .is_none()
-        );
+        assert!(jobs(&app).is_empty());
     }
 
     #[test]
@@ -1032,25 +1035,24 @@ mod tests {
         // Before `recording`, which already requests the first frame and so sets `t0`.
         let started = Instant::now();
         recording(&mut app, entity);
+        deliver(&jobs(&app));
         for _ in 0..2 {
-            app.update();
-            std::thread::sleep(Duration::from_millis(20));
-            deliver_all(&mut app, 8);
+            std::thread::sleep(Duration::from_millis(40));
+            update_and_deliver(&mut app);
         }
         let recorded = started.elapsed();
         app.world_mut().trigger(VideoStopRequested { entity });
         let saved = finished(&mut app).unwrap();
         assert_eq!(saved.ended, VideoEnd::Stopped);
-        // The ticks up to the last delivered stamp plus one period: bounded by the wall time the
-        // frames were requested over, whatever the machine's load. Nowhere near an hour.
-        let bound = (recorded.as_secs_f64() * 60.0).ceil() as u32 + 2;
+        // Ticks up to one period past the last frame: bounded by the wall time recorded, at
+        // 30 fps. Nowhere near an hour.
+        let bound = (recorded.as_secs_f64() * 30.0).ceil() as u32 + 2;
         assert!(
             (1..=bound).contains(&saved.frames),
             "{} frames in {recorded:?}",
             saved.frames
         );
-        let bytes = std::fs::metadata(&path).unwrap().len();
-        assert_eq!(bytes, u64::from(saved.frames) * 8 * 8 * 4);
+        assert_eq!(file_frames(&path), u64::from(saved.frames));
     }
 
     #[test]
@@ -1060,14 +1062,16 @@ mod tests {
         let mut app = app(dir.path(), "exit 0", CAT, |_| {});
         let entity = record(&mut app, dir.path().join("a.mp4"), frames(10));
         recording(&mut app, entity);
-        app.update();
-        deliver_all(&mut app, 8);
-        app.update();
-        deliver_all(&mut app, 10);
+        deliver(&jobs(&app));
+        let mut window = app
+            .world_mut()
+            .query_filtered::<&mut Window, With<PrimaryWindow>>()
+            .single_mut(app.world_mut())
+            .unwrap();
+        window.resolution.set_physical_resolution(400, 300);
         let saved = finished(&mut app).unwrap();
-        // Every 8x8 frame before the change is kept.
         assert_eq!(saved.ended, VideoEnd::SourceResized);
-        assert!(saved.frames >= 1 && saved.size == UVec2::splat(8));
+        assert!(saved.frames >= 1 && saved.size == SIZE);
     }
 
     #[test]
@@ -1082,19 +1086,103 @@ mod tests {
         while started.elapsed() < Duration::from_millis(300) {
             app.update();
             assert_eq!(phase(&app, entity), VideoPhase::Starting);
-            assert!(
-                app.world_mut()
-                    .query::<&Screenshot>()
-                    .iter(app.world())
-                    .next()
-                    .is_none()
-            );
+            assert!(jobs(&app).is_empty());
             std::thread::sleep(Duration::from_millis(10));
         }
         recording(&mut app, entity);
-        app.update();
-        deliver_all(&mut app, 8);
+        deliver(&jobs(&app));
         assert_eq!(finished(&mut app).unwrap().frames, 1);
+    }
+
+    #[test]
+    fn time_mode_requests_once_per_output_tick() {
+        let _guard = lock_processes();
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app(dir.path(), "exit 0", CAT, |_| {});
+        let entity = app
+            .world_mut()
+            .spawn(VideoRequest {
+                frame_rate: NonZeroU32::new(10).unwrap(),
+                ..VideoRequest::new(
+                    CaptureSource::PrimaryWindow,
+                    dir.path().join("a.mp4"),
+                    VideoLength::Time(Duration::from_secs(10)),
+                )
+            })
+            .id();
+        recording(&mut app, entity);
+        let mut requested = jobs(&app).len();
+        deliver(&jobs(&app));
+        let (mut updates, started) = (0, Instant::now());
+        while started.elapsed() < Duration::from_millis(330) {
+            std::thread::sleep(Duration::from_millis(5));
+            requested += update_and_deliver(&mut app);
+            updates += 1;
+        }
+        // Ticks 0..=3 at 10 fps (rounded to the nearest tick), at most one request each.
+        assert!(updates > 20, "{updates}");
+        assert!(
+            (3..=5).contains(&requested),
+            "{requested} requests in {updates} updates"
+        );
+    }
+
+    #[test]
+    fn failed_captures_are_counted_and_do_not_block_the_drain() {
+        let _guard = lock_processes();
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app(dir.path(), "exit 0", CAT, |_| {});
+        let entity = record(&mut app, dir.path().join("a.mp4"), frames(3));
+        recording(&mut app, entity);
+        deliver(&jobs(&app));
+        app.update();
+        for job in jobs(&app) {
+            job.shared.fail_for_test();
+        }
+        update_and_deliver(&mut app);
+        app.world_mut().trigger(VideoStopRequested { entity });
+        let saved = finished(&mut app).unwrap();
+        assert_eq!((saved.frames, saved.dropped_frames), (2, 1));
+    }
+
+    #[test]
+    fn a_render_side_error_fails_the_recording() {
+        let _guard = lock_processes();
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app(dir.path(), "exit 0", CAT, |_| {});
+        let entity = record(&mut app, dir.path().join("a.mp4"), frames(3));
+        recording(&mut app, entity);
+        let job = jobs(&app).remove(0);
+        let error = VideoError::UnsupportedFormat(TextureFormat::Rgba16Float);
+        job.shared.error.set(error.clone()).unwrap();
+        job.shared.fail_for_test();
+        assert_eq!(finished(&mut app), Err(error));
+    }
+
+    #[test]
+    fn a_screenshot_of_the_same_target_takes_the_frame() {
+        let _guard = lock_processes();
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app(dir.path(), "exit 0", CAT, |_| {});
+        app.add_plugins(ScreenshotPlugin);
+        let entity = record(&mut app, dir.path().join("a.mp4"), frames(5));
+        recording(&mut app, entity);
+        app.world_mut().spawn(ScreenshotRequest {
+            source: CaptureSource::PrimaryWindow,
+            path: dir.path().join("a.png"),
+        });
+        app.update();
+        assert!(jobs(&app).is_empty());
+        app.update();
+        assert_eq!(
+            app.world()
+                .get::<VideoProgress>(entity)
+                .unwrap()
+                .dropped_frames,
+            1
+        );
+        app.update();
+        assert_eq!(jobs(&app).len(), 1);
     }
 
     #[test]
@@ -1119,10 +1207,10 @@ mod tests {
         let mut app = app(dir.path(), "exit 0", "exec sleep 30", |_| {});
         let entity = record(&mut app, dir.path().join("a.mp4"), frames(100));
         recording(&mut app, entity);
-        // 64 KiB frames: the pipe fills and the writer blocks in a write.
-        for _ in 0..6 {
-            app.update();
-            deliver_all(&mut app, 128);
+        // 115 KB frames: the pipe fills and the writer blocks in a write.
+        deliver(&jobs(&app));
+        for _ in 0..3 {
+            update_and_deliver(&mut app);
         }
         let started = Instant::now();
         drop(app);
@@ -1149,8 +1237,9 @@ mod tests {
         );
         let entity = record(&mut app, dir.path().join("a.mp4"), frames(100));
         recording(&mut app, entity);
+        deliver(&jobs(&app));
         update_until(&mut app, "the watchdog", |app| {
-            deliver_all(app, 128);
+            deliver(&jobs(app));
             !app.world().resource::<Finished>().0.is_empty()
         });
         let result = &app.world().resource::<Finished>().0[0].1;
@@ -1174,8 +1263,9 @@ mod tests {
         );
         let entity = record(&mut app, dir.path().join("a.mp4"), frames(6));
         recording(&mut app, entity);
+        deliver(&jobs(&app));
         update_until(&mut app, "the finalize deadline", |app| {
-            deliver_all(app, 128);
+            deliver(&jobs(app));
             !app.world().resource::<Finished>().0.is_empty()
         });
         let result = &app.world().resource::<Finished>().0[0].1;
@@ -1185,74 +1275,5 @@ mod tests {
         );
         drop(app);
         assert!(fake_exited(dir.path()));
-    }
-
-    #[test]
-    fn a_recording_and_a_screenshot_share_one_readback() {
-        let _guard = lock_processes();
-        let dir = tempfile::tempdir().unwrap();
-        let mut app = app(dir.path(), "exit 0", CAT, |_| {});
-        app.add_plugins(ScreenshotPlugin);
-        let entity = record(&mut app, dir.path().join("a.mp4"), frames(5));
-        recording(&mut app, entity);
-        let shot = app
-            .world_mut()
-            .spawn(ScreenshotRequest {
-                source: CaptureSource::PrimaryWindow,
-                path: dir.path().join("a.png"),
-            })
-            .id();
-        app.update();
-        let fan_outs: Vec<Vec<Entity>> = app
-            .world_mut()
-            .query::<&ReadbackFanOut>()
-            .iter(app.world())
-            .map(|fan_out| fan_out.members.iter().map(|(entity, _)| *entity).collect())
-            .collect();
-        assert!(fan_outs.contains(&vec![entity, shot]) || fan_outs.contains(&vec![shot, entity]));
-    }
-
-    #[test]
-    fn an_expired_readback_keeps_its_slot() {
-        let _guard = lock_processes();
-        let dir = tempfile::tempdir().unwrap();
-        let mut app = app(dir.path(), "exit 0", CAT, |settings| {
-            settings.stall_timeout = Duration::from_millis(200);
-        });
-        let entity = record(&mut app, dir.path().join("a.mp4"), frames(100));
-        recording(&mut app, entity);
-        for _ in 0..5 {
-            app.update();
-        }
-        let readbacks = |app: &mut App| {
-            app.world_mut()
-                .query::<&ReadbackFanOut>()
-                .iter(app.world())
-                .count()
-        };
-        assert_eq!(readbacks(&mut app), crate::readback::MAX_IN_FLIGHT as usize);
-        std::thread::sleep(Duration::from_millis(300));
-        // The recording gives up on them and stalls, but the GPU slots stay taken until Bevy
-        // delivers or drops them, or the 10 s reclaim time passes.
-        assert_eq!(
-            finished(&mut app),
-            Err(VideoError::TimedOut(Duration::from_millis(200)))
-        );
-        assert_eq!(readbacks(&mut app), crate::readback::MAX_IN_FLIGHT as usize);
-        let window = app
-            .world_mut()
-            .query_filtered::<Entity, With<PrimaryWindow>>()
-            .single(app.world())
-            .unwrap();
-        let key = RenderTarget::Window(bevy::window::WindowRef::Primary)
-            .normalize(Some(window))
-            .unwrap();
-        let now = app.world().resource::<Time<Real>>().elapsed();
-        assert_eq!(
-            app.world()
-                .resource::<ReadbackQueue>()
-                .outstanding(&key, now),
-            crate::readback::MAX_IN_FLIGHT
-        );
     }
 }

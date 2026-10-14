@@ -19,9 +19,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bevy::{prelude::*, render::render_resource::TextureFormat};
+use bevy::prelude::*;
 
-use super::{SavedVideo, VideoEnd, VideoError, VideoLength};
+use super::{SavedVideo, VideoEnd, VideoError, VideoLength, capture::Ready};
 
 /// One encoder ffmpeg may have, with the arguments it needs.
 #[derive(Debug, PartialEq, Eq)]
@@ -134,14 +134,12 @@ impl Container {
     }
 }
 
-/// Converts the matrix and range only, then tags the samples with what they are: sRGB transfer,
-/// BT.709 primaries and matrix. `setparams`, because output-side colour options are lost after
-/// `scale`.
+/// Tags the NV12 samples with what they are: BT.709 primaries and matrix, sRGB transfer, TV range.
+/// The GPU did the conversion, so there is no `scale` here. `setparams`, because the encoder's
+/// output-side colour options do not reliably reach the stream.
 fn video_filter(spec: &EncoderSpec) -> String {
-    let mut filter = format!(
-        "scale=out_color_matrix=bt709:out_range=tv,format={},\
-         setparams=color_primaries=bt709:color_trc=iec61966-2-1:colorspace=bt709:range=tv",
-        spec.pix_fmt
+    let mut filter = String::from(
+        "setparams=color_primaries=bt709:color_trc=iec61966-2-1:colorspace=bt709:range=tv",
     );
     if spec.hw_upload {
         filter.push_str(",hwupload");
@@ -166,7 +164,7 @@ fn probe_args(spec: &EncoderSpec) -> Vec<String> {
     args.extend(spec.input_args.iter().map(|arg| arg.to_string()));
     args.extend([
         "-vf".into(),
-        video_filter(spec),
+        format!("format=nv12,{}", video_filter(spec)),
         "-c:v".into(),
         spec.name.into(),
     ]);
@@ -175,19 +173,14 @@ fn probe_args(spec: &EncoderSpec) -> Vec<String> {
     args
 }
 
-/// The arguments for one recording, input from stdin.
+/// The arguments for one recording: NV12 frames from stdin.
 pub(crate) fn encode_args(
     spec: &EncoderSpec,
-    format: TextureFormat,
     size: UVec2,
     frame_rate: u32,
     container: Container,
     output: &Path,
 ) -> Vec<OsString> {
-    let pix_fmt = match format {
-        TextureFormat::Bgra8UnormSrgb => "bgra",
-        _ => "rgba",
-    };
     let mut args: Vec<OsString> = Vec::new();
     let mut push = |arg: &str| args.push(arg.into());
     for arg in [
@@ -198,7 +191,7 @@ pub(crate) fn encode_args(
         "-f",
         "rawvideo",
         "-pix_fmt",
-        pix_fmt,
+        "nv12",
         "-s",
         &format!("{}x{}", size.x, size.y),
         "-framerate",
@@ -265,33 +258,11 @@ pub(crate) fn encoded_rect(image_size: UVec2, crop: Option<URect>) -> Result<URe
     Ok(URect::from_corners(area.min, area.min + size))
 }
 
-/// Copies `rect` of a 4-byte-per-pixel image into `out`, packed.
-fn copy_rect(image: &Image, rect: URect, out: &mut Vec<u8>) {
-    out.clear();
-    let Some(data) = image.data.as_deref() else {
-        return;
-    };
-    let stride = image.width() as usize * 4;
-    let (x, width) = (rect.min.x as usize * 4, rect.width() as usize * 4);
-    for y in rect.min.y..rect.max.y {
-        let start = y as usize * stride + x;
-        out.extend_from_slice(&data[start..start + width]);
-    }
-}
-
-/// One frame for the writer. `stamp` is relative to the recording's first request.
-pub(crate) struct Frame {
-    pub image: Arc<Image>,
-    pub crop: Option<URect>,
-    pub stamp: Duration,
-}
-
-/// How a recording ends. `cutoff` (relative to the first request) bounds the time-mode ticks for
-/// an early end; `None` pads to the full length.
+/// How a recording ends. Only [`VideoEnd::Completed`] pads a timed recording to its full
+/// length; any other end stops one frame period after the last frame.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct End {
     pub reason: VideoEnd,
-    pub cutoff: Option<Duration>,
 }
 
 const RUNNING: u8 = 0;
@@ -314,6 +285,12 @@ pub(crate) struct WriterShared {
     pub ready: OnceLock<Result<&'static str, VideoError>>,
     /// The one terminal result. Not set for a cancelled writer: nobody reads it.
     pub result: OnceLock<Result<SavedVideo, VideoError>>,
+    /// Frames the writer has taken, in order; what frames mode counts.
+    pub accepted: AtomicU64,
+    /// Frames the writer refused because they arrived out of order.
+    pub rejected: AtomicU64,
+    /// Milliseconds after `epoch` of the last accepted frame, or of the writer's start.
+    last_accepted: AtomicU64,
 }
 
 impl WriterShared {
@@ -326,7 +303,27 @@ impl WriterShared {
             busy_since: AtomicU64::new(0),
             ready: OnceLock::new(),
             result: OnceLock::new(),
+            accepted: AtomicU64::new(0),
+            rejected: AtomicU64::new(0),
+            last_accepted: AtomicU64::new(0),
         }
+    }
+
+    /// How long since the writer last took a frame, or since the clock was reset.
+    pub(crate) fn since_accepted(&self) -> Duration {
+        let last = Duration::from_millis(self.last_accepted.load(Ordering::Acquire));
+        self.epoch.elapsed().saturating_sub(last)
+    }
+
+    /// Restarts the stall clock, when recording begins.
+    pub(crate) fn reset_accepted_clock(&self) {
+        self.last_accepted
+            .store(self.epoch.elapsed().as_millis() as u64, Ordering::Release);
+    }
+
+    fn accept(&self) {
+        self.accepted.fetch_add(1, Ordering::AcqRel);
+        self.reset_accepted_clock();
     }
 
     /// Cancels the writer and kills its child. Never waits. Loses to a writer already publishing.
@@ -386,7 +383,7 @@ pub(crate) struct WriterJob {
     pub container: Container,
     pub length: VideoLength,
     pub frame_rate: u32,
-    pub frames: Receiver<Frame>,
+    pub frames: Receiver<Ready>,
     pub ffmpeg: OsString,
     pub forced_encoder: Option<String>,
     pub probe_timeout: Duration,
@@ -666,7 +663,7 @@ fn pick_encoder(job: &WriterJob, session: &mut Session) -> Result<&'static Encod
 
 /// Receives the next frame, waking every 100 ms to check for cancel. `None` once the channel is
 /// closed.
-fn next_frame(job: &WriterJob, shared: &WriterShared) -> Result<Option<Frame>, Stop> {
+fn next_frame(job: &WriterJob, shared: &WriterShared) -> Result<Option<Ready>, Stop> {
     loop {
         match job.frames.recv_timeout(Duration::from_millis(100)) {
             Ok(frame) => return Ok(Some(frame)),
@@ -706,18 +703,28 @@ fn write(
     );
     let spec = spec?;
 
-    let Some(first) = next_frame(job, shared)? else {
+    // Frames in sequence order: callbacks may deliver them out of order, and a late one is
+    // dropped (which frees its buffer).
+    let mut last_seq = None;
+    let mut next_in_order = |job: &WriterJob| -> Result<Option<Ready>, Stop> {
+        while let Some(ready) = next_frame(job, shared)? {
+            if last_seq.is_some_and(|last| ready.seq <= last) {
+                shared.rejected.fetch_add(1, Ordering::AcqRel);
+                continue;
+            }
+            last_seq = Some(ready.seq);
+            return Ok(Some(ready));
+        }
+        Ok(None)
+    };
+    let Some(first) = next_in_order(job)? else {
         return Err(no_frames(job, shared));
     };
-    let format = first.image.texture_descriptor.format;
-    if !matches!(
-        format,
-        TextureFormat::Rgba8UnormSrgb | TextureFormat::Bgra8UnormSrgb
-    ) {
-        return Err(VideoError::UnsupportedFormat(format).into());
+    shared.accept();
+    let size = first.size;
+    if size.x == 0 || size.y == 0 || size.x % 2 == 1 || size.y % 2 == 1 {
+        return Err(VideoError::TooSmall { size }.into());
     }
-    let rect = encoded_rect(first.image.size(), first.crop)?;
-    let size = rect.size();
 
     let write_error = |err: std::io::Error| VideoError::Write {
         path: job.path.clone(),
@@ -740,7 +747,6 @@ fn write(
     let mut child = ffmpeg_command(&job.ffmpeg)
         .args(encode_args(
             spec,
-            format,
             size,
             job.frame_rate,
             job.container,
@@ -765,55 +771,60 @@ fn write(
     }
 
     let mut written: u64 = 0;
-    let mut buffer = Vec::with_capacity((size.x * size.y * 4) as usize);
-    let check = |frame: &Frame| -> Result<URect, VideoError> {
-        let rect = encoded_rect(frame.image.size(), frame.crop)?;
-        if rect.size() != size || frame.image.texture_descriptor.format != format {
+    let write_frame = |session: &mut Session, ready: &Ready| -> Result<(), Stop> {
+        if ready.size != size {
             return Err(VideoError::Convert(format!(
-                "a frame changed size or format mid-recording: {} {:?}",
-                rect.size(),
-                frame.image.texture_descriptor.format
-            )));
+                "a frame changed size mid-recording: {} after {size}",
+                ready.size
+            ))
+            .into());
         }
-        Ok(rect)
+        ready.frame.with(|bytes| session.write(bytes))
     };
 
     match job.length {
         VideoLength::Frames(limit) => {
             let limit = u64::from(limit.get());
-            let mut frame = Some(first);
-            while let Some(current) = frame {
+            write_frame(session, &first)?;
+            written += 1;
+            drop(first);
+            while let Some(ready) = next_in_order(job)? {
+                // Frames past the limit were requested before the writer reported it; they are
+                // surplus, not drops.
                 if written < limit {
-                    copy_rect(&current.image, check(&current)?, &mut buffer);
-                    session.write(&buffer)?;
+                    shared.accept();
+                    write_frame(session, &ready)?;
                     written += 1;
                 }
-                frame = next_frame(job, shared)?;
             }
         }
         VideoLength::Time(length) => {
             let fps = job.frame_rate;
             let total = ((length.as_secs_f64() * f64::from(fps)).round() as u64).max(1);
-            // The previous frame fills every tick before the next frame's stamp.
-            copy_rect(&first.image, rect, &mut buffer);
-            while let Some(frame) = next_frame(job, shared)? {
-                let rect = check(&frame)?;
-                for _ in ticks_until(frame.stamp, fps, written, total) {
-                    session.write(&buffer)?;
+            // The previous frame fills every tick before the next frame's stamp. It stays mapped
+            // until then.
+            let mut previous = first;
+            while let Some(ready) = next_in_order(job)? {
+                shared.accept();
+                for _ in ticks_until(ready.stamp, fps, written, total) {
+                    write_frame(session, &previous)?;
                     written += 1;
                 }
-                copy_rect(&frame.image, rect, &mut buffer);
+                previous = ready;
             }
             let limit = match shared.end.get() {
                 Some(End {
-                    cutoff: Some(cutoff),
-                    ..
-                }) => ticks_until(*cutoff, fps, written, total).end,
-                Some(_) => total,
+                    reason: VideoEnd::Completed,
+                }) => total,
+                // An early end keeps one frame period after the last frame.
+                Some(_) => {
+                    let cutoff = previous.stamp + Duration::from_secs(1) / fps;
+                    ticks_until(cutoff, fps, written, total).end
+                }
                 None => return Err(Stop::Cancelled),
             };
             while written < limit.max(1) {
-                session.write(&buffer)?;
+                write_frame(session, &previous)?;
                 written += 1;
             }
         }
@@ -860,11 +871,8 @@ fn write(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use bevy::{
-        asset::RenderAssetUsages,
-        render::render_resource::{Extent3d, TextureDimension},
-    };
-    use std::sync::mpsc::{SyncSender, sync_channel};
+    use crate::video::{capture::FrameBytes, nv12::frame_len};
+    use std::sync::mpsc::{Sender, channel};
 
     /// Process tests fork; one at a time, so a script being written is never inherited open by a
     /// concurrent fork (which makes exec fail with "text file busy").
@@ -914,26 +922,6 @@ pub(crate) mod tests {
             .status()
             .unwrap()
             .success()
-    }
-
-    pub(crate) fn test_image(width: u32, height: u32, format: TextureFormat) -> Image {
-        let mut data = Vec::new();
-        for y in 0..height {
-            for x in 0..width {
-                data.extend([x as u8, y as u8, 200, 255]);
-            }
-        }
-        Image::new(
-            Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            TextureDimension::D2,
-            data,
-            format,
-            RenderAssetUsages::default(),
-        )
     }
 
     fn ms(ms: u64) -> Duration {
@@ -1009,24 +997,10 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn copy_rect_packs_the_crop() {
-        let image = test_image(4, 3, TextureFormat::Rgba8UnormSrgb);
-        let mut out = Vec::new();
-        copy_rect(&image, URect::new(1, 1, 3, 3), &mut out);
-        assert_eq!(
-            out,
-            [
-                1, 1, 200, 255, 2, 1, 200, 255, 1, 2, 200, 255, 2, 2, 200, 255
-            ]
-        );
-    }
-
-    #[test]
-    fn encode_args_tag_the_colour_and_pick_the_input_format() {
-        let args = |name: &str, format| -> Vec<String> {
+    fn encode_args_take_nv12_and_tag_the_colour() {
+        let args = |name: &str| -> Vec<String> {
             encode_args(
                 spec(name).unwrap(),
-                format,
                 UVec2::new(640, 360),
                 30,
                 Container::Matroska,
@@ -1036,20 +1010,20 @@ pub(crate) mod tests {
             .map(|arg| arg.into_string().unwrap())
             .collect()
         };
-        let vaapi = args("h264_vaapi", TextureFormat::Bgra8UnormSrgb).join(" ");
-        assert!(vaapi.contains("-pix_fmt bgra -s 640x360 -framerate 30 -i pipe:0"));
+        let vaapi = args("h264_vaapi").join(" ");
+        assert!(vaapi.contains("-pix_fmt nv12 -s 640x360 -framerate 30 -i pipe:0"));
         assert!(vaapi.contains("-init_hw_device vaapi=va -filter_hw_device va"));
         assert!(vaapi.contains(
-            "format=nv12,setparams=color_primaries=bt709:color_trc=iec61966-2-1:\
-             colorspace=bt709:range=tv,hwupload"
+            "-vf setparams=color_primaries=bt709:color_trc=iec61966-2-1:\
+             colorspace=bt709:range=tv,hwupload -c:v"
         ));
         assert!(
             vaapi.ends_with("-c:v h264_vaapi -rc_mode CQP -qp 20 -g 60 -an -f matroska /tmp/x.mkv")
         );
-        let x264 = args("libx264", TextureFormat::Rgba8UnormSrgb).join(" ");
-        assert!(x264.contains("-pix_fmt rgba"));
-        assert!(x264.contains("format=yuv420p,setparams="));
-        assert!(!x264.contains("hwupload"));
+        let x264 = args("libx264").join(" ");
+        assert!(x264.contains("-vf setparams="));
+        assert!(!x264.contains("hwupload") && !x264.contains("scale="));
+        assert!(x264.contains("-threads 4"));
     }
 
     #[test]
@@ -1067,8 +1041,8 @@ pub(crate) mod tests {
     }
 
     /// A job writing to `dir/out.mp4` through `ffmpeg`.
-    fn job(dir: &Path, ffmpeg: OsString, length: VideoLength) -> (WriterJob, SyncSender<Frame>) {
-        let (sender, frames) = sync_channel(8);
+    fn job(dir: &Path, ffmpeg: OsString, length: VideoLength) -> (WriterJob, Sender<Ready>) {
+        let (sender, frames) = channel();
         let job = WriterJob {
             path: dir.join("out.mp4"),
             container: Container::Mp4,
@@ -1084,11 +1058,14 @@ pub(crate) mod tests {
         (job, sender)
     }
 
-    fn frame(size: u32, stamp: Duration) -> Frame {
-        Frame {
-            image: Arc::new(test_image(size, size, TextureFormat::Rgba8UnormSrgb)),
-            crop: None,
+    /// An NV12 frame of mid-grey, `size` square.
+    fn frame(seq: u64, size: u32, stamp: Duration) -> Ready {
+        let size = UVec2::splat(size);
+        Ready {
+            seq,
             stamp,
+            size,
+            frame: FrameBytes::Owned(vec![128; frame_len(size) as usize]),
         }
     }
 
@@ -1154,18 +1131,17 @@ pub(crate) mod tests {
         let ffmpeg = fake_ffmpeg(dir.path(), "exit 0", "exec cat > \"$out\"");
         let (job, sender) = job(dir.path(), ffmpeg, frames(2));
         let (shared, thread) = spawn_writer(job);
-        for _ in 0..2 {
-            sender.send(frame(4, Duration::ZERO)).unwrap();
+        for seq in 0..2 {
+            sender.send(frame(seq, 4, Duration::ZERO)).unwrap();
         }
         shared.end(End {
             reason: VideoEnd::Completed,
-            cutoff: None,
         });
         drop(sender);
         thread.join().unwrap();
         let saved = shared.result.get().unwrap().clone().unwrap();
         assert_eq!((saved.frames, saved.size), (2, UVec2::new(4, 4)));
-        assert_eq!(std::fs::metadata(&saved.path).unwrap().len(), 2 * 4 * 4 * 4);
+        assert_eq!(std::fs::metadata(&saved.path).unwrap().len(), 2 * 24);
         assert_eq!(only_entries(dir.path()), ["fake-ffmpeg", "out.mp4", "pid"]);
         // After publishing, cancel loses.
         shared.cancel();
@@ -1182,10 +1158,9 @@ pub(crate) mod tests {
         std::fs::write(&job.path, b"earlier").unwrap();
         let path = job.path.clone();
         let (shared, thread) = spawn_writer(job);
-        sender.send(frame(4, Duration::ZERO)).unwrap();
+        sender.send(frame(0, 4, Duration::ZERO)).unwrap();
         shared.end(End {
             reason: VideoEnd::Completed,
-            cutoff: None,
         });
         drop(sender);
         thread.join().unwrap();
@@ -1207,8 +1182,8 @@ pub(crate) mod tests {
         let (job, sender) = job(dir.path(), ffmpeg, frames(100));
         let (shared, thread) = spawn_writer(job);
         // 64 KiB a frame: the pipe fills and a write blocks.
-        for _ in 0..4 {
-            sender.send(frame(128, Duration::ZERO)).unwrap();
+        for seq in 0..6 {
+            sender.send(frame(seq, 128, Duration::ZERO)).unwrap();
         }
         wait_for("a blocked write", || shared.stuck_for() > ms(100));
         let started = Instant::now();
@@ -1232,10 +1207,9 @@ pub(crate) mod tests {
         );
         let (job, sender) = job(dir.path(), ffmpeg, frames(1));
         let (shared, thread) = spawn_writer(job);
-        sender.send(frame(4, Duration::ZERO)).unwrap();
+        sender.send(frame(0, 4, Duration::ZERO)).unwrap();
         shared.end(End {
             reason: VideoEnd::Completed,
-            cutoff: None,
         });
         drop(sender);
         thread.join().unwrap();
@@ -1290,11 +1264,10 @@ pub(crate) mod tests {
         let (job, sender) = job(dir.path(), "ffmpeg".into(), VideoLength::Time(ms(1000)));
         let (shared, thread) = spawn_writer(job);
         for i in 0..10 {
-            sender.send(frame(64, ms(i * 100))).unwrap();
+            sender.send(frame(i, 64, ms(i * 100))).unwrap();
         }
         shared.end(End {
             reason: VideoEnd::Completed,
-            cutoff: None,
         });
         drop(sender);
         thread.join().unwrap();

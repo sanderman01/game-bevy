@@ -59,8 +59,8 @@ use image::ImageFormat;
 
 pub use crate::readback::CaptureSource;
 use crate::readback::{
-    FrameReadBack, Limit, ReadbackQueue, ReadbackSystems, ReadbackTag, SourceError,
-    add_readback_plugin, resolve_source,
+    FrameReadBack, ReadbackQueue, ReadbackSystems, ReadbackTag, SourceError, add_readback_plugin,
+    resolve_source,
 };
 
 /// How long a request waits for its readback before failing with [`ScreenshotError::TimedOut`].
@@ -202,7 +202,7 @@ fn start_captures(
             seq: 0,
             requested_at: now,
         };
-        queue.request(&source, entity, tag, Limit::Unbounded);
+        queue.request(&source, entity, tag);
     }
 }
 
