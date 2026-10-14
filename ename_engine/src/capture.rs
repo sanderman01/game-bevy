@@ -99,9 +99,13 @@ pub trait CaptureError: std::fmt::Display {
 }
 
 /// Limits a params schema's `source` property to the registered names, for
-/// [`CommandSpec::adjust_params_schema`](crate::command::CommandSpec::adjust_params_schema).
+/// [`CommandSpec::adjust_params_schema`](crate::command::CommandSpec::adjust_params_schema). With
+/// no names registered it leaves the schema alone: an empty enum would forbid every value.
 pub fn restrict_source(names: Vec<String>) -> impl FnOnce(&mut Schema) + 'static {
     move |schema| {
+        if names.is_empty() {
+            return;
+        }
         if let Some(source) = schema
             .get_mut("properties")
             .and_then(|properties| properties.get_mut("source"))
@@ -219,6 +223,9 @@ mod tests {
             "properties": { "source": { "type": "string" } }
         }))
         .unwrap();
+        let unrestricted = schema.clone();
+        restrict_source(Vec::new())(&mut schema);
+        assert_eq!(schema, unrestricted);
         restrict_source(vec!["a".into(), "b".into()])(&mut schema);
         assert_eq!(
             schema.get("properties").unwrap()["source"]["enum"],

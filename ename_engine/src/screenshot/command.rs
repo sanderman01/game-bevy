@@ -66,7 +66,13 @@ fn capture(
     let name = call.params.source.clone();
     let source = CaptureSources::resolve(world, &name)?;
     let work = world.spawn(ScreenshotRequest { source, path }).id();
-    let job = call.start_job(world, work, OnCancel::Despawn)?;
+    let job = match call.start_job(world, work, OnCancel::Despawn) {
+        Ok(job) => job,
+        Err(err) => {
+            world.despawn(work);
+            return Err(err);
+        }
+    };
     let handle = job.clone();
     world.entity_mut(work).observe(
         move |done: On<ScreenshotFinished>,

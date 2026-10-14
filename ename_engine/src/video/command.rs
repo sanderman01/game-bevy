@@ -128,7 +128,13 @@ fn record(
         request.frame_rate = frame_rate;
     }
     let work = world.spawn(request).id();
-    let job = call.start_job::<Recorded>(world, work, OnCancel::Notify)?;
+    let job = match call.start_job::<Recorded>(world, work, OnCancel::Notify) {
+        Ok(job) => job,
+        Err(err) => {
+            world.despawn(work);
+            return Err(err);
+        }
+    };
     let handle = job.clone();
     world
         .entity_mut(work)

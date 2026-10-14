@@ -137,7 +137,13 @@ fn set_view(
         .map_err(|message| CommandError::failed("view_unavailable", message))?;
     let started = frame(world);
     let work = world.spawn_empty().id();
-    let job = call.start_job(world, work, OnCancel::Despawn)?;
+    let job = match call.start_job(world, work, OnCancel::Despawn) {
+        Ok(job) => job,
+        Err(err) => {
+            world.despawn(work);
+            return Err(err);
+        }
+    };
     world.entity_mut(work).insert(ViewSettle {
         job: job.clone(),
         target,
