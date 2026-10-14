@@ -1,0 +1,22 @@
+docs/agent-tools.md
+  s_baf869300155eb::t_f9043fd237ef4d 243-244,247-249
+docs/design/video-capture.md
+  s_baf869300155eb::t_f9043fd237ef4d 75-77
+  s_baf869300155eb::t_81e43b1e7b0724 79-84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "537d5f067c1dafd4158b6da63867f5d96a43e45c",
+  "prompts": {},
+  "sessions": {
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
