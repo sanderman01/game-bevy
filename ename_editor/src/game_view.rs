@@ -27,7 +27,9 @@ use crate::panels::{ActiveViewport, UiState};
 /// first paint comes after the first [`resize_game_view`].
 const INITIAL_SIZE: UVec2 = UVec2::splat(64);
 
-/// Renders the stage's [`MainCamera`](ename_engine::camera::MainCamera) into an image and paints it in the Game View tab.
+/// Renders the stage's [`MainCamera`] into an image and paints it in the Game View tab.
+///
+/// [`MainCamera`]: ename_engine::camera::MainCamera
 ///
 /// Registers [`GameViewTarget`], the image it owns, and the systems that keep that image's size
 /// and the camera's target in step with the tab.
@@ -51,8 +53,10 @@ pub(crate) struct GameViewTarget {
     texture: egui::TextureId,
     /// Size of `image`, in physical pixels.
     size: UVec2,
-    /// Whether the loaded stage has a [`MainCamera`](ename_engine::camera::MainCamera) at all. False leaves `image` holding the
-    /// last stage's final frame, which would read as live.
+    /// Whether the loaded stage has a [`MainCamera`] at all. False leaves `image` holding the last
+    /// stage's final frame, which would read as live.
+    ///
+    /// [`MainCamera`]: ename_engine::camera::MainCamera
     camera_present: bool,
 }
 
