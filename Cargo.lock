@@ -3055,6 +3055,7 @@ version = "0.0.0"
 dependencies = [
  "bevy",
  "ename_engine",
+ "schemars",
  "serde",
  "serde_json",
 ]

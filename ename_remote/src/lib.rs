@@ -20,6 +20,8 @@
 //! | `game.time.get` / `.set` | Nothing in BRP can freeze the world, and reading a world that is still advancing answers a different question. |
 //! | `game.logs.get` | Bevy's logs go to stderr, which a JSON-RPC client cannot see. |
 //! | `game.pid.get` | Nothing in BRP says which run of the process answered, so a restart between two calls is invisible. |
+//! | `game.command.list` / `.call` | The commands any crate registered in `ename_engine::command`, listed with their schemas and called by name. This crate never learns what they are. |
+//! | `game.job.status` / `.list` / `.cancel` | The jobs those commands start. |
 //! | `game.screenshot.capture` / `.result` | Capture is a GPU readback that completes frames later, so it is a request plus a poll. |
 //! | `game.video.record` / `.status` / `.stop` | A recording runs for many frames, so it is a request, a poll and an optional stop. Only with the `video` feature. |
 //!
@@ -28,6 +30,7 @@
 //! `editor.view.get` / `.set`, `editor.screenshot.capture` and `editor.video.record` are not here. They need the
 //! editor's dock and camera, which are private to it, so `ename_editor` registers them itself.
 
+mod command;
 mod entities;
 mod logs;
 mod mutate;
@@ -84,8 +87,9 @@ fn internal(message: String) -> BrpError {
 
 /// The BRP server and its custom methods, as a target adds it.
 ///
-/// `game.logs.get` reads `ename_engine::log::LogBuffer`, which `EnginePlugins` always installs,
-/// so this group needs nothing from the target beyond being added.
+/// `game.logs.get` reads `ename_engine::log::LogBuffer`, and the command methods
+/// `ename_engine::command`'s registry, both of which `EnginePlugins` always installs, so this group
+/// needs nothing from the target beyond being added.
 pub struct RemotePlugins;
 
 impl PluginGroup for RemotePlugins {
@@ -98,6 +102,11 @@ impl PluginGroup for RemotePlugins {
             .with_method_main(time::SET_METHOD, time::set)
             .with_method_main(logs::GET_METHOD, logs::get)
             .with_method_main(run_id::GET_METHOD, run_id::get)
+            .with_method_main(command::LIST_METHOD, command::list)
+            .with_method_main(command::CALL_METHOD, command::call)
+            .with_method_main(command::JOB_STATUS_METHOD, command::job_status)
+            .with_method_main(command::JOB_LIST_METHOD, command::job_list)
+            .with_method_main(command::JOB_CANCEL_METHOD, command::job_cancel)
             .with_method_main(screenshot::CAPTURE_METHOD, screenshot::capture)
             .with_method_main(screenshot::RESULT_METHOD, screenshot::result);
         #[cfg(feature = "video")]
@@ -112,6 +121,5 @@ impl PluginGroup for RemotePlugins {
         PluginGroupBuilder::start::<Self>()
             .add(remote)
             .add(RemoteHttpPlugin::default())
-            .add(run_id::RunIdPlugin)
     }
 }
