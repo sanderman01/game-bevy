@@ -1,0 +1,19 @@
+ename_editor/src/game_view.rs
+  s_baf869300155eb::t_2067621db2045d 22,30,54-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "92ecf7ee35230313e094508d68abaa0f95ccb925",
+  "prompts": {},
+  "sessions": {
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
