@@ -871,3 +871,70 @@ fn holds_archive_does_not_follow_symlinked_directories() {
         Origin::Member { .. }
     ));
 }
+
+/// One stored member `a.txt` holding `first`, with its central record's disk field and extra
+/// field set by hand.
+fn hand_zip(disk_field: u16, extra: &[u8]) -> Vec<u8> {
+    let data = b"first";
+    let crc = crc32fast::hash(data);
+    let mut zip = Vec::new();
+    zip.extend(0x0403_4b50u32.to_le_bytes());
+    zip.extend([20, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    zip.extend(crc.to_le_bytes());
+    zip.extend(5u32.to_le_bytes());
+    zip.extend(5u32.to_le_bytes());
+    zip.extend(5u16.to_le_bytes());
+    zip.extend(0u16.to_le_bytes());
+    zip.extend(b"a.txt");
+    zip.extend(data);
+    let directory_offset = zip.len() as u32;
+    zip.extend(0x0201_4b50u32.to_le_bytes());
+    zip.extend([20, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    zip.extend(crc.to_le_bytes());
+    zip.extend(5u32.to_le_bytes());
+    zip.extend(5u32.to_le_bytes());
+    zip.extend(5u16.to_le_bytes());
+    zip.extend((extra.len() as u16).to_le_bytes());
+    zip.extend(0u16.to_le_bytes());
+    zip.extend(disk_field.to_le_bytes());
+    zip.extend([0; 6]);
+    zip.extend(0u32.to_le_bytes());
+    zip.extend(b"a.txt");
+    zip.extend(extra);
+    let directory_size = zip.len() as u32 - directory_offset;
+    zip.extend([0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0, 1, 0, 1, 0]);
+    zip.extend(directory_size.to_le_bytes());
+    zip.extend(directory_offset.to_le_bytes());
+    zip.extend(0u16.to_le_bytes());
+    zip
+}
+
+/// A saturated disk-start field takes its value from the Zip64 extra field.
+#[test]
+fn a_zip64_disk_number_is_read_from_the_extra_field() {
+    let zip64_disk = |disk: u32| {
+        let mut extra = vec![1, 0, 4, 0];
+        extra.extend(disk.to_le_bytes());
+        extra
+    };
+    assert_eq!(mount_zip(&hand_zip(0, &[])).unwrap(), b"first");
+    assert_eq!(
+        mount_zip(&hand_zip(0xffff, &zip64_disk(0))).unwrap(),
+        b"first"
+    );
+    assert!(
+        mount_zip(&hand_zip(0xffff, &zip64_disk(1)))
+            .unwrap_err()
+            .contains("another disk")
+    );
+    assert!(
+        mount_zip(&hand_zip(0xffff, &[]))
+            .unwrap_err()
+            .contains("malformed")
+    );
+    assert!(
+        mount_zip(&hand_zip(1, &[]))
+            .unwrap_err()
+            .contains("another disk")
+    );
+}

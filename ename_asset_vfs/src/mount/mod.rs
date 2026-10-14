@@ -221,6 +221,9 @@ pub struct Mounts {
     dirs: RwLock<HashMap<PathBuf, Arc<DirInfo>>>,
     /// One lock per directory being listed, so concurrent first questions wait for one listing.
     listing: Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>,
+    /// The canonical file behind every mounted archive, so a write can't reach one through
+    /// another name: the target of a symlinked `pkg.zip`, or a link to it.
+    backing: RwLock<HashSet<PathBuf>>,
     #[cfg(test)]
     listings: std::sync::atomic::AtomicUsize,
     files: OpenFiles,
@@ -235,6 +238,7 @@ impl Mounts {
             limits: Limits::default(),
             dirs: RwLock::default(),
             listing: Mutex::default(),
+            backing: RwLock::default(),
             #[cfg(test)]
             listings: Default::default(),
             files: OpenFiles::default(),
@@ -284,6 +288,15 @@ impl Mounts {
     /// making it relative to the asset root with symlinks resolved. A path outside the root is
     /// loose: it is not part of the asset tree at all.
     pub fn origin_of_file(&self, path: &Path) -> io::Result<Origin> {
+        if let Ok(canonical) = std::fs::canonicalize(path)
+            && self
+                .backing
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .contains(&canonical)
+        {
+            return Ok(Origin::Archive { archive: canonical });
+        }
         match self.logical_path(path) {
             Some(logical) => self.origin(&logical),
             None => Ok(Origin::Loose),
@@ -683,6 +696,14 @@ impl Mounts {
                 }))
             };
             warn_case_clash(&stem, &logical, &info.subdirs, &files);
+            if mount.is_some() {
+                let mut backing = self.backing.write().unwrap_or_else(|e| e.into_inner());
+                backing.extend(
+                    physicals
+                        .iter()
+                        .filter_map(|p| std::fs::canonicalize(p).ok()),
+                );
+            }
             for (name, _) in found {
                 info.archive_files.insert(name, mount.clone());
             }

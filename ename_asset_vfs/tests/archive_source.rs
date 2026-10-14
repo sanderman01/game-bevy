@@ -348,3 +348,30 @@ fn the_writer_refuses_symlinks_into_an_archive() {
     });
     assert_eq!(std::fs::read(&archive).unwrap(), before);
 }
+
+/// An archive mounted through a symlink keeps its backing file safe under every other name.
+#[cfg(unix)]
+#[test]
+fn the_writer_refuses_the_file_behind_a_symlinked_archive() {
+    let root = root_with("basic.zip");
+    let store = root.path().join("store.bin");
+    std::fs::rename(root.path().join("pkg.zip"), &store).unwrap();
+    std::os::unix::fs::symlink(&store, root.path().join("pkg.zip")).unwrap();
+    std::os::unix::fs::symlink(&store, root.path().join("alias.txt")).unwrap();
+    let before = std::fs::read(&store).unwrap();
+    let mut app = app_over(root.path());
+    let server = app.world().resource::<AssetServer>().clone();
+    let member = server.load::<Text>("pkg/a.txt");
+    assert_eq!(text(&mut app, &member), "first");
+    let writer = default_writer(&app);
+    block_on(async {
+        for path in ["store.bin", "alias.txt", "./store.bin"] {
+            assert!(
+                writer.write_bytes(Path::new(path), b"x").await.is_err(),
+                "{path}"
+            );
+        }
+        assert!(writer.remove(Path::new("store.bin")).await.is_err());
+    });
+    assert_eq!(std::fs::read(&store).unwrap(), before);
+}

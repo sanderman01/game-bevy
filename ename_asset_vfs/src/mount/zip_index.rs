@@ -172,14 +172,17 @@ fn parse_directory(directory: &[u8], entries: u64) -> Result<Vec<Central<'_>>, S
             symlink: u16_at(fixed, 4) >> 8 == UNIX_HOST
                 && (u32_at(fixed, 38) >> 16) & UNIX_TYPE_MASK == UNIX_SYMLINK,
         };
-        if u16_at(fixed, 34) != 0 {
-            return Err(format!("{:?} starts on another disk", record.name));
-        }
+        let mut disk = u16_at(fixed, 34);
         apply_zip64(
             &mut record,
+            &mut disk,
             &directory[extra_start..extra_start + extra_len],
         )
         .ok_or_else(|| bad(at))?;
+        if disk != 0 {
+            return Err(format!("{:?} starts on another disk", record.name));
+        }
+
         records.push(record);
         at = end;
     }
@@ -193,33 +196,35 @@ fn parse_directory(directory: &[u8], entries: u64) -> Result<Vec<Central<'_>>, S
 }
 
 /// Replaces each saturated 32-bit field with its value from the Zip64 extra field, which lists
-/// them in a fixed order and only when saturated. `None` when the field is missing or short.
-fn apply_zip64(record: &mut Central<'_>, mut extra: &[u8]) -> Option<()> {
+/// them in a fixed order and only when saturated: the three 8-byte fields, then a 4-byte disk
+/// number. `None` when the field is missing or short.
+fn apply_zip64(record: &mut Central<'_>, disk: &mut u64, mut extra: &[u8]) -> Option<()> {
     let saturated = u64::from(u32::MAX);
+    let disk_saturated = *disk == u64::from(u16::MAX);
     let needed = [record.size, record.compressed_size, record.header_offset]
         .iter()
         .filter(|&&value| value == saturated)
         .count();
-    if needed == 0 {
+    if needed == 0 && !disk_saturated {
         return Some(());
     }
     while extra.len() >= 4 {
         let (id, len) = (u16_at(extra, 0), u16_at(extra, 2) as usize);
         let body = extra.get(4..4 + len)?;
         if id == ZIP64_EXTRA {
-            let mut values = body
-                .as_chunks::<8>()
-                .0
-                .iter()
-                .map(|chunk| u64::from_le_bytes(*chunk));
+            let mut rest = body;
             for field in [
                 &mut record.size,
                 &mut record.compressed_size,
                 &mut record.header_offset,
             ] {
                 if *field == saturated {
-                    *field = values.next()?;
+                    *field = u64_at(rest.get(..8)?, 0);
+                    rest = &rest[8..];
                 }
+            }
+            if disk_saturated {
+                *disk = u32_at(rest.get(..4)?, 0);
             }
             return Some(());
         }
