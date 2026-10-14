@@ -1,8 +1,8 @@
 //! The `alias://` asset source.
 //!
 //! `asset_server.load("alias://core::airship#Scene0")` returns a handle on frame 0. The reader
-//! awaits the index, resolves the alias to a real path, and delegates to the platform default
-//! reader. Waiting happens inside `bevy_asset`, which is where waiting on io already belongs.
+//! awaits the index, resolves the alias to a real path, and delegates to the registered `Default`
+//! source, so whatever sits under that source (an archive layer, say) serves aliases too. Waiting happens inside `bevy_asset`, which is where waiting on io already belongs.
 //!
 //! A handle is keyed on the alias rather than on the resolved path, so which package won an
 //! override is invisible to game code and to anything serialized.
@@ -10,7 +10,7 @@
 //! The source watches for edits wherever Bevy watches the default source; see [`crate::watcher`].
 //!
 //! **Whatever fills the cells this reader awaits must never read through this source.** It has to
-//! read the default source directly. Going through `alias://` would await a cell only that code
+//! read the `Default` source. Going through `alias://` would await a cell only that code
 //! can fill, and hang.
 
 use crate::{
@@ -39,12 +39,9 @@ use std::{path::Path, sync::Arc};
 /// The asset source name. Paths look like `alias://core::airship#Scene0`.
 pub const ALIAS_SOURCE: &str = "alias";
 
-/// Relative path to the asset root. Mirrors `AssetPlugin::file_path`'s default.
-/// `BEVY_ASSET_ROOT` is applied inside the reader, not here.
+/// Relative path to the asset root the watcher watches. Mirrors `AssetPlugin::file_path`'s
+/// default. `BEVY_ASSET_ROOT` is applied inside the watcher, not here.
 const DEFAULT_ASSET_ROOT: &str = "assets";
-
-/// Mirrors `AssetPlugin::DEFAULT_PROCESSED_FILE_PATH`.
-const DEFAULT_PROCESSED_ASSET_ROOT: &str = "imported_assets/Default";
 
 /// The shared cell the `alias://` reader awaits. Empty until somebody fills it.
 ///
@@ -53,12 +50,13 @@ const DEFAULT_PROCESSED_ASSET_ROOT: &str = "imported_assets/Default";
 #[derive(Resource, Clone, Default)]
 pub struct ContentIndexCell(pub Arc<OnceCell<ContentIndex>>);
 
-/// The [`AssetServer`] the reader consults to synthesize a missing `.meta`. Filled on `Startup`,
-/// because `AliasSourcePlugin` builds before `AssetPlugin` and the server does not exist yet.
+/// The [`AssetServer`] the reader delegates to, through its `Default` source, and consults to
+/// synthesize a missing `.meta`. Filled on `Startup`, because `AliasSourcePlugin` builds before
+/// `AssetPlugin` and the server does not exist yet.
 ///
 /// This is a reference cycle: the server owns the source, the source owns the reader, the reader
-/// owns the server. It costs one leaked `AssetServer` at process exit and buys the reader a
-/// loader lookup it has no other way to reach. See [`AliasReader::synthesized_meta`].
+/// owns the server. It costs one leaked `AssetServer` at process exit and buys the reader the
+/// `Default` source and a loader lookup it has no other way to reach.
 #[derive(Resource, Clone, Default)]
 struct AssetServerCell(Arc<OnceCell<AssetServer>>);
 
@@ -67,23 +65,40 @@ struct AssetServerCell(Arc<OnceCell<AssetServer>>);
 #[derive(Resource, Clone, Default)]
 struct AssetServerModeCell(Arc<OnceCell<AssetServerMode>>);
 
-/// Resolves an alias to a path under the asset root, then delegates to `inner`.
+/// Resolves an alias to a path under the asset root, then delegates to the `Default` source's
+/// unprocessed or processed reader.
 pub(crate) struct AliasReader {
     index: Arc<OnceCell<ContentIndex>>,
     server: Arc<OnceCell<AssetServer>>,
-    inner: Box<dyn ErasedAssetReader>,
+    processed: bool,
 }
 
 impl AliasReader {
     pub(crate) fn new(
         index: Arc<OnceCell<ContentIndex>>,
         server: Arc<OnceCell<AssetServer>>,
-        inner: Box<dyn ErasedAssetReader>,
+        processed: bool,
     ) -> Self {
         Self {
             index,
             server,
-            inner,
+            processed,
+        }
+    }
+
+    /// The `Default` source's reader for this reader's mode.
+    async fn inner(&self) -> Result<&dyn ErasedAssetReader, AssetReaderError> {
+        let server = self.server.wait().await;
+        let io_error = |err: String| AssetReaderError::Io(Arc::new(std::io::Error::other(err)));
+        let source = server
+            .get_source(AssetSourceId::Default)
+            .map_err(|err| io_error(err.to_string()))?;
+        if self.processed {
+            source
+                .processed_reader()
+                .map_err(|err| io_error(err.to_string()))
+        } else {
+            Ok(source.reader())
         }
     }
 
@@ -177,7 +192,7 @@ fn pin_extension_settings(meta: &mut dyn AssetMetaDyn, extension: &str) {
 impl AssetReader for AliasReader {
     async fn read<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
         let real = self.resolve(path).await?;
-        self.inner.read(real).await
+        self.inner().await?.read(real).await
     }
 
     /// Delegated to the real path so Bevy's own `.meta` is still found. Losing that would lose
@@ -185,7 +200,7 @@ impl AssetReader for AliasReader {
     /// one, which is what makes a labelled alias loadable at all.
     async fn read_meta<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
         let real = self.resolve(path).await?;
-        match self.inner.read_meta(real).await {
+        match self.inner().await?.read_meta(real).await {
             Ok(reader) => Ok(reader),
             Err(AssetReaderError::NotFound(missing)) => match self.synthesized_meta(real).await {
                 Some(reader) => Ok(Box::new(reader) as Box<dyn Reader + 'a>),
@@ -218,28 +233,21 @@ impl AssetReader for AliasReader {
 /// directly.
 pub struct AliasSourcePlugin {
     asset_root: String,
-    processed_asset_root: String,
 }
 
 impl Default for AliasSourcePlugin {
     fn default() -> Self {
         Self {
             asset_root: DEFAULT_ASSET_ROOT.to_owned(),
-            processed_asset_root: DEFAULT_PROCESSED_ASSET_ROOT.to_owned(),
         }
     }
 }
 
 impl AliasSourcePlugin {
-    /// Sets the asset root the alias source reads through. Must match `AssetPlugin::file_path`.
+    /// Sets the directory the live-reload watcher watches. Must match `AssetPlugin::file_path`.
+    /// Reads go through the `Default` source and need no root of their own.
     pub fn with_asset_root(mut self, path: impl Into<String>) -> Self {
         self.asset_root = path.into();
-        self
-    }
-
-    /// Sets the processed asset root. Must match `AssetPlugin::processed_file_path`.
-    pub fn with_processed_asset_root(mut self, path: impl Into<String>) -> Self {
-        self.processed_asset_root = path.into();
         self
     }
 }
@@ -267,11 +275,8 @@ impl Plugin for AliasSourcePlugin {
         // first would quietly serve unprocessed assets the moment `asset_processor` is turned on.
         let reader_cell = cell.0.clone();
         let reader_server = server_cell.0.clone();
-        let mut make_reader = AssetSource::get_default_reader(self.asset_root.clone());
         let processed_cell = cell.0.clone();
         let processed_server = server_cell.0.clone();
-        let mut make_processed_reader =
-            AssetSource::get_default_reader(self.processed_asset_root.clone());
 
         app.register_asset_source(
             AssetSourceId::from(ALIAS_SOURCE),
@@ -279,14 +284,14 @@ impl Plugin for AliasSourcePlugin {
                 Box::new(AliasReader::new(
                     reader_cell.clone(),
                     reader_server.clone(),
-                    make_reader(),
+                    false,
                 ))
             })
             .with_processed_reader(move || {
                 Box::new(AliasReader::new(
                     processed_cell.clone(),
                     processed_server.clone(),
-                    make_processed_reader(),
+                    true,
                 ))
             })
             // Unprocessed only: in processed mode aliased assets do not reload.

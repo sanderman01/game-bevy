@@ -75,7 +75,7 @@ impl Default for AliasPlugins {
 
 #[cfg(feature = "bevy")]
 impl AliasPlugins {
-    /// Sets the asset root both plugins read through. Must match `AssetPlugin::file_path`.
+    /// Sets the directory the live-reload watcher watches. Must match `AssetPlugin::file_path`.
     pub fn with_asset_root(mut self, path: impl Into<String>) -> Self {
         self.asset_root = path.into();
         self
@@ -86,7 +86,7 @@ impl AliasPlugins {
 impl PluginGroup for AliasPlugins {
     fn build(self) -> PluginGroupBuilder {
         PluginGroupBuilder::start::<Self>()
-            .add(AliasSourcePlugin::default().with_asset_root(self.asset_root.clone()))
-            .add(AliasScanPlugin::default().with_asset_root(self.asset_root))
+            .add(AliasSourcePlugin::default().with_asset_root(self.asset_root))
+            .add(AliasScanPlugin::default())
     }
 }

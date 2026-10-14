@@ -9,8 +9,9 @@ Assets are addressed by alias, not by path: `alias://core::airship#Scene0`. A ha
 the alias, so which package supplied the file is invisible to game code and to anything
 serialized.
 
-The reader awaits the alias index inside `bevy_asset`, then delegates to the platform's default
-reader. Nothing above the asset layer sequences content loading.
+The reader awaits the alias index inside `bevy_asset`, then delegates to Bevy's registered
+`Default` source, so an [archive](assets-archives.md) mounted there serves aliases too. Nothing
+above the asset layer sequences content loading.
 
 ## Naming an alias
 
@@ -74,8 +75,11 @@ over the synthesized one, and still panics by alias; such a meta must name
 
 ## Scanning
 
-The scan reads the default asset source directly. It must never read through `alias://`: that
-source awaits an index only the scan can fill, and would hang.
+The scan reads the registered `Default` asset source, through a clone of the `AssetServer`. It
+must never read through `alias://`: that source awaits an index only the scan can fill, and would
+hang. Neither the reader nor the scan takes an asset root of their own; the one
+`AliasSourcePlugin::with_asset_root` sets is for the watcher below, which needs the physical
+directory.
 
 `ename_asset_alias` owns `.alias`, `_alias_rules.toml`, and the walk that reads them. The crate
 that knows what an alias is is the crate that knows how one is named. Adding `AliasPlugins` scans

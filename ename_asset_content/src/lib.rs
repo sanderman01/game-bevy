@@ -20,7 +20,7 @@ pub use ename_asset_package::{
 use async_lock::OnceCell;
 use bevy::{
     app::{App, Plugin, Startup, Update},
-    asset::io::AssetSource,
+    asset::AssetServer,
     ecs::{
         resource::Resource,
         system::{Commands, Res},
@@ -81,7 +81,8 @@ impl AssetContentPlugin {
         self
     }
 
-    /// Sets the asset root. Must match `AssetPlugin::file_path`.
+    /// Sets the asset root. Must match `AssetPlugin::file_path`. Reads go through the `Default`
+    /// source; this is the physical directory behind it, for live reload.
     pub fn with_asset_root(mut self, path: impl Into<String>) -> Self {
         self.asset_root = path.into();
         self
@@ -126,7 +127,6 @@ impl AssetContentPlugin {
 #[derive(Resource, Clone)]
 struct ContentScanConfig {
     search_paths: Vec<String>,
-    asset_root: String,
     load_order_file: Option<PathBuf>,
     ignored: IgnoredFiles,
 }
@@ -144,7 +144,6 @@ impl Plugin for AssetContentPlugin {
             .init_resource::<ContentReportCell>()
             .insert_resource(ContentScanConfig {
                 search_paths: self.search_paths.clone(),
-                asset_root: self.asset_root.clone(),
                 load_order_file: self.load_order_file.clone(),
                 ignored: self.ignored.clone(),
             })
@@ -156,9 +155,10 @@ impl Plugin for AssetContentPlugin {
 /// Spawns the package scan and detaches it. The task fills [`ContentIndexCell`], which wakes every
 /// `alias://` read waiting on it, so nothing here needs polling or a state machine.
 ///
-/// The scan builds its own reader over the default source. It must never read through `alias://`:
-/// that would await an index only this task can fill, and hang.
+/// The scan reads the `Default` source. It must never read through `alias://`: that would await an
+/// index only this task can fill, and hang.
 fn start_content_scan(
+    server: Res<AssetServer>,
     cell: Res<ContentIndexCell>,
     report: Res<ContentReportCell>,
     config: Res<ContentScanConfig>,
@@ -166,11 +166,10 @@ fn start_content_scan(
     let cell = cell.0.clone();
     let report_cell = report.0.clone();
     let config = config.clone();
+    let vfs = AssetReaderVfs::new(server.clone());
     IoTaskPool::get()
         .spawn(async move {
             info!("Scanning for packages in {:?}", config.search_paths);
-            let mut make_reader = AssetSource::get_default_reader(config.asset_root);
-            let vfs = AssetReaderVfs::new(make_reader());
             // Reading the file happens here rather than in `Startup` because it is blocking io,
             // and the io pool is where blocking io belongs.
             let mut problems = Vec::new();

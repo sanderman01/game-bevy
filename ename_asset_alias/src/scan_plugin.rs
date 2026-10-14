@@ -16,7 +16,7 @@ use crate::{
 use async_lock::OnceCell;
 use bevy::{
     app::{App, Plugin, Startup, Update},
-    asset::io::AssetSource,
+    asset::AssetServer,
     ecs::{
         resource::Resource,
         system::{Commands, Res},
@@ -26,37 +26,17 @@ use bevy::{
 };
 use std::{path::Path, sync::Arc};
 
-/// Relative path to the asset root. Mirrors `AssetPlugin::file_path`'s default.
-const DEFAULT_ASSET_ROOT: &str = "assets";
-
 /// Scans the asset root on startup and fills the index the `alias://` source waits on.
 ///
 /// Requires [`AliasSourcePlugin`] to have been added first, which is what owns the cell this
 /// fills. [`AliasPlugins`](crate::AliasPlugins) adds both in the right order.
+#[derive(Default)]
 pub struct AliasScanPlugin {
-    asset_root: String,
     root: String,
     ignored: IgnoredFiles,
 }
 
-impl Default for AliasScanPlugin {
-    fn default() -> Self {
-        Self {
-            asset_root: DEFAULT_ASSET_ROOT.to_owned(),
-            root: String::new(),
-            ignored: IgnoredFiles::default(),
-        }
-    }
-}
-
 impl AliasScanPlugin {
-    /// Sets the asset root the scan reads through. Must match `AssetPlugin::file_path`, and
-    /// `AliasSourcePlugin::with_asset_root`.
-    pub fn with_asset_root(mut self, path: impl Into<String>) -> Self {
-        self.asset_root = path.into();
-        self
-    }
-
     /// Limits the scan to one directory below the asset root. Empty, the default, scans all of it.
     pub fn with_root(mut self, path: impl Into<String>) -> Self {
         self.root = path.into();
@@ -90,7 +70,6 @@ impl AliasScanPlugin {
 /// What [`start_alias_scan`] needs, kept out of the plugin so the system can read it.
 #[derive(Resource, Clone)]
 struct AliasScanConfig {
-    asset_root: String,
     root: String,
     ignored: IgnoredFiles,
 }
@@ -115,7 +94,6 @@ impl Plugin for AliasScanPlugin {
 
         app.init_resource::<AliasScanCell>()
             .insert_resource(AliasScanConfig {
-                asset_root: self.asset_root.clone(),
                 root: self.root.clone(),
                 ignored: self.ignored.clone(),
             })
@@ -127,9 +105,10 @@ impl Plugin for AliasScanPlugin {
 /// Spawns the walk and detaches it. The task fills [`ContentIndexCell`], which wakes every
 /// `alias://` read waiting on it, so nothing here needs polling or a state machine.
 ///
-/// The scan builds its own reader over the default source. It must never read through `alias://`:
-/// that would await an index only this task can fill, and hang.
+/// The scan reads the `Default` source. It must never read through `alias://`: that would await an
+/// index only this task can fill, and hang.
 fn start_alias_scan(
+    server: Res<AssetServer>,
     cell: Res<ContentIndexCell>,
     scan: Res<AliasScanCell>,
     config: Res<AliasScanConfig>,
@@ -137,11 +116,10 @@ fn start_alias_scan(
     let index_cell = cell.0.clone();
     let scan_cell = scan.0.clone();
     let config = config.clone();
+    let vfs = ename_asset_vfs::AssetReaderVfs::new(server.clone());
     IoTaskPool::get()
         .spawn(async move {
-            info!("Scanning {:?} for aliases", config.asset_root);
-            let mut make_reader = AssetSource::get_default_reader(config.asset_root);
-            let vfs = ename_asset_vfs::AssetReaderVfs::new(make_reader());
+            info!("Scanning {:?} for aliases", config.root);
             // No package id to fall back to here -- a bare, package-less scan keeps its old
             // rule: no `_alias_rules.toml` covering a file, no alias.
             let scan = scan_aliases(&vfs, Path::new(&config.root), &config.ignored, None).await;

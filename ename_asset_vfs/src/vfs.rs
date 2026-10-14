@@ -136,19 +136,30 @@ impl Vfs for StdVfs {
     }
 }
 
-/// A [`Vfs`] over one of Bevy's asset readers.
+/// A [`Vfs`] over the unprocessed reader of Bevy's `Default` asset source.
 ///
-/// Build it from `AssetSource::get_default_reader`. Never from the `alias://` source's reader:
-/// that would await an index only this scan can fill, and hang.
+/// It reads through whatever the `Default` source is, so an archive layer registered there is
+/// seen here too. Never point a scan at the `alias://` source: that would await an index only the
+/// scan can fill, and hang.
 #[cfg(feature = "bevy")]
 pub struct AssetReaderVfs {
-    reader: Box<dyn bevy::asset::io::ErasedAssetReader>,
+    server: bevy::asset::AssetServer,
 }
 
 #[cfg(feature = "bevy")]
 impl AssetReaderVfs {
-    pub fn new(reader: Box<dyn bevy::asset::io::ErasedAssetReader>) -> Self {
-        Self { reader }
+    pub fn new(server: bevy::asset::AssetServer) -> Self {
+        Self { server }
+    }
+
+    fn reader(&self, path: &Path) -> Result<&dyn bevy::asset::io::ErasedAssetReader, VfsError> {
+        self.server
+            .get_source(bevy::asset::io::AssetSourceId::Default)
+            .map(bevy::asset::io::AssetSource::reader)
+            .map_err(|err| VfsError::Io {
+                path: path.to_path_buf(),
+                message: err.to_string(),
+            })
     }
 }
 
@@ -158,7 +169,7 @@ impl Vfs for AssetReaderVfs {
         use bevy::tasks::futures_lite::AsyncReadExt;
         Box::pin(async move {
             let mut reader = self
-                .reader
+                .reader(path)?
                 .read(path)
                 .await
                 .map_err(|err| vfs_error(path, err))?;
@@ -177,8 +188,8 @@ impl Vfs for AssetReaderVfs {
     fn read_dir<'a>(&'a self, path: &'a Path) -> BoxedFuture<'a, Result<Vec<DirEntry>, VfsError>> {
         use bevy::tasks::futures_lite::StreamExt;
         Box::pin(async move {
-            let mut stream = self
-                .reader
+            let reader = self.reader(path)?;
+            let mut stream = reader
                 .read_directory(path)
                 .await
                 .map_err(|err| vfs_error(path, err))?;
@@ -190,7 +201,13 @@ impl Vfs for AssetReaderVfs {
                 if is_hidden_from_listings(&entry) {
                     continue;
                 }
-                let is_dir = matches!(self.reader.is_directory(&entry).await, Ok(true));
+                // `NotFound` is a broken symlink, which `StdVfs` also lists as a file. Any other
+                // error is real (an unreadable archive, say) and must not pass for "a file".
+                let is_dir = match reader.is_directory(&entry).await {
+                    Ok(is_dir) => is_dir,
+                    Err(bevy::asset::io::AssetReaderError::NotFound(_)) => false,
+                    Err(err) => return Err(vfs_error(&entry, err)),
+                };
                 entries.push(DirEntry {
                     path: entry,
                     is_dir,
