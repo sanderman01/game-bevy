@@ -245,8 +245,8 @@ and `libx264` uses at most 4 threads. When the encoder cannot keep up,
 or a screenshot of the same target is taken in the same frame, frames are dropped rather than
 slowing the game, and `dropped_frames` counts them. A timed recording reads back only one frame per
 output tick. When a recording ends with drops, the game logs them by reason (`no_slot`,
-`no_source`, `conflict`, `mismatch`, `unused`, `map_error`, `send_failed`, `out_of_order`,
-`screenshot`); read them with `log_get_entries` and `message_contains: "video:"`.
+`no_source`, `conflict`, `mismatch`, `unsupported`, `unused`, `map_error`, `send_failed`,
+`out_of_order`, `screenshot`); read them with `log_get_entries` and `message_contains: "video:"`.
 
 Video needs the `video` cargo feature, which `example_game_editor_bin` enables by default. Game code
 uses the same recorder through `ename_engine::video`: spawn a `VideoRequest` and observe
