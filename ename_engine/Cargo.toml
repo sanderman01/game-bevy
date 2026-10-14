@@ -6,6 +6,11 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+# Video recording through the system `ffmpeg` executable. Off by default: shipping builds
+# leave it out.
+video = []
+
 [dependencies]
 avian3d.workspace = true
 bevy.workspace = true

@@ -16,6 +16,8 @@ mod readback;
 pub mod screenshot;
 pub mod stage;
 pub mod time;
+#[cfg(feature = "video")]
+pub mod video;
 
 use bevy::{
     app::PluginGroupBuilder, asset::AssetPlugin, log::LogPlugin, prelude::*,
@@ -95,7 +97,7 @@ impl EnginePlugins {
 
 impl PluginGroup for EnginePlugins {
     fn build(self) -> PluginGroupBuilder {
-        DefaultPlugins
+        let group = DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(self.window),
                 ..default()
@@ -132,10 +134,12 @@ impl PluginGroup for EnginePlugins {
             .add(stage::StagePlugin)
             .add(physics::PhysicsIntegrationPlugin)
             .add(time::TimeControlPlugin)
-            .add(screenshot::ScreenshotPlugin)
-            // After `DefaultPlugins`, because it resizes the buffer `LogPlugin` just built.
-            .add(log::LogBufferPlugin {
-                capacity: self.log_capacity,
-            })
+            .add(screenshot::ScreenshotPlugin);
+        #[cfg(feature = "video")]
+        let group = group.add(video::VideoPlugin);
+        // After `DefaultPlugins`, because it resizes the buffer `LogPlugin` just built.
+        group.add(log::LogBufferPlugin {
+            capacity: self.log_capacity,
+        })
     }
 }
