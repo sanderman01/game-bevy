@@ -94,13 +94,14 @@ file on demand.
 - Tar: parsed in the crate, one positioned 512-byte read per header, skipping the data. ustar and
   GNU headers, GNU long names, PAX `path` and `size`, pre-POSIX directories (a trailing `/`) and
   signed header checksums are understood. A tar must end with a zero block: a truncated file, or
-  one that was never a tar, is refused rather than mounted empty. Tar has no payload checksum.
+  one that was never a tar, is refused rather than mounted empty. Tar has no payload checksum. Its headers are spread through the whole file, so indexing touches
+  pages across the entire archive (kernel readahead makes that a fast sequential read, but a read
+  of nearly every byte); prefer zip, whose index is one contiguous block, for archives of many
+  small files.
 - A read is one positioned read of exactly the member's bytes (`read_exact_at` on Unix, a
   `seek_read` loop on Windows) on a blocking worker, then an inflate for Deflate members. Reads
   name their own offsets and never rely on a file cursor, so they don't serialise on one; only
   looking up the open file takes a short lock. Open archive files are kept in an LRU of 64.
-  On Linux archive files are opened with `POSIX_FADV_RANDOM`: every read is an exact range, and
-  readahead around each 512-byte tar header would otherwise read most of the file while indexing.
 - An archive is identified by length, modification time and, on Unix, device and inode when it is
   indexed; on Windows, where the file index is unstable in std, creation time stands in. A file
   reopened after eviction that no longer matches fails with `InvalidData` rather than being read

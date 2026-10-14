@@ -69,7 +69,6 @@ impl OpenFiles {
         }
         // Opened outside the lock: other archives' reads need not wait on this one.
         let file = Arc::new(File::open(path)?);
-        advise_random(&file);
         if Identity::of(&file)? != *identity {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -89,16 +88,6 @@ impl OpenFiles {
         files.push((path.to_path_buf(), file.clone()));
         Ok(file)
     }
-}
-
-/// Tells the kernel that reads of `file` are scattered. Every archive read is an exact range, so
-/// readahead only pulls in data nobody asked for: indexing a tar of small members otherwise reads
-/// most of the file to get at its 512-byte headers. Advice only, so a failure is ignored.
-pub(crate) fn advise_random(file: &File) {
-    #[cfg(target_os = "linux")]
-    let _ = rustix::fs::fadvise(file, 0, None, rustix::fs::Advice::Random);
-    #[cfg(not(target_os = "linux"))]
-    let _ = file;
 }
 
 /// Reads exactly `len` bytes at `offset`.

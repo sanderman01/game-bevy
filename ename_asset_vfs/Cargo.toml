@@ -16,10 +16,6 @@ zip = ["dep:crc32fast", "dep:flate2"]
 # Plain `.tar` mounts, parsed here: no dependency.
 tar = []
 
-[target.'cfg(target_os = "linux")'.dependencies]
-# `fadvise` for archive reads. Already in `Cargo.lock` through Bevy and `tempfile`.
-rustix = { workspace = true, features = ["fs"] }
-
 [dependencies]
 # The watcher's inner channel; Bevy's `AssetSourceEvent` sender is this crate's type.
 async-channel = { workspace = true, optional = true }
