@@ -25,9 +25,19 @@ pub(crate) fn index(file: &File, limits: &Limits) -> Result<ArchiveIndex, IndexE
     let mut offset = 0;
     let mut long_path: Option<String> = None;
     let mut pax_size: Option<u64> = None;
-    while offset + BLOCK <= file_len {
+    loop {
+        // A tar ends with a zero block. Running out of file first means it was cut short, or was
+        // never a tar at all.
+        if offset + BLOCK > file_len {
+            return Err(format!("truncated: no end-of-archive block after offset {offset}").into());
+        }
         let header = read_at(file, offset, BLOCK)?;
         if header.iter().all(|&byte| byte == 0) {
+            if long_path.is_some() || pax_size.is_some() {
+                return Err("an extension header with no entry after it"
+                    .to_owned()
+                    .into());
+            }
             break;
         }
         verify_checksum(&header, offset)?;
@@ -64,6 +74,8 @@ pub(crate) fn index(file: &File, limits: &Limits) -> Result<ArchiveIndex, IndexE
                     apply_pax(&body, &mut long_path, &mut pax_size)?;
                 }
             }
+            // Pre-POSIX tar marks a directory with a trailing `/` on a regular entry.
+            b'0' | 0 | b'7' if path.ends_with('/') => builder.add_dir(&path)?,
             b'0' | 0 | b'7' => builder.add_file(
                 &path,
                 Member {
@@ -128,20 +140,18 @@ fn parse_number(field: &[u8]) -> Option<u64> {
     u64::from_str_radix(text, 8).ok()
 }
 
+/// Checks the header sum, also accepting the signed-byte sum some historic tars wrote.
 fn verify_checksum(header: &[u8], offset: u64) -> Result<(), String> {
-    let stored = parse_number(&header[148..156]);
-    let sum: u64 = header
-        .iter()
-        .enumerate()
-        .map(|(i, &b)| {
-            if (148..156).contains(&i) {
-                32
-            } else {
-                u64::from(b)
-            }
-        })
-        .sum();
-    if stored != Some(sum) {
+    let stored = parse_number(&header[148..156]).and_then(|sum| i64::try_from(sum).ok());
+    let bytes = || {
+        header
+            .iter()
+            .enumerate()
+            .map(|(i, &b)| if (148..156).contains(&i) { b' ' } else { b })
+    };
+    let unsigned: i64 = bytes().map(i64::from).sum();
+    let signed: i64 = bytes().map(|b| i64::from(b as i8)).sum();
+    if stored != Some(unsigned) && stored != Some(signed) {
         return Err(format!("bad header checksum at offset {offset}"));
     }
     Ok(())

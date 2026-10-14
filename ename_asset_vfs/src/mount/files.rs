@@ -16,12 +16,18 @@ use std::{
 const MAX_OPEN: usize = 64;
 
 /// Enough of a file's metadata to tell that it was replaced since it was indexed.
+///
+/// Unix compares device and inode. On Windows the file index is unstable in std, so creation time
+/// stands in: a replacement with the same length, modification time and creation time (a copy
+/// that preserves all three) goes unnoticed there.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Identity {
     len: u64,
     modified: Option<SystemTime>,
     #[cfg(unix)]
     inode: (u64, u64),
+    #[cfg(windows)]
+    created: u64,
 }
 
 impl Identity {
@@ -35,6 +41,8 @@ impl Identity {
                 use std::os::unix::fs::MetadataExt;
                 (metadata.dev(), metadata.ino())
             },
+            #[cfg(windows)]
+            created: std::os::windows::fs::MetadataExt::creation_time(&metadata),
         })
     }
 }

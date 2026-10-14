@@ -23,9 +23,15 @@ const EOCD_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x05, 0x06];
 const EOCD_LEN: u64 = 22;
 const ZIP64_LOCATOR_SIGNATURE: u32 = 0x0706_4b50;
 const ZIP64_EOCD_SIGNATURE: u32 = 0x0606_4b50;
+/// The fixed part of the Zip64 end record, signature and size field included.
+const ZIP64_EOCD_LEN: u64 = 56;
+/// The most extensible data accepted in a Zip64 end record.
+const MAX_ZIP64_EXTENSIBLE: u64 = 64 * 1024;
+/// The fixed part of one central directory record.
+const CENTRAL_RECORD_LEN: u64 = 46;
 /// The most central-directory bytes one member may take: the fixed record, a name at the path
 /// limit, and generous room for extra fields and a comment.
-const MAX_CENTRAL_RECORD: u64 = 46 + 4096 + 1024;
+const MAX_CENTRAL_RECORD: u64 = CENTRAL_RECORD_LEN + 4096 + 1024;
 /// Deflate's best possible ratio is about 1032:1, so a member never decodes to more than this
 /// many times its compressed size. Caps what a lying size field can make us reserve.
 const MAX_DEFLATE_RATIO: u64 = 1032;
@@ -138,60 +144,101 @@ struct Declared {
 }
 
 /// The member count and central directory size the end-of-central-directory record declares,
-/// from its Zip64 version when the classic one is saturated.
+/// from its Zip64 version when a Zip64 locator precedes it, as the `zip` crate reads it.
 fn declared_entries(file: &File, file_len: u64) -> Result<Declared, IndexError> {
     let tail_len = file_len.min(EOCD_LEN + u64::from(u16::MAX));
     let tail_start = file_len - tail_len;
     let tail = read_at(file, tail_start, tail_len)?;
-    let at = tail
-        .windows(4)
-        .rposition(|window| window == EOCD_SIGNATURE)
-        .filter(|&at| at + EOCD_LEN as usize <= tail.len())
+    // The record whose comment ends exactly at the end of the file. A comment may itself
+    // contain the signature.
+    let at = (0..tail.len().saturating_sub(EOCD_LEN as usize - 1))
+        .rev()
+        .find(|&at| {
+            tail[at..at + 4] == EOCD_SIGNATURE
+                && at + EOCD_LEN as usize + u16_at(&tail, at + 20) as usize == tail.len()
+        })
         .ok_or_else(|| "no end of central directory record".to_owned())?;
     let eocd = &tail[at..];
-    let u16_at = |bytes: &[u8], i: usize| u64::from(u16::from_le_bytes([bytes[i], bytes[i + 1]]));
-    let u32_at = |bytes: &[u8], i: usize| {
-        u64::from(u32::from_le_bytes([
-            bytes[i],
-            bytes[i + 1],
-            bytes[i + 2],
-            bytes[i + 3],
-        ]))
-    };
-    let u64_at = |bytes: &[u8], i: usize| {
-        u64::from_le_bytes(bytes[i..i + 8].try_into().expect("eight bytes"))
-    };
-    let entries = u16_at(eocd, 10);
-    let directory_size = u32_at(eocd, 12);
-    if entries != u64::from(u16::MAX) && directory_size != u64::from(u32::MAX) {
-        return Ok(Declared {
-            entries,
-            directory_size,
-        });
-    }
     let eocd_offset = tail_start + at as u64;
-    let locator_offset = eocd_offset
-        .checked_sub(20)
-        .ok_or_else(|| "no Zip64 locator".to_owned())?;
-    let locator = read_at(file, locator_offset, 20)?;
-    if u32_at(&locator, 0) != u64::from(ZIP64_LOCATOR_SIGNATURE) {
-        return Err("no Zip64 locator".to_owned().into());
-    }
-    let record_offset = u64_at(&locator, 8);
-    if record_offset
-        .checked_add(56)
-        .is_none_or(|end| end > file_len)
+    let locator = match eocd_offset.checked_sub(20) {
+        Some(offset) => Some(read_at(file, offset, 20)?)
+            .filter(|locator| u32_at(locator, 0) == u64::from(ZIP64_LOCATOR_SIGNATURE)),
+        None => None,
+    };
+    let declared = match locator {
+        None => {
+            if u32_at(eocd, 12) == u64::from(u32::MAX) || u32_at(eocd, 16) == u64::from(u32::MAX) {
+                return Err("Zip64 sizes without a Zip64 locator".to_owned().into());
+            }
+            check_disk_counts(u16_at(eocd, 8), u16_at(eocd, 10))?;
+            Declared {
+                entries: u16_at(eocd, 10),
+                directory_size: u32_at(eocd, 12),
+            }
+        }
+        Some(locator) => {
+            let record_offset = u64_at(&locator, 8);
+            if record_offset
+                .checked_add(ZIP64_EOCD_LEN)
+                .is_none_or(|end| end > eocd_offset - 20)
+            {
+                return Err("the Zip64 record lies outside the file".to_owned().into());
+            }
+            let record = read_at(file, record_offset, ZIP64_EOCD_LEN)?;
+            if u32_at(&record, 0) != u64::from(ZIP64_EOCD_SIGNATURE) {
+                return Err("no Zip64 end of central directory record".to_owned().into());
+            }
+            // The crate reads the record's extensible data, sized by this field, into memory.
+            let record_size = u64_at(&record, 4);
+            if !(ZIP64_EOCD_LEN - 12..=ZIP64_EOCD_LEN - 12 + MAX_ZIP64_EXTENSIBLE)
+                .contains(&record_size)
+                || record_offset + 12 + record_size > eocd_offset - 20
+            {
+                return Err(format!("a Zip64 record of {record_size} bytes").into());
+            }
+            check_disk_counts(u64_at(&record, 24), u64_at(&record, 32))?;
+            Declared {
+                entries: u64_at(&record, 32),
+                directory_size: u64_at(&record, 40),
+            }
+        }
+    };
+    if declared.directory_size < declared.entries.saturating_mul(CENTRAL_RECORD_LEN)
+        || declared.directory_size > file_len
     {
-        return Err("the Zip64 record lies outside the file".to_owned().into());
+        return Err(format!(
+            "a central directory of {} bytes cannot hold {} members",
+            declared.directory_size, declared.entries
+        )
+        .into());
     }
-    let record = read_at(file, record_offset, 56)?;
-    if u32_at(&record, 0) != u64::from(ZIP64_EOCD_SIGNATURE) {
-        return Err("no Zip64 end of central directory record".to_owned().into());
+    Ok(declared)
+}
+
+/// The crate counts the members on this disk; the limits use the total. Only single-disk archives
+/// are supported, so the two must agree.
+fn check_disk_counts(on_disk: u64, total: u64) -> Result<(), String> {
+    if on_disk != total {
+        return Err(format!(
+            "{total} members in total but {on_disk} on this disk; multi-disk archives are not \
+             supported"
+        ));
     }
-    Ok(Declared {
-        entries: u64_at(&record, 32),
-        directory_size: u64_at(&record, 40),
-    })
+    Ok(())
+}
+
+fn u16_at(bytes: &[u8], i: usize) -> u64 {
+    u64::from(u16::from_le_bytes([bytes[i], bytes[i + 1]]))
+}
+
+fn u32_at(bytes: &[u8], i: usize) -> u64 {
+    u64::from(u32::from_le_bytes(
+        bytes[i..i + 4].try_into().expect("four bytes"),
+    ))
+}
+
+fn u64_at(bytes: &[u8], i: usize) -> u64 {
+    u64::from_le_bytes(bytes[i..i + 8].try_into().expect("eight bytes"))
 }
 
 /// Where one zip member's bytes are, from the central directory.
