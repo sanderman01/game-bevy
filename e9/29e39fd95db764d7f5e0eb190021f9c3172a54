@@ -1,0 +1,23 @@
+ename_engine/src/command/tests.rs
+  s_baf869300155eb::t_ba6e2774692ff8 255-294
+  s_baf869300155eb::t_78dc6252d6e093 254
+ename_engine/src/command/registry.rs
+  s_baf869300155eb::t_37a98571e1c1a8 147-148,252-254,256,264,341,377
+  s_baf869300155eb::t_ba6e2774692ff8 257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e929e39fd95db764d7f5e0eb190021f9c3172a54",
+  "prompts": {},
+  "sessions": {
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
