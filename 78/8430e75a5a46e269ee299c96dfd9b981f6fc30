@@ -1,0 +1,81 @@
+ename_asset_vfs/tests/mounts.rs
+  s_12bb6d3148530d::t_59afd60d6cce70 1-32,35-111,117-191,196-265,270-306,308-331,333-356,358-378
+  s_12bb6d3148530d::t_42f53fe2bd9071 33-34,112-116,192-195,266-269,307,332,357
+ename_asset_vfs/src/archive_vfs.rs
+  s_12bb6d3148530d::t_b8d94272745a1e 1-74
+ename_asset_vfs/tests/fixtures/archives/basic/.hidden
+  s_12bb6d3148530d::t_3c611740625c32 1
+ename_asset_vfs/tests/fixtures/archives/basic/sub/deep/c.txt
+  s_12bb6d3148530d::t_3c611740625c32 1
+ename_asset_vfs/src/lib.rs
+  s_12bb6d3148530d::t_b8d94272745a1e 6-9,13-17,22-27
+ename_asset_vfs/tests/fixtures/archives/.gitattributes
+  s_12bb6d3148530d::t_42f53fe2bd9071 1-2
+ename_asset_vfs/tests/fixtures/archives/basic/a.txt.alias
+  s_12bb6d3148530d::t_3c611740625c32 1-2
+ename_asset_vfs/src/mount/index.rs
+  s_12bb6d3148530d::t_21e88cce2e4b1e 16,30
+  s_12bb6d3148530d::t_0adae799282725 106
+  s_12bb6d3148530d::t_1943fc215e95c4 1-5,7-15,17-19,21-29,31-105,107-219
+  s_12bb6d3148530d::t_0c33b912271096 6,20
+scripts/make-archive-fixtures.sh
+  s_12bb6d3148530d::t_77a584fd23c61d 1-45
+ename_asset_vfs/tests/fixtures/archives/basic/b.ron.meta
+  s_12bb6d3148530d::t_3c611740625c32 1-9
+ename_asset_vfs/src/mount/tar_index.rs
+  s_12bb6d3148530d::t_4bf3784cc69e56 1-7,9-59
+  s_12bb6d3148530d::t_b8d94272745a1e 8
+ename_asset_vfs/src/mount/zip_index.rs
+  s_12bb6d3148530d::t_0c33b912271096 63,69,76-78,83-90,92-96,98-99,116
+  s_12bb6d3148530d::t_7c53fc28aa45ef 1-6,8-15,17-39,43,45-48,50-62,64-66,68,70-75,79-82,91,97,100-115,117-143
+  s_12bb6d3148530d::t_b8d94272745a1e 7
+  s_12bb6d3148530d::t_222022028929d3 16,40-42,44,49,67
+ename_asset_vfs/tests/fixtures/archives/basic/a.txt
+  s_12bb6d3148530d::t_3c611740625c32 1
+ename_asset_vfs/Cargo.toml
+  s_12bb6d3148530d::t_f0a4cfe6aad432 11-12,14-17,21-23,25-29
+  s_12bb6d3148530d::t_42f53fe2bd9071 34-36
+  s_12bb6d3148530d::t_c0834c19864153 30,37
+ename_asset_package/Cargo.toml
+  s_12bb6d3148530d::t_eb8cafedef3379 32-34
+  s_12bb6d3148530d::t_bd6acdef3ba6c7 27-28
+ename_asset_vfs/tests/fixtures/archives/basic/manifest.toml
+  s_12bb6d3148530d::t_3c611740625c32 1-6
+.github/workflows/ci.yml
+  s_12bb6d3148530d::t_25728949969276 54-57
+docs/assets-archives.md
+  s_12bb6d3148530d::t_1fba4f4eefe746 80-81,86-89
+ename_asset_vfs/src/mount/mod.rs
+  s_12bb6d3148530d::t_b8d94272745a1e 126,154-157,380,453,501
+  s_12bb6d3148530d::t_1874504635331c 1-125,127-153,158-379,381-452,454-500,502-582
+ename_asset_vfs/src/mount/files.rs
+  s_12bb6d3148530d::t_dac9e23a27272d 1-77
+ename_asset_vfs/tests/fixtures/archives/basic/_alias_rules.toml
+  s_12bb6d3148530d::t_3c611740625c32 1
+ename_asset_vfs/tests/fixtures/archives/basic/b.ron
+  s_12bb6d3148530d::t_3c611740625c32 1
+ename_asset_package/tests/archive_parity.rs
+  s_12bb6d3148530d::t_c4b08e5c71b417 1-43,46-140
+  s_12bb6d3148530d::t_b49d13bea751bb 44-45
+Cargo.toml
+  s_12bb6d3148530d::t_f0a4cfe6aad432 56-57,71-72,80-81
+  s_12bb6d3148530d::t_27903367caf796 35-38
+Cargo.lock
+  s_12bb6d3148530d::t_9cfaa5f9023fd5 2998-2999,3003,3011-3016,3018-3019,3305-3314,6876-6885,7323-7328,8578-8590
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "788430e75a5a46e269ee299c96dfd9b981f6fc30",
+  "prompts": {},
+  "sessions": {
+    "s_12bb6d3148530d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40e810f9-e7ef-41d6-a981-60e9ac69dd44",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
