@@ -6,14 +6,9 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 
-[features]
-# Video recording through the system `ffmpeg` executable. Off by default: shipping builds
-# leave it out.
-video = ["dep:libc"]
-
 [target.'cfg(target_os = "linux")'.dependencies]
 # `setpriority` for the video encoder's ffmpeg child.
-libc = { workspace = true, optional = true }
+libc.workspace = true
 
 [dependencies]
 avian3d.workspace = true

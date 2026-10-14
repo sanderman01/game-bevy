@@ -260,10 +260,8 @@ output tick. When a recording ends with drops, the game logs them by reason (`no
 `no_source`, `conflict`, `mismatch`, `unsupported`, `unused`, `map_error`, `send_failed`,
 `out_of_order`, `screenshot`); read them with `log_get_entries` and `message_contains: "video:"`.
 
-Video needs `ename_engine`'s `video` cargo feature, which `example_game_editor_bin`'s own `video`
-feature turns on by default. Without it there is no `video_record` tool, and `command_call`
-reports `unknown_command`. Game code uses the same recorder through `ename_engine::video`: spawn a
-`VideoRequest` and observe `VideoFinished`.
+Video needs `ffmpeg` on PATH at runtime. Game code uses the same recorder through
+`ename_engine::video`: spawn a `VideoRequest` and observe `VideoFinished`.
 
 ## Commands and jobs
 

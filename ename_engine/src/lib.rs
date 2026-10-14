@@ -1,5 +1,5 @@
 //! `ename_engine` -- the runtime layer: camera rig, big_space integration, physics glue, input,
-//! time control, log capture, the command registry, screenshots, video capture (feature `video`).
+//! time control, log capture, the command registry, screenshots, video capture.
 //!
 //! Sits directly above the asset crates. It must never depend on `ename_editor` or `example_game_lib`:
 //! if engine code needs something from a higher layer, move the shared type down or invert the
@@ -18,7 +18,6 @@ mod readback;
 pub mod screenshot;
 pub mod stage;
 pub mod time;
-#[cfg(feature = "video")]
 pub mod video;
 
 use bevy::{
@@ -138,9 +137,8 @@ impl PluginGroup for EnginePlugins {
             .add(time::TimeControlPlugin)
             .add(command::CommandPlugin)
             .add(capture::CapturePlugin)
-            .add(screenshot::ScreenshotPlugin);
-        #[cfg(feature = "video")]
-        let group = group.add(video::VideoPlugin);
+            .add(screenshot::ScreenshotPlugin)
+            .add(video::VideoPlugin);
         // After `DefaultPlugins`, because it resizes the buffer `LogPlugin` just built.
         group.add(log::LogBufferPlugin {
             capacity: self.log_capacity,

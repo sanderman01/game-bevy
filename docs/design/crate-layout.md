@@ -89,12 +89,10 @@ ordering structural rather than a rule in `main.rs` that every future target has
 check too. It also proves that the editor crate and `ename_remote` are absent from
 `example_game_bin`, the binary that stands in for a shipping build.
 
-Video recording is behind a `video` feature on `ename_engine`, which `example_game_editor_bin`'s
-own `video` feature turns on by default. Nothing forwards it: `video.record` is a command the
-engine registers when the feature is on, so the side channel and the editor need no feature of
-their own. It adds no dependency (it runs the system `ffmpeg`), so the feature only keeps the API
-and the external process out of the shipping binary. Cargo unifies features across one build, so a
-workspace-wide build turns it on for `example_game_bin` too; that is harmless.
+Video recording is always built into `ename_engine`, like screenshots. It adds no dependency (it
+runs the system `ffmpeg`, and `libc` is already in the tree through Bevy), and `video.record` is
+only reachable from outside through `ename_remote`, which shipping builds do not link. An earlier
+`video` cargo feature was dropped because it gated code, not dependencies.
 
 An earlier `EditorCamera` was a historical example of the cost of getting a layer wrong. It lived
 in the engine because `engine` depended on `editor` and the editor could not name

@@ -7,11 +7,9 @@ authors.workspace = true
 license.workspace = true
 
 [features]
-default = ["dev", "video"]
+default = ["dev"]
 # Development-only Bevy features. Must be off for a shipping build.
 dev = ["bevy/dynamic_linking", "bevy/dev"]
-# Video recording, through the engine. Needs `ffmpeg` on PATH at runtime.
-video = ["ename_engine/video"]
 
 [dependencies]
 bevy = { workspace = true }

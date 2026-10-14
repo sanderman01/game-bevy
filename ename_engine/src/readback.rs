@@ -122,7 +122,6 @@ impl ReadbackQueue {
     }
 
     /// Whether a readback of `key` is queued this frame.
-    #[cfg_attr(not(feature = "video"), allow(dead_code))]
     pub(crate) fn is_queued(&self, key: &NormalizedRenderTarget) -> bool {
         self.queued.iter().any(|queued| queued.key == *key)
     }
