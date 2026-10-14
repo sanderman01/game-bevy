@@ -221,12 +221,14 @@ with its unit as the only key:
 
 A bare number is refused, because JSON cannot tell `10` frames from `10.0` seconds. `frame_rate`
 defaults to 30 and goes up to 240. The output is H.264, `yuv420p`, tagged as sRGB (BT.709
-primaries and matrix, sRGB transfer). Odd sizes lose their last row or column.
+primaries and matrix, sRGB transfer) with left-sited chroma. Odd sizes lose their last row or
+column. ffmpeg's default conversion treats 4:2:0 chroma as centre-sited, so a still extracted with
+a plain `ffmpeg -i clip.mp4 frame.png` can show a sub-pixel colour shift at sharp edges.
 
 The tool waits for the file for up to 50 seconds. A longer recording comes back with
 `status: "recording"`, its `request` id and a note; `video_status` with `wait_seconds` (up to 50)
-collects it, and `video_stop` ends it early and waits up to 50 seconds for the file. `wait: false` returns as soon
-as the recording has started.
+collects it, and `video_stop` ends it early and waits up to 50 seconds for the file. `wait: false`
+returns as soon as the recording has started.
 
 The recording follows real time, so it continues while the world is paused. A camera source must
 stay visible: switching the view, resizing the window or the tab, or five seconds without a frame
@@ -237,9 +239,11 @@ before its first frame is an error.
 Encoding runs in an `ffmpeg` child process, which must be on the game's `PATH`. The game picks the
 first encoder that passes a test encode: VAAPI, NVENC or QSV on Linux, then `libx264`.
 `ENAME_VIDEO_ENCODER=libx264` (or another known encoder name) in the game's environment forces
-one. ffmpeg runs at below-normal CPU priority (nice 10 on Linux) and `libx264`
-uses at most 4 threads. When ffmpeg cannot keep up, frames are dropped rather than slowing the game,
-and `dropped_frames` counts them.
+one. The GPU converts frames to NV12 before ffmpeg sees them. ffmpeg runs at below-normal CPU
+priority (nice 10 on Linux) and `libx264` uses at most 4 threads. When the encoder cannot keep up,
+or a screenshot of the same target is taken in the same frame, frames are dropped rather than
+slowing the game, and `dropped_frames` counts them. A timed recording reads back only one frame per
+output tick.
 
 Video needs the `video` cargo feature, which `example_game_editor_bin` enables by default. Game code
 uses the same recorder through `ename_engine::video`: spawn a `VideoRequest` and observe
