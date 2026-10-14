@@ -1,0 +1,19 @@
+ename_engine/src/video/mod.rs
+  s_baf869300155eb::t_2158fab053caae 1030,1032,1233-1234,1248,1252
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aba9195f92a2c5987649be38a3fb8b7070a8b15b",
+  "prompts": {},
+  "sessions": {
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
