@@ -1,5 +1,5 @@
 //! `ename_engine` -- the runtime layer: camera rig, big_space integration, physics glue, input,
-//! time control, log capture, screenshots, video capture (feature `video`).
+//! time control, log capture, the command registry, screenshots, video capture (feature `video`).
 //!
 //! Sits directly above the asset crates. It must never depend on `ename_editor` or `example_game_lib`:
 //! if engine code needs something from a higher layer, move the shared type down or invert the
@@ -9,6 +9,7 @@
 
 pub mod bigspace;
 pub mod camera;
+pub mod command;
 pub mod debug_overlay;
 pub mod log;
 pub mod physics;
@@ -134,6 +135,7 @@ impl PluginGroup for EnginePlugins {
             .add(stage::StagePlugin)
             .add(physics::PhysicsIntegrationPlugin)
             .add(time::TimeControlPlugin)
+            .add(command::CommandPlugin)
             .add(screenshot::ScreenshotPlugin);
         #[cfg(feature = "video")]
         let group = group.add(video::VideoPlugin);

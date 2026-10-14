@@ -23,6 +23,9 @@ ename_asset_alias.workspace = true
 ename_asset_content.workspace = true
 image.workspace = true
 ron.workspace = true
+schemars.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
