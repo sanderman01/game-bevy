@@ -172,6 +172,10 @@ impl ReadbackQueue {
     fn release(&mut self, key: &NormalizedRenderTarget, screenshot: Entity) {
         if let Some(spawned) = self.outstanding.get_mut(key) {
             spawned.retain(|(entity, _)| *entity != screenshot);
+            // The key of an image target holds a strong handle; keeping it would leak the image.
+            if spawned.is_empty() {
+                self.outstanding.remove(key);
+            }
         }
     }
 }
@@ -393,26 +397,44 @@ mod tests {
         }
     }
 
+    /// Real time now, which is what readbacks are stamped with when spawned.
+    fn now(app: &App) -> Duration {
+        app.world().resource::<Time<Real>>().elapsed()
+    }
+
     #[test]
     fn bounded_requests_are_refused_until_a_readback_is_delivered() {
         let mut app = app();
         let source = window_source(&mut app);
         let requester = app.world_mut().spawn_empty().id();
+        let tag = |app: &App, seq| ReadbackTag {
+            requested_at: now(app),
+            ..tag(seq)
+        };
+        // Every readback is spawned at or after this.
+        let first_spawn = now(&app);
         for seq in 0..MAX_IN_FLIGHT as u64 {
+            let tag = tag(&app, seq);
             let mut queue = app.world_mut().resource_mut::<ReadbackQueue>();
-            assert!(queue.request(&source, requester, tag(seq), Limit::Bounded));
+            assert!(queue.request(&source, requester, tag, Limit::Bounded));
             app.update();
         }
+        let (refused, joined, extra) = (tag(&app, 9), tag(&app, 10), tag(&app, 11));
         let mut queue = app.world_mut().resource_mut::<ReadbackQueue>();
-        assert!(!queue.request(&source, requester, tag(9), Limit::Bounded));
+        assert!(!queue.request(&source, requester, refused, Limit::Bounded));
         // A screenshot is never refused, and a bounded request may then join it for free.
-        assert!(queue.request(&source, requester, tag(10), Limit::Unbounded));
-        assert!(queue.request(&source, requester, tag(11), Limit::Bounded));
+        assert!(queue.request(&source, requester, joined, Limit::Unbounded));
+        assert!(queue.request(&source, requester, extra, Limit::Bounded));
         app.update();
-        assert_eq!(
+        let outstanding = |app: &App, at| {
             app.world()
                 .resource::<ReadbackQueue>()
-                .outstanding(&source.key, Duration::ZERO),
+                .outstanding(&source.key, at)
+        };
+        assert_eq!(outstanding(&app, now(&app)), MAX_IN_FLIGHT + 1);
+        // All still count just short of the reclaim time.
+        assert_eq!(
+            outstanding(&app, first_spawn + RECLAIM_AFTER - Duration::from_millis(1)),
             MAX_IN_FLIGHT + 1
         );
 
@@ -427,12 +449,7 @@ mod tests {
             entity: screenshot,
             image: Image::default(),
         });
-        assert_eq!(
-            app.world()
-                .resource::<ReadbackQueue>()
-                .outstanding(&source.key, Duration::ZERO),
-            MAX_IN_FLIGHT
-        );
+        assert_eq!(outstanding(&app, now(&app)), MAX_IN_FLIGHT);
         // So does a `Screenshot` despawned undelivered, as Bevy does with a same-frame duplicate.
         let undelivered = app
             .world_mut()
@@ -441,13 +458,22 @@ mod tests {
             .find(|entity| *entity != screenshot)
             .unwrap();
         app.world_mut().despawn(undelivered);
+        assert_eq!(outstanding(&app, now(&app)), MAX_IN_FLIGHT - 1);
+        // And one that never arrives stops counting once the reclaim time has passed.
+        assert_eq!(outstanding(&app, now(&app) + RECLAIM_AFTER), 0);
+
+        // Once every slot is back, the target's entry (and any image handle in it) is gone.
+        let rest: Vec<Entity> = app
+            .world_mut()
+            .query_filtered::<Entity, With<ReadbackFanOut>>()
+            .iter(app.world())
+            .filter(|entity| *entity != screenshot && *entity != undelivered)
+            .collect();
+        for entity in rest {
+            app.world_mut().despawn(entity);
+        }
         let queue = app.world().resource::<ReadbackQueue>();
-        assert_eq!(
-            queue.outstanding(&source.key, Duration::ZERO),
-            MAX_IN_FLIGHT - 1
-        );
-        // And one that never arrives stops counting in time.
-        assert_eq!(queue.outstanding(&source.key, RECLAIM_AFTER * 2), 0);
+        assert!(!queue.outstanding.contains_key(&source.key));
     }
 
     #[test]
