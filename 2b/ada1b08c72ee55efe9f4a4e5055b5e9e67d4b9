@@ -1,0 +1,38 @@
+ename_engine/src/lib.rs
+  s_baf869300155eb::t_414abcb5354775 19-20
+  s_baf869300155eb::t_ec2ae124ae5029 100,137-143
+ename_engine/Cargo.toml
+  s_baf869300155eb::t_414abcb5354775 9-13
+ename_engine/src/video/length.rs
+  s_baf869300155eb::t_20eb3db375170a 1-96,101-106,120-138
+  s_baf869300155eb::t_dacde3bc5129d7 97-100,107-119
+ename_engine/src/video/mod.rs
+  s_baf869300155eb::t_1949adb72880bf 860-1051,1055-1235
+  s_baf869300155eb::t_274e05215d0e9b 706,715-718,739-741
+  s_baf869300155eb::t_dfa116dfdeeda4 1052-1054
+  s_baf869300155eb::t_4479ab8971aff4 1-62,64-267,275-395,397-404,406-440,449-622,624-664,667-668,670-672,674-676,688-705,707-714,719-738,742-859
+  s_baf869300155eb::t_dacde3bc5129d7 63,268-274,396,405,441-448,623,665-666,669,673,677-687
+ename_engine/src/video/encoder.rs
+  s_baf869300155eb::t_de586c621edea2 1-9,11-165,172-229,236-364,368-457,461-582,584-649,655,664-688,692-812
+  s_baf869300155eb::t_744526bdabc8a2 813-820,822-832,836-840,842-843,845-946,950-974,978-985,990-1131,1137-1150,1156-1157,1161-1204,1206-1208
+  s_baf869300155eb::t_1949adb72880bf 947-949,975-977,986-989,1132-1136,1151-1155,1158-1160
+  s_baf869300155eb::t_fe7f03cf2cd3ec 821
+  s_baf869300155eb::t_7d9da1ca3b6b99 833-835,841,844,1205
+  s_baf869300155eb::t_dacde3bc5129d7 10,166-171,230-235,365-367,458-460,583,650-654,656-663,689-691
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2bada1b08c72ee55efe9f4a4e5055b5e9e67d4b9",
+  "prompts": {},
+  "sessions": {
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
