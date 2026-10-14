@@ -33,13 +33,14 @@ use bevy::{
 };
 use ename_asset_alias::{AliasSourcePlugin, ContentIndexCell, IgnoredFiles};
 use ename_asset_package::{build_index, scan_packages};
-use ename_asset_vfs::AssetReaderVfs;
 #[cfg(any(feature = "zip", feature = "tar"))]
-use ename_asset_vfs::{ArchiveMounts, ArchiveSourcePlugin, MountProblem, Mounts};
-use std::{
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use ename_asset_vfs::ArchiveSourcePlugin;
+use ename_asset_vfs::AssetReaderVfs;
+/// Re-exported so the engine's stage save can refuse a write into an archive. Lives with the
+/// mounts, so it works whichever crate turned an archive format on.
+pub use ename_asset_vfs::check_writable;
+use ename_asset_vfs::{ArchiveMounts, MountProblem};
+use std::{path::PathBuf, sync::Arc};
 
 /// The default asset root, matching `AssetPlugin::file_path`'s own default. Exported so a
 /// caller that needs an absolute filesystem path for something outside the asset pipeline (for
@@ -138,8 +139,6 @@ struct ContentScanConfig {
     search_paths: Vec<String>,
     load_order_file: Option<PathBuf>,
     ignored: IgnoredFiles,
-    #[cfg(any(feature = "zip", feature = "tar"))]
-    mounts: Option<Arc<Mounts>>,
 }
 
 /// Where [`start_content_scan`] leaves the report for [`mirror_content_scan`] to pick up.
@@ -151,23 +150,19 @@ struct ContentReportCell(Arc<OnceCell<ContentReport>>);
 
 impl Plugin for AssetContentPlugin {
     fn build(&self, app: &mut App) {
+        // A target that registers the archive source itself keeps its own.
         #[cfg(any(feature = "zip", feature = "tar"))]
-        let mounts = {
+        if !app.is_plugin_added::<ArchiveSourcePlugin>() {
             app.add_plugins(
                 ArchiveSourcePlugin::default().with_asset_root(self.asset_root.clone()),
             );
-            app.world()
-                .get_resource::<ArchiveMounts>()
-                .map(|mounts| mounts.0.clone())
-        };
+        }
         app.add_plugins(AliasSourcePlugin::default().with_asset_root(self.asset_root.clone()))
             .init_resource::<ContentReportCell>()
             .insert_resource(ContentScanConfig {
                 search_paths: self.search_paths.clone(),
                 load_order_file: self.load_order_file.clone(),
                 ignored: self.ignored.clone(),
-                #[cfg(any(feature = "zip", feature = "tar"))]
-                mounts,
             })
             .add_systems(Startup, start_content_scan)
             .add_systems(Update, mirror_content_scan);
@@ -184,7 +179,9 @@ fn start_content_scan(
     cell: Res<ContentIndexCell>,
     report: Res<ContentReportCell>,
     config: Res<ContentScanConfig>,
+    mounts: Option<Res<ArchiveMounts>>,
 ) {
+    let mounts = mounts.map(|mounts| mounts.0.clone());
     let cell = cell.0.clone();
     let report_cell = report.0.clone();
     let config = config.clone();
@@ -216,8 +213,8 @@ fn start_content_scan(
             let (index, mut report) = build_index(&scan);
             report.problems.extend(problems);
             // Mounts the scan passed through have been classified and indexed by now.
-            #[cfg(any(feature = "zip", feature = "tar"))]
-            if let Some(mounts) = &config.mounts {
+            // Problems found later, by a read, are only logged.
+            if let Some(mounts) = &mounts {
                 report
                     .problems
                     .extend(mounts.problems().iter().map(mount_problem));
@@ -263,7 +260,6 @@ fn mirror_content_scan(
     commands.insert_resource(report.clone());
 }
 
-#[cfg(any(feature = "zip", feature = "tar"))]
 fn mount_problem(problem: &MountProblem) -> Problem {
     Problem {
         path: problem.logical.clone(),
@@ -275,26 +271,4 @@ fn mount_problem(problem: &MountProblem) -> Problem {
             problem.detail
         ),
     }
-}
-
-/// Refuses a filesystem write into an archive mount. `path` is a filesystem path, absolute or
-/// relative to the current directory; the asset root is resolved with symlinks first.
-///
-/// Always compiled and a no-op without mounts, so a caller never needs a feature of its own to
-/// stay safe: whichever way features unify, if archives are mounted this checks them.
-pub fn check_writable(world: &bevy::ecs::world::World, path: &Path) -> std::io::Result<()> {
-    #[cfg(any(feature = "zip", feature = "tar"))]
-    if let Some(mounts) = world.get_resource::<ArchiveMounts>()
-        && !mounts.0.origin_of_file(path).is_loose()
-    {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::ReadOnlyFilesystem,
-            format!(
-                "{} is inside an archive, which is read-only",
-                path.display()
-            ),
-        ));
-    }
-    let _ = (world, path);
-    Ok(())
 }

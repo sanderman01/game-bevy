@@ -19,6 +19,8 @@ ename_asset_package = { workspace = true, features = ["bevy"] }
 ename_asset_vfs = { workspace = true, features = ["bevy"] }
 
 [dev-dependencies]
+# `archive_composition.rs` turns a format on here rather than through this crate's features.
+ename_asset_vfs = { workspace = true, features = ["bevy", "zip"] }
 # Loader settings in `archive_load.rs`, which a fixture `.meta` sets.
 serde = { workspace = true, features = ["derive"] }
 tempfile.workspace = true
