@@ -10,7 +10,7 @@
 //!    remember to check.
 //! 5. A tool's name and one sentence are all the model gets. Write them that way.
 //!
-//! Names are prefixed by group (`world_`, `time_`, `log_`, `editor_`, `screenshot_`) so a dispatching meta-tool could be
+//! Names are prefixed by group (`world_`, `time_`, `log_`, `editor_`, `screenshot_`, `video_`) so a dispatching meta-tool could be
 //! added later without renaming anything. At this size the indirection would only cost a round
 //! trip.
 
@@ -24,6 +24,8 @@ use rmcp::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+
+mod video;
 
 use crate::{
     brp::{BrpClient, BrpError, METHOD_NOT_FOUND},
@@ -42,7 +44,7 @@ impl GameServer {
     pub fn new(brp: BrpClient) -> Self {
         Self {
             brp,
-            tool_router: Self::tool_router(),
+            tool_router: Self::tool_router() + Self::video_router(),
         }
     }
 
@@ -396,12 +398,13 @@ pub struct ScreenshotParams {
     /// stage's MainCamera rendered (in the editor, the Game View). "editor_camera" is the
     /// editor's Scene View. A camera source needs its view to be the one shown; see
     /// editor_set_view.
-    pub source: ScreenshotSource,
+    pub source: CaptureSource,
 }
 
+/// What a screenshot or a video shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum ScreenshotSource {
+pub enum CaptureSource {
     Window,
     GameCamera,
     EditorCamera,
@@ -414,7 +417,7 @@ pub struct SavedScreenshot {
     /// Physical pixels.
     width: u32,
     height: u32,
-    source: ScreenshotSource,
+    source: CaptureSource,
 }
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
@@ -855,19 +858,19 @@ impl GameServer {
         let pending = std::sync::atomic::AtomicBool::new(false);
         let work = async {
             let (method, params) = match source {
-                ScreenshotSource::Window => (
+                CaptureSource::Window => (
                     "game.screenshot.capture",
                     json!({ "path": path, "source": "window" }),
                 ),
-                ScreenshotSource::GameCamera => (
+                CaptureSource::GameCamera => (
                     "game.screenshot.capture",
                     json!({ "path": path, "source": "main_camera" }),
                 ),
-                ScreenshotSource::EditorCamera => {
+                CaptureSource::EditorCamera => {
                     ("editor.screenshot.capture", json!({ "path": path }))
                 }
             };
-            let explain = |error| fail(explain_screenshot_error(error, source));
+            let explain = |error| fail(explain_inactive_camera(error, source));
             let started = self
                 .brp
                 .call_raw(method, params)
@@ -1214,6 +1217,8 @@ fn explain_missing_editor_method(error: anyhow::Error) -> anyhow::Error {
         Some(brp) if brp.code == METHOD_NOT_FOUND && brp.method.starts_with("editor.") => {
             let feature = if brp.method.starts_with("editor.screenshot.") {
                 "editor camera screenshots"
+            } else if brp.method.starts_with("editor.video.") {
+                "editor camera video recording"
             } else {
                 "editor view switching"
             };
@@ -1243,11 +1248,11 @@ fn absolute_png_path(path: &str, cwd: &std::path::Path) -> Result<std::path::Pat
 }
 
 /// Points an inactive-camera failure at the view switch that fixes it.
-fn explain_screenshot_error(error: anyhow::Error, source: ScreenshotSource) -> anyhow::Error {
+fn explain_inactive_camera(error: anyhow::Error, source: CaptureSource) -> anyhow::Error {
     let view = match source {
-        ScreenshotSource::GameCamera => "game",
-        ScreenshotSource::EditorCamera => "scene",
-        ScreenshotSource::Window => return error,
+        CaptureSource::GameCamera => "game",
+        CaptureSource::EditorCamera => "scene",
+        CaptureSource::Window => return error,
     };
     let inactive = error
         .downcast_ref::<BrpError>()
@@ -1287,7 +1292,7 @@ mod tests {
         CELL_COORD as CELL, TRANSFORM, crate_matches, explain_missing_editor_method,
         reject_position_write,
     };
-    use super::{EditorView, GameServer, ScreenshotParams, ScreenshotSource};
+    use super::{CaptureSource, EditorView, GameServer, ScreenshotParams};
     use crate::brp::{BrpClient, BrpError, METHOD_NOT_FOUND};
     use std::time::Duration;
 
@@ -1322,11 +1327,11 @@ mod tests {
 
     /// The `index`th request and its body in; the response's `result` or `error` member out, or
     /// `None` to never answer, holding the connection open the way a hung game does.
-    type Responder = std::sync::Arc<
+    pub(super) type Responder = std::sync::Arc<
         dyn Fn(usize, &serde_json::Value) -> Option<serde_json::Value> + Send + Sync,
     >;
 
-    async fn serve(respond: Responder) -> String {
+    pub(super) async fn serve(respond: Responder) -> String {
         use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1445,14 +1450,14 @@ mod tests {
         (url, seen)
     }
 
-    fn expect_err<T>(result: Result<T, rmcp::ErrorData>) -> rmcp::ErrorData {
+    pub(super) fn expect_err<T>(result: Result<T, rmcp::ErrorData>) -> rmcp::ErrorData {
         match result {
             Ok(_) => panic!("the call succeeded"),
             Err(error) => error,
         }
     }
 
-    fn screenshot(path: &str, source: ScreenshotSource) -> ScreenshotParams {
+    fn screenshot(path: &str, source: CaptureSource) -> ScreenshotParams {
         ScreenshotParams {
             path: path.to_owned(),
             source,
@@ -1464,17 +1469,17 @@ mod tests {
         let cwd = std::path::Path::new("/project");
         for (source, method, params) in [
             (
-                ScreenshotSource::Window,
+                CaptureSource::Window,
                 "game.screenshot.capture",
                 json!({ "path": "/project/shots/a.png", "source": "window" }),
             ),
             (
-                ScreenshotSource::GameCamera,
+                CaptureSource::GameCamera,
                 "game.screenshot.capture",
                 json!({ "path": "/project/shots/a.png", "source": "main_camera" }),
             ),
             (
-                ScreenshotSource::EditorCamera,
+                CaptureSource::EditorCamera,
                 "editor.screenshot.capture",
                 json!({ "path": "/project/shots/a.png" }),
             ),
@@ -1511,7 +1516,7 @@ mod tests {
         let cwd = std::path::Path::new("/project");
         server
             .capture_screenshot(
-                screenshot("/elsewhere/a.PNG", ScreenshotSource::Window),
+                screenshot("/elsewhere/a.PNG", CaptureSource::Window),
                 cwd,
                 Duration::from_secs(5),
             )
@@ -1524,7 +1529,7 @@ mod tests {
         let error = expect_err(
             server
                 .capture_screenshot(
-                    screenshot("a.jpg", ScreenshotSource::Window),
+                    screenshot("a.jpg", CaptureSource::Window),
                     cwd,
                     Duration::from_secs(5),
                 )
@@ -1537,8 +1542,8 @@ mod tests {
     #[tokio::test]
     async fn an_inactive_camera_says_which_view_to_show() {
         for (source, hint) in [
-            (ScreenshotSource::GameCamera, "view=game"),
-            (ScreenshotSource::EditorCamera, "view=scene"),
+            (CaptureSource::GameCamera, "view=game"),
+            (CaptureSource::EditorCamera, "view=scene"),
         ] {
             let (url, _) = screenshot_game(Some("camera_inactive")).await;
             let server = GameServer::new(BrpClient::new(url));
@@ -1567,7 +1572,7 @@ mod tests {
         let error = expect_err(
             server
                 .capture_screenshot(
-                    screenshot("/a.png", ScreenshotSource::GameCamera),
+                    screenshot("/a.png", CaptureSource::GameCamera),
                     std::path::Path::new("/"),
                     Duration::from_secs(5),
                 )
@@ -1595,7 +1600,7 @@ mod tests {
             let error = expect_err(
                 server
                     .capture_screenshot(
-                        screenshot("/a.png", ScreenshotSource::Window),
+                        screenshot("/a.png", CaptureSource::Window),
                         std::path::Path::new("/"),
                         Duration::from_millis(300),
                     )
