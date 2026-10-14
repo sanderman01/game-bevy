@@ -4,20 +4,21 @@
 //! [`ArchiveAssetReader`], so a plain path, an `alias://` path and a scan all read archive members
 //! as if they were loose files. Its writer refuses anything inside a mount.
 
-use crate::Mounts;
+use crate::{Mounts, mount::mount_path_of};
+use async_channel::{Receiver, Sender};
 use bevy::{
     app::{App, Plugin, Startup},
     asset::{
         AssetApp, AssetServer, AssetServerMode,
         io::{
-            AssetReader, AssetReaderError, AssetSource, AssetSourceBuilder, AssetSourceId,
-            AssetWriter, AssetWriterError, ErasedAssetReader, ErasedAssetWriter, PathStream,
-            Reader, VecReader, Writer, file::FileAssetReader,
+            AssetReader, AssetReaderError, AssetSource, AssetSourceBuilder, AssetSourceEvent,
+            AssetSourceId, AssetWatcher, AssetWriter, AssetWriterError, ErasedAssetReader,
+            ErasedAssetWriter, PathStream, Reader, VecReader, Writer, file::FileAssetReader,
         },
     },
     ecs::{resource::Resource, system::Res},
-    log::error,
-    tasks::{ConditionalSendFuture, futures_lite::StreamExt},
+    log::{error, info},
+    tasks::{ConditionalSendFuture, IoTaskPool, Task, futures_lite::StreamExt},
 };
 use std::{
     io,
@@ -85,15 +86,76 @@ impl Plugin for ArchiveSourcePlugin {
                     mounts: writer_mounts.clone(),
                 }))
             })
-            .with_watcher(AssetSource::get_default_watcher(
-                self.asset_root.clone(),
-                std::time::Duration::from_millis(300),
-            ))
+            .with_watcher(archive_watcher(self.asset_root.clone()))
             .with_watch_warning(AssetSource::get_default_watch_warning()),
         )
         .insert_resource(ArchiveMounts(mounts))
         .add_systems(Startup, refuse_processed_mode);
     }
+}
+
+/// The platform watcher, with events for archive files dropped: archives are indexed once, so a
+/// changed one needs a restart. Dropping the task cancels it.
+struct ArchiveWatcher {
+    _inner: Box<dyn AssetWatcher>,
+    _task: Task<()>,
+}
+
+impl AssetWatcher for ArchiveWatcher {}
+
+fn archive_watcher(
+    asset_root: String,
+) -> impl FnMut(Sender<AssetSourceEvent>) -> Option<Box<dyn AssetWatcher>> + Send + Sync + 'static {
+    let mut make_inner =
+        AssetSource::get_default_watcher(asset_root, std::time::Duration::from_millis(300));
+    move |sink| {
+        let (sender, events) = async_channel::unbounded();
+        let inner = make_inner(sender)?;
+        let task = IoTaskPool::get().spawn(forward_loose_events(events, sink));
+        Some(Box::new(ArchiveWatcher {
+            _inner: inner,
+            _task: task,
+        }))
+    }
+}
+
+/// Keeps receiving after `sink` closes: Bevy's file watcher unwraps its send, so a dropped
+/// receiver would panic its thread.
+async fn forward_loose_events(events: Receiver<AssetSourceEvent>, sink: Sender<AssetSourceEvent>) {
+    while let Ok(event) = events.recv().await {
+        if let Some(archive) = archive_in(&event) {
+            info!(
+                "{} changed; restart to apply changes to an archive",
+                archive.display()
+            );
+            continue;
+        }
+        let _ = sink.send(event).await;
+    }
+}
+
+/// The archive file an event touches, if any.
+fn archive_in(event: &AssetSourceEvent) -> Option<&Path> {
+    use AssetSourceEvent as E;
+    let paths: [Option<&PathBuf>; 2] = match event {
+        E::AddedAsset(path)
+        | E::ModifiedAsset(path)
+        | E::RemovedAsset(path)
+        | E::AddedMeta(path)
+        | E::ModifiedMeta(path)
+        | E::RemovedMeta(path)
+        | E::AddedFolder(path)
+        | E::RemovedFolder(path)
+        | E::RemovedUnknown { path, .. } => [Some(path), None],
+        E::RenamedAsset { old, new }
+        | E::RenamedMeta { old, new }
+        | E::RenamedFolder { old, new } => [Some(old), Some(new)],
+    };
+    paths
+        .into_iter()
+        .flatten()
+        .find(|path| mount_path_of(path).is_some())
+        .map(PathBuf::as_path)
 }
 
 fn refuse_processed_mode(server: Res<AssetServer>) {
@@ -316,5 +378,27 @@ impl AssetWriter for GuardedWriter {
     ) -> Result<(), AssetWriterError> {
         self.check(&[path]).await?;
         self.inner.write_meta_bytes(path, bytes).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AssetSourceEvent as E, archive_in};
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn events_for_archive_files_are_recognised() {
+        let p = PathBuf::from;
+        assert_eq!(
+            archive_in(&E::ModifiedAsset(p("mods/core.zip"))),
+            Some(Path::new("mods/core.zip"))
+        );
+        let rename = E::RenamedAsset {
+            old: p("mods/.core.tar.tmp"),
+            new: p("mods/core.tar"),
+        };
+        assert_eq!(archive_in(&rename), Some(Path::new("mods/core.tar")));
+        assert_eq!(archive_in(&E::ModifiedAsset(p("mods/core/a.txt"))), None);
+        assert_eq!(archive_in(&E::AddedFolder(p("mods/core"))), None);
     }
 }

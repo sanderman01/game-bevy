@@ -10,13 +10,15 @@ license.workspace = true
 default = ["bevy"]
 # Bevy's `AssetReader` as a `Vfs`. With `zip` or `tar` also on, the archive asset source too.
 # Off for a command line tool, which reads through `StdVfs`.
-bevy = ["dep:bevy", "dep:blocking"]
+bevy = ["dep:async-channel", "dep:bevy", "dep:blocking"]
 # `.zip` mounts. Stored and Deflate members only.
 zip = ["dep:zip", "dep:crc32fast", "dep:flate2", "dep:tracing"]
 # Plain `.tar` mounts.
 tar = ["dep:tar", "dep:tracing"]
 
 [dependencies]
+# The watcher's inner channel; Bevy's `AssetSourceEvent` sender is this crate's type.
+async-channel = { workspace = true, optional = true }
 bevy = { workspace = true, optional = true }
 blocking = { workspace = true, optional = true }
 crc32fast = { workspace = true, optional = true }

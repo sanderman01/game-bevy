@@ -180,3 +180,56 @@ fn the_default_writer_refuses_paths_inside_a_mount() {
         Origin::Member { .. }
     ));
 }
+
+/// The `Default` source's watcher is wrapped to drop archive events; loose files must still
+/// reload through it. Needs Bevy's `file_watcher` feature (on under `cargo dt`).
+#[test]
+fn loose_files_still_reload_beside_an_archive() {
+    let root = root_with("basic.zip");
+    let root_path = root.path().to_string_lossy().into_owned();
+    let mut app = App::new();
+    app.add_plugins((
+        TaskPoolPlugin::default(),
+        ArchiveSourcePlugin::default().with_asset_root(root_path.clone()),
+        AssetPlugin {
+            file_path: root_path,
+            watch_for_changes_override: Some(true),
+            ..Default::default()
+        },
+    ))
+    .init_asset::<Text>()
+    .register_asset_loader(TextLoader);
+    let server = app.world().resource::<AssetServer>().clone();
+    if server
+        .get_source(AssetSourceId::Default)
+        .unwrap()
+        .event_receiver()
+        .is_none()
+    {
+        eprintln!("skipped: no file watcher (Bevy built without `file_watcher`)");
+        return;
+    }
+    let loose = server.load::<Text>("loose.txt");
+    let member = server.load::<Text>("pkg/a.txt");
+    assert_eq!(text(&mut app, &loose), "loose");
+    assert_eq!(text(&mut app, &member), "first");
+
+    // Rewriting the archive is ignored until a restart; the loose edit reloads.
+    let archive = root.path().join("pkg.zip");
+    std::fs::write(&archive, std::fs::read(&archive).unwrap()).unwrap();
+    std::fs::write(root.path().join("loose.txt"), "edited").unwrap();
+    let start = std::time::Instant::now();
+    loop {
+        app.update();
+        let assets = app.world().resource::<Assets<Text>>();
+        if assets.get(&loose).is_some_and(|text| text.0 == "edited") {
+            break;
+        }
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(10),
+            "the loose edit never reloaded"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert_eq!(text(&mut app, &member), "first");
+}
