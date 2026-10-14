@@ -1,0 +1,29 @@
+ename_editor/src/game_view.rs
+  s_baf869300155eb::t_2067621db2045d 30,56-57
+  s_04f78b93d98714::t_57e67f3964c791 31
+  s_baf869300155eb::t_ccb4667dd96690 32,58-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4b4d5c29239f2271a73549a147489baae1c45dbf",
+  "prompts": {},
+  "sessions": {
+    "s_04f78b93d98714": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5fd45141-1e08-4fce-97c2-4436521009dd",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
