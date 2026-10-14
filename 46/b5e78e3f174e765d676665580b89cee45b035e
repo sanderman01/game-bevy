@@ -1,0 +1,20 @@
+ename_engine/src/readback.rs
+  s_baf869300155eb::t_6e601847dc6c1d 414-415,435,437
+  s_baf869300155eb::t_2158fab053caae 175-178,400-404,410-413,417,419,422,424,426-427,429,432-434,436,452,461-474,476
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "46b5e78e3f174e765d676665580b89cee45b035e",
+  "prompts": {},
+  "sessions": {
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
