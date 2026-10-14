@@ -77,13 +77,16 @@ file on demand.
 
 ## Validation and limits
 
-An archive is unavailable, and reported, when any member has an absolute path, a `..` or `.`
-component, a drive prefix or a backslash; when two members share a path; when a file and a
+An archive is unavailable, and reported, when any member has an absolute path, a `..`
+component, a `:` (a drive prefix) or a backslash; when two members share a path; when a file and a
 directory collide; for tar links, sparse and special entries; and for encrypted zip members or a
 compression method other than Stored or Deflate. Limits on member count, path length and declared
 member size are checked before allocating, and decoded bytes are capped while inflating.
 
-`__MACOSX/` is skipped. Listings hide dot-files and `.meta` exactly as loose listings do.
+`.` components are dropped, since `tar -C dir .` writes `./a.txt`, and `__MACOSX/` is skipped.
+Listings hide dot-files and `.meta` exactly as loose listings do. The `zip` crate keeps only the
+last of two members with the same name, so that duplicate is not detected in a zip; it is in a
+tar.
 
 ## Conflicts and errors
 

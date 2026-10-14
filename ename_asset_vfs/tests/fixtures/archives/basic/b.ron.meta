@@ -1,0 +1,9 @@
+(
+    meta_format_version: "1.0",
+    asset: Load(
+        // Scoped to the test binary that defines the loader: `ename_asset_content`'s
+        // `archive_load.rs`.
+        loader: "archive_load::RonLoader",
+        settings: (),
+    ),
+)

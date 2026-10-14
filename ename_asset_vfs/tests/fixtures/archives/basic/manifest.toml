@@ -1,0 +1,6 @@
+[package]
+id = "basic"
+version = "1.0.0"
+authors = ["Test"]
+title = "Archive fixture"
+description = "Packed into basic.zip and basic.tar by scripts/make-archive-fixtures.sh."

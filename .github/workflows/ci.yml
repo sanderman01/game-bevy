@@ -51,6 +51,10 @@ jobs:
         run: |
           cargo check -p ename_asset_vfs --no-default-features --all-targets
           cargo check -p ename_asset_vfs --no-default-features --features bevy --all-targets
+          cargo check -p ename_asset_vfs --no-default-features --features zip --all-targets
+          cargo check -p ename_asset_vfs --no-default-features --features tar --all-targets
+          cargo check -p ename_asset_vfs --no-default-features --features zip,tar --all-targets
+          cargo check -p ename_asset_vfs --no-default-features --features bevy,zip,tar --all-targets
 
       - name: Check the package scanner without Bevy
         run: cargo check -p ename_asset_package --no-default-features --all-targets

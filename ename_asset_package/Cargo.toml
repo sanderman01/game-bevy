@@ -24,9 +24,14 @@ toml.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# The archive parity test packs the fixture packages and scans them through `ArchiveVfs`.
+ename_asset_vfs = { workspace = true, features = ["tar", "zip"] }
 # Drives the scan's futures in tests without going through Bevy, so the test suite does not
 # depend on the optional `bevy` feature being on. Already in `Cargo.lock` via Bevy.
 futures-lite.workspace = true
+tar.workspace = true
+tempfile.workspace = true
+zip.workspace = true
 
 [lints]
 workspace = true

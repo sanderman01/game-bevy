@@ -32,6 +32,10 @@ bevy = { version = "0.19.1", default-features = true, features = ["jpeg"] }
 bevy-inspector-egui = { version = "0.37.0", features = ["highlight_changes"] }
 bevy_egui = "0.40"
 big_space = { git = "https://github.com/aevyrie/big_space", rev = "5f25522", features = ["debug", "camera"] }
+# Positioned archive reads off Bevy's task threads. Already in `Cargo.lock` via Bevy.
+blocking = "1.7.0"
+# The zip member checksum. Already in `Cargo.lock` via `zip` and Bevy.
+crc32fast = "1.5.1"
 dirs = "7.0.0"
 egui = "0.34"
 egui_dock = "0.19"
@@ -49,6 +53,8 @@ ename_editor = { path = "ename_editor", version = "0.0.0" }
 ename_engine = { path = "ename_engine", version = "0.0.0" }
 ename_remote = { path = "ename_remote", version = "0.0.0" }
 example_game_lib = { path = "example_game_lib", version = "0.0.0" }
+# Pure-Rust inflate for zip members (`miniz_oxide`), no C zlib.
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
 futures-lite = "2.6.1"
 glob = "0.3.4"
 # The version `bevy_image` already uses, so `Image::try_into_dynamic` hands back this crate's type.
@@ -62,6 +68,8 @@ schemars = "1.0.4"
 semver = { version = "1.0.28", features = ["serde"] }
 serde = "1.0.228"
 serde_json = "1.0.145"
+# `default-features = false` drops `xattr`, which only matters for unpacking.
+tar = { version = "0.4.46", default-features = false }
 tempfile = "3.27.0"
 thiserror = "2.0.18"
 tokio = { version = "1.48.0", default-features = false }
@@ -69,6 +77,8 @@ toml = "1.1.2"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
 uuid = { version = "1.26.0", features = ["serde"] }
+# Only the central directory reader is used: members are read and inflated by `ename_asset_vfs`.
+zip = { version = "9.0.3", default-features = false }
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
