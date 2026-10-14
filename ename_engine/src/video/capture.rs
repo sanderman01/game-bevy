@@ -541,7 +541,17 @@ fn prepare_capture_targets(
     });
     let jobs = std::mem::take(&mut extracted.jobs);
     if (extracted.warm || !jobs.is_empty()) && gpu.pipelines.is_none() {
-        gpu.pipelines = Some(CapturePipelines::new(&device));
+        let mut pipelines = CapturePipelines::new(&device);
+        // The primary window's blit too, so a window recording's first frame does not compile.
+        if let Some(format) = windows
+            .primary
+            .and_then(|primary| windows.get(&primary))
+            .and_then(|window| window.swap_chain_texture_view_format)
+            .filter(|format| is_supported(*format))
+        {
+            pipelines.blit(&device, format);
+        }
+        gpu.pipelines = Some(pipelines);
     }
 
     for job in jobs {
@@ -695,11 +705,12 @@ fn prepare_image(
         let _ = job.shared.error.set(VideoError::UnsupportedFormat(format));
         return Err(DropReason::Unsupported);
     }
-    // wgpu validates the view's usage, which defaults to the texture's.
+    // wgpu validates the view's usage, which is the texture's when unset or empty.
     let usage = image
         .texture_view_descriptor
         .as_ref()
         .and_then(|descriptor| descriptor.usage)
+        .filter(|usage| !usage.is_empty())
         .unwrap_or(image.texture_descriptor.usage);
     if !usage.contains(TextureUsages::TEXTURE_BINDING) {
         let _ = job.shared.error.set(VideoError::UnreadableTarget(usage));

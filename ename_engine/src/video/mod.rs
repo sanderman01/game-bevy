@@ -733,6 +733,10 @@ fn finish_recordings(
                     Some(result.clone())
                 } else if let Some(failure) = &recorder.failure {
                     Some(Err(failure.clone()))
+                } else if let Some(error) = recorder.capture.error.get() {
+                    // Found by a request after the recording had ended, such as the last timed
+                    // one: it still fails the recording.
+                    Some(Err(error.clone()))
                 } else if recorder.writer.0.stuck_for() > settings.write_timeout {
                     Some(Err(stalled_ffmpeg("ffmpeg stopped reading frames")))
                 } else {
@@ -750,6 +754,10 @@ fn finish_recordings(
                 deadline,
                 skipped,
             } => match writer.0.result.get() {
+                // A late render-side error wins over what the writer saved.
+                Some(_) if capture.error.get().is_some() => {
+                    Some(Err(capture.error.get().unwrap().clone()))
+                }
                 Some(result) => {
                     log_drops(capture, &writer.0, *skipped);
                     Some(result.clone().map(|mut saved| {
@@ -1205,6 +1213,28 @@ mod tests {
         let error = VideoError::UnsupportedFormat(TextureFormat::Rgba16Float);
         job.shared.error.set(error.clone()).unwrap();
         job.shared.fail(capture::DropReason::NoSlot);
+        assert_eq!(finished(&mut app), Err(error));
+    }
+
+    /// An error found by the last request, after the recording has ended, still fails it
+    /// rather than saving what came before as a completed recording.
+    #[test]
+    fn a_render_error_after_the_end_fails_the_recording() {
+        let _guard = lock_processes();
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = app(dir.path(), "exit 0", CAT, |_| {});
+        let entity = record(
+            &mut app,
+            dir.path().join("a.mp4"),
+            VideoLength::Time(Duration::from_secs(3600)),
+        );
+        recording(&mut app, entity);
+        let first = jobs(&app);
+        deliver(&first);
+        // The recording has ended; the render side then reports a problem with its source.
+        app.world_mut().trigger(VideoStopRequested { entity });
+        let error = VideoError::UnreadableTarget(TextureUsages::RENDER_ATTACHMENT);
+        first[0].shared.error.set(error.clone()).unwrap();
         assert_eq!(finished(&mut app), Err(error));
     }
 
