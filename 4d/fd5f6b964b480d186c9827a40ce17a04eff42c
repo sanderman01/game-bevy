@@ -1,0 +1,21 @@
+docs/design/commands.md
+  s_baf869300155eb::t_d725d5ba28df85 1-67
+docs/design.md
+  s_baf869300155eb::t_a682441f54529d 16-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4dfd5f6b964b480d186c9827a40ce17a04eff42c",
+  "prompts": {},
+  "sessions": {
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
