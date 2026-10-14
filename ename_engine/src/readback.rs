@@ -9,9 +9,10 @@
 //! Readbacks of one target in flight are counted from spawn until Bevy delivers them or the
 //! `Screenshot` entity goes away undelivered (Bevy drops a second same-target `Screenshot` in a
 //! frame, such as one from a debug key). A [`Limit::Bounded`] request is refused once
-//! [`MAX_IN_FLIGHT`] are out, which bounds the GPU buffers Bevy allocates and its unbounded
-//! delivery channel. A readback that never arrives and is never despawned stops counting after
-//! [`RECLAIM_AFTER`], so a target is never blocked for good.
+//! [`MAX_IN_FLIGHT`] are out. This limits how fast new GPU buffers are requested; it is an
+//! admission limit, not a hard bound. A readback that never arrives and is never despawned stops
+//! counting after [`RECLAIM_AFTER`], so a target is never blocked for good, but whatever Bevy
+//! still holds for it is not freed by that.
 
 use std::{sync::Arc, time::Duration};
 

@@ -53,9 +53,9 @@ every frame. Failing would throw away what was recorded.
 once per frame and silently drops a second `Screenshot`, so neither feature spawns its own: both
 queue requests, and one `Screenshot` per target is fanned out to every requester with the crop it
 asked with. At most four readbacks of a target are in flight for video, counted until Bevy
-delivers them or drops their `Screenshot` entity, which bounds the GPU buffers and Bevy's unbounded
-delivery channel. One that never arrives stops counting after 10 seconds, so lost readbacks cannot
-block a target until restart.
+delivers them or drops their `Screenshot` entity. That limits how fast GPU buffers are requested; it
+is an admission limit, not a hard bound. One that never arrives stops counting after 10 seconds, so
+lost readbacks cannot block a target until restart, though whatever Bevy still holds is not freed.
 
 **The game never waits on ffmpeg.** Frames go to the writer through an eight-frame queue. A full
 queue drops the frame and counts it. A watchdog fails a recording whose writer has been stuck in
