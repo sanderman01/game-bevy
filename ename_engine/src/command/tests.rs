@@ -252,6 +252,47 @@ fn lists_schemas_with_the_root_stripped_and_defs_kept() {
 }
 
 #[test]
+fn a_result_schema_describes_what_is_serialized() {
+    #[derive(Serialize, Deserialize, JsonSchema)]
+    #[allow(dead_code, reason = "only the schema is read")]
+    struct Asymmetric {
+        #[serde(rename(serialize = "written", deserialize = "read"))]
+        field: u32,
+    }
+    #[derive(Deserialize, JsonSchema)]
+    #[serde(deny_unknown_fields)]
+    #[allow(dead_code, reason = "only the schema is read")]
+    struct Params {
+        #[serde(rename(serialize = "written", deserialize = "read"))]
+        field: u32,
+    }
+    fn asymmetric(In(_): In<Call<Params>>) -> Result<Asymmetric, CommandError> {
+        Ok(Asymmetric { field: 1 })
+    }
+    let mut app = app();
+    app.register_command(
+        CommandSpec::new("test.asymmetric", "Asymmetric."),
+        asymmetric,
+    );
+    let info = app
+        .world()
+        .resource::<CommandRegistry>()
+        .get("test.asymmetric")
+        .unwrap()
+        .clone();
+    assert!(
+        info.result["properties"].get("written").is_some(),
+        "{}",
+        info.result
+    );
+    assert!(
+        info.params["properties"].get("read").is_some(),
+        "{}",
+        info.params
+    );
+}
+
+#[test]
 #[should_panic(expected = "namespace.action")]
 fn a_name_without_one_dot_panics() {
     App::new().register_command(CommandSpec::new("echo", "Echo."), echo);

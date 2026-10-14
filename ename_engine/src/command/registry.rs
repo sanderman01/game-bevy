@@ -144,7 +144,8 @@ impl<P> Call<P> {
     /// Starts a job for `work`, recording this call's command and scope on it.
     ///
     /// Fails with `job_conflict` if `work` already carries a job: replacing it would orphan the
-    /// first.
+    /// first. On failure `work` is untouched and still the caller's: despawn it if it was spawned
+    /// for this job, or its work runs on with nothing tracking it.
     pub fn start_job<R>(
         &self,
         world: &mut World,
@@ -248,19 +249,19 @@ fn check_name(name: &str) {
     );
 }
 
-/// The draft 2020-12 schema of `T`, with the root title and description removed (the type's own
+/// The draft 2020-12 schema of `T` as `settings` reads it (params as deserialized, results as
+/// serialized, which differ under asymmetric serde attributes), with the root title and
+/// description removed (the type's own
 /// name and doc, noise to a client), the way rmcp generates its tools' schemas.
-fn schema_for<T: JsonSchema>() -> Schema {
-    let mut schema = SchemaSettings::draft2020_12()
-        .into_generator()
-        .into_root_schema_for::<T>();
+fn schema_for<T: JsonSchema>(settings: SchemaSettings) -> Schema {
+    let mut schema = settings.into_generator().into_root_schema_for::<T>();
     schema.remove("title");
     schema.remove("description");
     schema
 }
 
 fn params_schema<P: JsonSchema>(spec: &mut CommandSpec) -> Value {
-    let mut schema = schema_for::<P>();
+    let mut schema = schema_for::<P>(SchemaSettings::draft2020_12().for_deserialize());
     if let Some(adjust) = spec.adjust_params.take() {
         adjust(&mut schema);
     }
@@ -337,7 +338,7 @@ impl CommandAppExt for App {
             scope: spec.scope,
             read_only: spec.read_only,
             params: params_schema::<P>(&mut spec),
-            result: schema_for::<R>().to_value(),
+            result: schema_for::<R>(SchemaSettings::draft2020_12().for_serialize()).to_value(),
         };
         let world = self.world_mut();
         let id = world.register_system(handler);
@@ -373,7 +374,7 @@ impl CommandAppExt for App {
             scope: spec.scope,
             read_only: spec.read_only,
             params: params_schema::<P>(&mut spec),
-            result: schema_for::<R>().to_value(),
+            result: schema_for::<R>(SchemaSettings::draft2020_12().for_serialize()).to_value(),
         };
         let world = self.world_mut();
         let id = world.register_system(handler);
