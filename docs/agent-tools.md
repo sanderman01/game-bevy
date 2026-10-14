@@ -81,6 +81,7 @@ cannot become a crate that ships by accident.
 | `log_get_entries` | Recent tracing events, filtered by level, target and message. |
 | `editor_get_view` / `editor_set_view` | Which editor view is shown, Scene View or Game View; switch it as clicking its tab would. |
 | `screenshot_capture` | Write the game window, the game camera or the editor camera to a PNG file. |
+| `video_record` / `video_status` / `video_stop` | Record the game window, the game camera or the editor camera to an `.mp4` or `.mkv` file; follow or stop a long recording. |
 
 Every result also carries `pid`, three letters naming the run of the game process that answered
 it. See "Noticing a restart".
@@ -206,6 +207,42 @@ minimized window may never present a frame; the game gives up after 5 seconds an
 
 Game code uses the same capture through `ename_engine::screenshot`: spawn a `ScreenshotRequest`
 and observe `ScreenshotFinished`.
+
+## Video
+
+`video_record` takes the same `path` and `source` as `screenshot_capture`, plus a `duration`
+with its unit as the only key:
+
+| `duration` | Records |
+| --- | --- |
+| `{"frames": 600}` | 600 rendered frames, one video frame each. Plays in real time only if the game ran at `frame_rate`. |
+| `{"seconds": 10}` | 10 s of real time, resampled to `frame_rate`. |
+| `{"timecode": "00:01:30"}` | The same, as `hh:mm:ss` or `hh:mm:ss.fff`. |
+
+A bare number is refused, because JSON cannot tell `10` frames from `10.0` seconds. `frame_rate`
+defaults to 60 and goes up to 240. The output is H.264, `yuv420p`, tagged as sRGB (BT.709
+primaries and matrix, sRGB transfer). Odd sizes lose their last row or column.
+
+The tool waits for the file for up to 50 seconds. A longer recording comes back with
+`status: "recording"`, its `request` id and a note; `video_status` with `wait_seconds` (up to 50)
+collects it, and `video_stop` ends it early and waits for the file. `wait: false` returns as soon
+as the recording has started.
+
+The recording follows real time, so it continues while the world is paused. A camera source must
+stay visible: switching the view, resizing the window or the tab, or five seconds without a frame
+(a minimized window) ends the recording early. What was recorded is kept, and `ended` says why
+(`stopped`, `source_resized`, `camera_inactive`, `source_lost`, `stalled`). A recording that ends
+before its first frame is an error.
+
+Encoding runs in an `ffmpeg` child process, which must be on the game's `PATH`. The game picks the
+first encoder that passes a test encode: VAAPI, NVENC or QSV on Linux, then `libx264`.
+`ENAME_VIDEO_ENCODER=libx264` (or another known encoder name) in the game's environment forces
+one. When ffmpeg cannot keep up, frames are dropped rather than slowing the game, and
+`dropped_frames` counts them.
+
+Video needs the `video` cargo feature, which `example_game_editor_bin` enables by default. Game code
+uses the same recorder through `ename_engine::video`: spawn a `VideoRequest` and observe
+`VideoFinished`.
 
 ## What the agent cannot see
 

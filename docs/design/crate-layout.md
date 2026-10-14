@@ -89,6 +89,12 @@ ordering structural rather than a rule in `main.rs` that every future target has
 check too. It also proves that the editor crate and `ename_remote` are absent from
 `example_game_bin`, the binary that stands in for a shipping build.
 
+Video recording is behind a `video` feature on `ename_engine`, forwarded by `ename_remote` and
+`ename_editor` and turned on by `example_game_editor_bin`'s defaults. It adds no dependency (it runs
+the system `ffmpeg`), so the feature only keeps the API and the external process out of the
+shipping binary. Cargo unifies features across one build, so a workspace-wide build turns it on for
+`example_game_bin` too; that is harmless.
+
 An earlier `EditorCamera` was a historical example of the cost of getting a layer wrong. It lived
 in the engine because `engine` depended on `editor` and the editor could not name
 `engine::camera::MainCamera`. That one was deleted. `ename_editor::camera::EditorCamera` now

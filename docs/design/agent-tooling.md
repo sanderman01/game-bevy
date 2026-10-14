@@ -68,6 +68,16 @@ it. `game.screenshot.result` then reads the outcome the engine keeps on that ent
 seconds. A watching method could hold one HTTP call open instead, but it would still need the
 request id from a separate call. The sidecar already polls the same way for `time_set` steps.
 
+**A recording is a request, a poll and a stop.** `ename_engine::video` records, behind the
+`video` feature; `game.video.record` (and `editor.video.record`) spawn a request,
+`game.video.status` reads it and `game.video.stop` ends it early. A recording can outlast any
+tool-call timeout, and a timecode can run for hours, so `video_record` waits at most 50 seconds and
+then returns the request id with the recording still running. That keeps one call under the 60 s
+timeout many MCP clients inherit, and the common ten-second recording is still one call. Every
+video tool runs under one hard deadline covering every request it makes, because the HTTP client
+has none; the 50 s cap is the poll loop choosing to return, and the hard deadline only catches a
+game that stopped answering. See [video-capture.md](video-capture.md) for the recorder itself.
+
 ## What the agent can actually see
 
 Type registration is a correctness requirement for MCP, not a convenience for the inspector. An
