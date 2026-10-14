@@ -77,7 +77,7 @@ toml = "1.1.2"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
 uuid = { version = "1.26.0", features = ["serde"] }
-# Only the central directory reader is used: members are read and inflated by `ename_asset_vfs`.
+# Tests and tooling build archives with it; `ename_asset_vfs` reads them with its own parser.
 zip = { version = "9.0.3", default-features = false }
 
 # Enable a small amount of optimization in the dev profile.

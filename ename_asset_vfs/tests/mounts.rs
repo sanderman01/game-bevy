@@ -488,7 +488,7 @@ fn duplicate_zip_member_names_are_refused() {
     let mounts = Mounts::new(root.path());
     assert!(mounts.read_file(Path::new("pkg/a.txt")).unwrap().is_err());
     let problems = mounts.problems();
-    assert!(problems[0].detail.contains("duplicate"), "{problems:?}");
+    assert!(problems[0].detail.contains("appears twice"), "{problems:?}");
 }
 
 /// Members whose data runs into the next local header overlap: the overlapping-file zip bomb.
@@ -799,4 +799,75 @@ fn holds_archive_sees_archives_anywhere_below() {
     for path in ["loose", "loose/a.txt", "missing"] {
         assert!(!mounts.holds_archive(Path::new(path)).unwrap(), "{path}");
     }
+}
+
+/// A footer appended after a real archive claims a directory where none is. Only the last end
+/// record counts, and the directory it names must end where it begins; nothing falls back to the
+/// earlier, real one.
+#[test]
+fn an_appended_footer_is_not_bypassed_by_falling_back_to_an_earlier_one() {
+    let mut bytes = fixture("basic.zip");
+    let mut footer = vec![0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0];
+    footer.extend(1u16.to_le_bytes());
+    footer.extend(1u16.to_le_bytes());
+    footer.extend(46u32.to_le_bytes());
+    footer.extend(0x7fff_ffffu32.to_le_bytes());
+    footer.extend(0u16.to_le_bytes());
+    bytes.extend(footer);
+    let err = mount_zip(&bytes).unwrap_err();
+    assert!(err.contains("central directory"), "{err}");
+}
+
+/// A record claiming more central directory than the footer bounds is refused, never read past.
+#[test]
+fn a_central_record_running_past_the_directory_is_refused() {
+    let mut bytes = fixture("basic.zip");
+    patch_central(&mut bytes, b"sub/deep/c.txt", |record| {
+        record[32..34].copy_from_slice(&u16::MAX.to_le_bytes());
+    });
+    let err = mount_zip(&bytes).unwrap_err();
+    assert!(err.contains("malformed central directory"), "{err}");
+}
+
+#[test]
+fn a_tar_ending_on_a_pax_header_with_unknown_keys_is_refused() {
+    let mut bytes = tar_of(|builder| {
+        let body = b"20 mtime=1700000000\n";
+        let mut header = tar::Header::new_ustar();
+        header.set_entry_type(tar::EntryType::XHeader);
+        header.set_size(body.len() as u64);
+        header.set_cksum();
+        builder.append(&header, &body[..]).unwrap();
+    });
+    bytes.extend([0; 1024]);
+    assert!(mount_tar(&bytes).unwrap_err().contains("no entry after it"));
+}
+
+/// Symlinked directories are followed for reads but are links to a recursive remove or rename,
+/// and a cycle of them must not make the walk explode.
+#[cfg(unix)]
+#[test]
+fn holds_archive_does_not_follow_symlinked_directories() {
+    let root = root_with(&[
+        ("real/pkg.zip", &fixture("basic.zip")),
+        ("plain/a.txt", b"a"),
+    ]);
+    for (link, target) in [
+        ("a", "."),
+        ("b", "."),
+        ("plain/back", ".."),
+        ("to_real", "real"),
+    ] {
+        std::os::unix::fs::symlink(target, root.path().join(link)).unwrap();
+    }
+    let mounts = Mounts::new(root.path());
+    assert!(mounts.holds_archive(Path::new("")).unwrap());
+    for path in ["a", "b", "plain", "plain/back", "to_real", "plain/a.txt"] {
+        assert!(!mounts.holds_archive(Path::new(path)).unwrap(), "{path}");
+    }
+    // Reads still follow the link.
+    assert!(matches!(
+        mounts.origin(Path::new("to_real/pkg/a.txt")).unwrap(),
+        Origin::Member { .. }
+    ));
 }

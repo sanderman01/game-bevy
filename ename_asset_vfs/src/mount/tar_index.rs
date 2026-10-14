@@ -25,6 +25,8 @@ pub(crate) fn index(file: &File, limits: &Limits) -> Result<ArchiveIndex, IndexE
     let mut offset = 0;
     let mut long_path: Option<String> = None;
     let mut pax_size: Option<u64> = None;
+    // Set by any extension header, whatever keys it holds; the next real entry clears it.
+    let mut pending_extension = false;
     loop {
         // A tar ends with a zero block. Running out of file first means it was cut short, or was
         // never a tar at all.
@@ -33,7 +35,7 @@ pub(crate) fn index(file: &File, limits: &Limits) -> Result<ArchiveIndex, IndexE
         }
         let header = read_at(file, offset, BLOCK)?;
         if header.iter().all(|&byte| byte == 0) {
-            if long_path.is_some() || pax_size.is_some() {
+            if pending_extension {
                 return Err("an extension header with no entry after it"
                     .to_owned()
                     .into());
@@ -45,6 +47,7 @@ pub(crate) fn index(file: &File, limits: &Limits) -> Result<ArchiveIndex, IndexE
         let declared = parse_number(&header[124..136])
             .ok_or_else(|| format!("bad size field at offset {offset}"))?;
         let entry = matches!(typeflag, b'0' | 0 | b'7' | b'5');
+        pending_extension &= !entry;
         // An extension header applies to the next real entry, so only that entry consumes it.
         let path = match long_path.take_if(|_| entry) {
             Some(path) => path,
@@ -62,6 +65,7 @@ pub(crate) fn index(file: &File, limits: &Limits) -> Result<ArchiveIndex, IndexE
             .ok_or_else(|| format!("member {path:?} runs past the end of the file"))?;
         match typeflag {
             b'L' | b'x' => {
+                pending_extension = true;
                 builder.count_record()?;
                 if size > MAX_EXTENSION_LEN {
                     return Err(format!("a {size}-byte extension header at offset {offset}").into());

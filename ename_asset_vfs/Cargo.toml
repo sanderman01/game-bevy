@@ -12,7 +12,7 @@ default = ["bevy"]
 # command line tool, which reads through `StdVfs`.
 bevy = ["dep:async-channel", "dep:bevy", "dep:blocking"]
 # `.zip` mounts. Stored and Deflate members only.
-zip = ["dep:zip", "dep:crc32fast", "dep:flate2"]
+zip = ["dep:crc32fast", "dep:flate2"]
 # Plain `.tar` mounts, parsed here: no dependency.
 tar = []
 
@@ -25,13 +25,13 @@ crc32fast = { workspace = true, optional = true }
 flate2 = { workspace = true, optional = true }
 thiserror.workspace = true
 tracing.workspace = true
-zip = { workspace = true, optional = true }
 
 [dev-dependencies]
 futures-lite.workspace = true
-# Builds tar archives for the tests.
+# Build archives for the tests.
 tar.workspace = true
 tempfile.workspace = true
+zip.workspace = true
 
 [lints]
 workspace = true

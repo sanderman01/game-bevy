@@ -318,3 +318,33 @@ fn the_writer_refuses_recursive_operations_over_an_archive() {
     assert!(root.path().join("mods/deep/pkg.zip").exists());
     assert!(!root.path().join("moved").exists());
 }
+
+/// A symlink to a mounted archive is not a loose file: writing through it would overwrite the
+/// archive.
+#[cfg(unix)]
+#[test]
+fn the_writer_refuses_symlinks_into_an_archive() {
+    let root = root_with("basic.zip");
+    let archive = root.path().join("pkg.zip");
+    std::os::unix::fs::symlink(&archive, root.path().join("alias.txt")).unwrap();
+    std::os::unix::fs::symlink(&archive, root.path().join("x.txt.meta")).unwrap();
+    let before = std::fs::read(&archive).unwrap();
+    let app = app_over(root.path());
+    let writer = default_writer(&app);
+    block_on(async {
+        assert!(
+            writer
+                .write_bytes(Path::new("alias.txt"), b"x")
+                .await
+                .is_err()
+        );
+        assert!(
+            writer
+                .write_meta_bytes(Path::new("x.txt"), b"x")
+                .await
+                .is_err()
+        );
+        assert!(writer.remove(Path::new("alias.txt")).await.is_err());
+    });
+    assert_eq!(std::fs::read(&archive).unwrap(), before);
+}

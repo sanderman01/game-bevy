@@ -31,7 +31,7 @@ work without the other, and nobody compiles archive dependencies they don't use.
 | Feature | Enables |
 | --- | --- |
 | `bevy` | `AssetReaderVfs`, `ArchiveSourcePlugin` with its reader, guarded writer and watcher, and `check_writable`. |
-| `zip` | `.zip` mounts (Deflate through pure-Rust `miniz_oxide`). |
+| `zip` | `.zip` mounts, parsed in the crate; Deflate through pure-Rust `miniz_oxide`. |
 | `tar` | `.tar` mounts, parsed in the crate with no dependency. |
 
 The mount code always compiles; with no format nothing ever mounts. This departs from the plan,
@@ -84,8 +84,11 @@ thread.
 Only the index stays in memory, about 100 bytes per member. Members are read from the archive
 file on demand.
 
-- Zip: the index comes from the central directory alone, read through a buffer, including Zip64
-  fields. A member's data start sits behind its local header, whose extra field often differs
+- Zip: the index comes from the central directory alone, parsed in the crate rather than by the
+  `zip` crate, which picks its own end record (falling back to earlier ones) and allocates before
+  any limit applies. The directory is read in one piece from exactly where the validated end
+  record says, and must end where the end records begin; Zip64 sizes and offsets are understood.
+  Archives with data prepended (self-extracting) or spanning disks are refused. A member's data start sits behind its local header, whose extra field often differs
   from the central one, so it is resolved on the first read and cached. Every read verifies the
   CRC32 and decoded length.
 - Tar: parsed in the crate, one positioned 512-byte read per header, skipping the data. ustar and
@@ -118,10 +121,9 @@ Limits:
 - Member count counts every record, directories and tar extension headers included. A zip's
   declared count and central directory size are read from its end record (the one whose comment
   ends exactly at the end of the file, from its Zip64 version when a Zip64 locator precedes it)
-  and checked before the `zip` crate parses or allocates anything for them. Its on-disk and total
-  counts must agree, the directory size must fit the count and the file, and a Zip64 record's
-  extensible data is capped at 64 KiB. Duplicate names are caught by comparing that count with
-  the distinct names the crate keeps.
+  and checked before anything is allocated for them. Its on-disk and total counts must agree, the
+  directory must hold at least 46 bytes per member and end where the end records begin, and a
+  Zip64 record's extensible data is capped at 64 KiB. Duplicate names are refused.
 - Tar extension bodies (GNU long names, PAX) are capped at 64 KiB before they are read.
 - Path length is capped at 4096 bytes and each name at 255.
 - Member size (default 1 GiB) is checked against the declared size when indexing. Inflating
@@ -161,9 +163,12 @@ Nothing writes into a mount.
   rename. Paths are normalized first, so `pkg/../pkg/x` is inside `pkg`, and the normalized path
   is what gets written: through a symlink the OS would read `link/..` differently. Removing a
   directory, removing the assets in one, or renaming one is refused when a mount or an archive
-  file lies anywhere under it. That covers Bevy writing a default `.meta`.
+  file lies anywhere under it; a symlinked directory there is a link to those operations and is
+  not walked. Where a symlink on the way leads is checked too, the last component and a `.meta`
+  included, so a link to `pkg.zip` can't be written through. That covers Bevy writing a default
+  `.meta`.
 - `ename_fix` skips archive-backed assets and counts them.
-- `ename_mv` refuses moves into or out of a mount.
+- `ename_mv` refuses moves into or out of a mount under the project's asset root.
 - The editor's stage save calls `check_writable` (in `ename_asset_vfs`, re-exported by
   `ename_asset_content`) before serialising anything. It is a no-op without `ArchiveMounts`.
 

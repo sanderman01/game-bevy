@@ -323,7 +323,8 @@ pub(crate) struct GuardedWriter {
 }
 
 impl GuardedWriter {
-    /// The normalized form of `path`, or an error when it is not loose. Callers delegate exactly
+    /// The normalized form of `path`, or an error when it, or wherever a symlink on the way leads,
+    /// is not loose. Callers delegate exactly
     /// this, never the original: through a symlink, `link/../pkg` is not `pkg` to the OS.
     /// `whole_tree` also refuses a directory with a mount or an archive file anywhere below it,
     /// for operations that remove or move everything under `path`.
@@ -334,7 +335,7 @@ impl GuardedWriter {
             let refused = if whole_tree {
                 mounts.holds_archive(&path)?
             } else {
-                !mounts.origin(&path)?.is_loose()
+                !mounts.origin_followed(&path)?.is_loose()
             };
             if refused {
                 return Err(read_only(&path));
@@ -356,6 +357,7 @@ impl AssetWriter for GuardedWriter {
 
     async fn write_meta<'a>(&'a self, path: &'a Path) -> Result<Box<Writer>, AssetWriterError> {
         let path = self.check(path, false).await?;
+        self.check(&meta_path(&path), false).await?;
         self.inner.write_meta(&path).await
     }
 
@@ -366,6 +368,7 @@ impl AssetWriter for GuardedWriter {
 
     async fn remove_meta<'a>(&'a self, path: &'a Path) -> Result<(), AssetWriterError> {
         let path = self.check(path, false).await?;
+        self.check(&meta_path(&path), false).await?;
         self.inner.remove_meta(&path).await
     }
 
@@ -387,6 +390,8 @@ impl AssetWriter for GuardedWriter {
     ) -> Result<(), AssetWriterError> {
         let old_path = self.check(old_path, false).await?;
         let new_path = self.check(new_path, false).await?;
+        self.check(&meta_path(&old_path), false).await?;
+        self.check(&meta_path(&new_path), false).await?;
         self.inner.rename_meta(&old_path, &new_path).await
     }
 
@@ -428,6 +433,7 @@ impl AssetWriter for GuardedWriter {
         bytes: &'a [u8],
     ) -> Result<(), AssetWriterError> {
         let path = self.check(path, false).await?;
+        self.check(&meta_path(&path), false).await?;
         self.inner.write_meta_bytes(&path, bytes).await
     }
 }

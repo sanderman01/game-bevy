@@ -33,7 +33,8 @@ ename_asset_package           -> ename_asset_alias, ename_asset_vfs, semver, ser
 ename_asset_alias             -> ename_asset_vfs, async-lock, serde, toml, glob, uuid, thiserror
                                  + bevy, behind the default `bevy` feature
 ename_asset_vfs               -> thiserror, tracing   (no first-party deps)
-                                 + bevy and zip, each behind its own feature; tar needs no crate
+                                 + bevy, and crc32fast + flate2 for zip, behind features;
+                                 both archive formats are parsed in the crate
 
 ename_mcp (bin)               -> rmcp, reqwest, tokio, serde_json  (no first-party deps, no bevy)
 ename_xtask (bin)             -> ename_asset_alias, ename_asset_package, ename_asset_vfs (zip, tar),

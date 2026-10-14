@@ -173,7 +173,10 @@ struct Mount {
 /// What one loose directory holds, as far as mounts are concerned. Built from one listing.
 #[derive(Default)]
 struct DirInfo {
+    /// Symlinked directories included: reads follow them, as the platform reader does.
     subdirs: HashSet<OsString>,
+    /// The subdirectories that are symlinks.
+    linked: HashSet<OsString>,
     mounts: HashMap<OsString, Arc<Mount>>,
     /// Regular files with an archive extension, with the mount they serve. Never listed.
     archive_files: HashMap<OsString, Option<Arc<Mount>>>,
@@ -287,24 +290,53 @@ impl Mounts {
         }
     }
 
+    /// Like [`Mounts::origin`], and also where the OS would really write: a symlink on the way,
+    /// the last component included, may lead into a mount or onto an archive file.
+    pub fn origin_followed(&self, path: &Path) -> io::Result<Origin> {
+        let origin = self.origin(path)?;
+        match normalize(path) {
+            Some(normalized) if origin.is_loose() => {
+                self.origin_of_file(&self.root.join(normalized))
+            }
+            _ => Ok(origin),
+        }
+    }
+
     /// Whether anything under `path`, itself included, is a mount or an archive file: what a
-    /// recursive remove or a rename of `path` would destroy or move.
+    /// recursive remove or a rename of `path` would destroy or move. A symlinked directory is
+    /// removed or moved as a link, so nothing behind one counts.
     pub fn holds_archive(&self, path: &Path) -> io::Result<bool> {
-        if !self.origin(path)?.is_loose() {
+        if !self.origin_followed(path)?.is_loose() {
             return Ok(true);
         }
         let Some(path) = normalize(path) else {
             return Ok(false);
         };
+        if !self.is_real_dir(&path)? {
+            return Ok(false);
+        }
         let mut stack = vec![path.into_owned()];
         while let Some(dir) = stack.pop() {
             let info = self.dir_info(&dir, true).expect("io allowed")?;
             if !info.archive_files.is_empty() {
                 return Ok(true);
             }
-            stack.extend(info.subdirs.iter().map(|name| dir.join(name)));
+            stack.extend(
+                info.subdirs
+                    .difference(&info.linked)
+                    .map(|name| dir.join(name)),
+            );
         }
         Ok(false)
+    }
+
+    /// Whether `path` is a directory and not a symlink to one, from its parent's listing.
+    fn is_real_dir(&self, path: &Path) -> io::Result<bool> {
+        let (Some(parent), Some(name)) = (path.parent(), path.file_name()) else {
+            return Ok(true);
+        };
+        let info = self.dir_info(parent, true).expect("io allowed")?;
+        Ok(info.subdirs.contains(name) && !info.linked.contains(name))
     }
 
     /// `path` relative to the asset root, or `None` when it lies outside it. A path that doesn't
@@ -572,6 +604,9 @@ impl Mounts {
                     continue;
                 };
                 file_type = metadata.file_type();
+                if file_type.is_dir() {
+                    info.linked.insert(name.clone());
+                }
             }
             if file_type.is_dir() {
                 info.subdirs.insert(name);
@@ -957,6 +992,19 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(overlaid, [(PathBuf::from("../x.zip"), false)]);
+    }
+
+    /// Checking a plain file before renaming it lists nothing for the file itself.
+    #[test]
+    fn holds_archive_on_a_file_lists_only_its_parent() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("dir")).unwrap();
+        std::fs::write(root.path().join("dir/a.txt"), "a").unwrap();
+        let mounts = Mounts::new(root.path());
+        assert!(!mounts.holds_archive(Path::new("dir/a.txt")).unwrap());
+        let dirs = mounts.dirs.read().unwrap();
+        assert!(!dirs.contains_key(Path::new("dir/a.txt")));
+        assert_eq!(mounts.listings.load(Ordering::Relaxed), 2);
     }
 
     /// A directory that could not be listed is an error, and is listed again next time.
