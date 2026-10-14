@@ -1,0 +1,20 @@
+ename_remote/src/video.rs
+  s_baf869300155eb::t_d8596fd7a57ac6 165,181,193,195-196,382
+  s_baf869300155eb::t_2a3f17098e44bd 191-192,194,391
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bab10c4e660a7a80c9a8c7354a63ef375e8c8e32",
+  "prompts": {},
+  "sessions": {
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
