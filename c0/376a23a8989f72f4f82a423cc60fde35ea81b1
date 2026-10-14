@@ -1,0 +1,33 @@
+docs/assets-archives.md
+  s_bd5bbd7df85713::t_dc0d45e360c2ab 37-38,70-74,92-94,99-103,119-124,138-139,161-164
+ename_asset_vfs/src/archive_source.rs
+  s_bd5bbd7df85713::t_3db5293d5c0883 11-14,49,269,273-278,281-285,326-330,332,334-340,342-344,347,353-354,358-359,363-364,368-369,377-380,388-390,394-395,399-400,404-405,412-413,421-422,430-431,456
+ename_asset_vfs/src/archive_vfs.rs
+  s_bd5bbd7df85713::t_b1fd5e3f401cdd 53-57
+ename_asset_vfs/src/mount/mod.rs
+  s_bd5bbd7df85713::t_8a6770797c19d0 219-222,234-236,256-259,277,283,286-305,307,348-351,379-382,406-409,432-435,440-441,447-457,469,472,474,483,485,499,506-524,526-538,542-546,551-564,566-568,570,658,804,867-873,888-891,906-911,926-984
+ename_asset_vfs/tests/archive_source.rs
+  s_bd5bbd7df85713::t_43339afd856a49 197,254-320
+ename_asset_vfs/tests/mounts.rs
+  s_bd5bbd7df85713::t_89ed8c7b06f057 163-171,179,188-190,194-196,412,451,455,459-467,631-802
+ename_xtask/src/fix.rs
+  s_bd5bbd7df85713::t_0e7ffd17b51570 38-48
+ename_xtask/src/mv.rs
+  s_bd5bbd7df85713::t_2f11d11dcc778c 72-77,175-179,183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c0376a23a8989f72f4f82a423cc60fde35ea81b1",
+  "prompts": {},
+  "sessions": {
+    "s_bd5bbd7df85713": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aab7adb6dc4d2b713",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
