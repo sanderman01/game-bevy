@@ -1,0 +1,34 @@
+ename_engine/src/video/mod.rs
+  s_baf869300155eb::t_f909d9ccb28584 48
+  s_baf869300155eb::t_4b0828e41b00db 49
+ename_engine/Cargo.toml
+  s_baf869300155eb::t_4b0828e41b00db 30-33
+ename_engine/src/video/nv12.wgsl
+  s_baf869300155eb::t_9b040fa90c318f 1-105
+ename_engine/src/video/nv12.rs
+  s_baf869300155eb::t_44f23d3f943ee1 464-466,468,470,474-475,505-506
+  s_baf869300155eb::t_9d663a887a4d68 420,428-433,442-449
+  s_baf869300155eb::t_4b0828e41b00db 259-361,365-377
+  s_baf869300155eb::t_b676eefe918095 1-11,15-258,517
+  s_baf869300155eb::t_daf01cf8ecbaaf 12-14,362-364,399-407,409-413,417-419,421-427,434-441,487-491,501,508-515
+  s_baf869300155eb::t_cd9c28ad9b5d70 378-398,414-416,450-463,467,469,471-473,476-486,492-500,502-504,507,516
+  s_baf869300155eb::t_104bbb9db5f7df 408
+Cargo.lock
+  s_baf869300155eb::t_4a90c23dba725d 3030
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9a089bf19d197d94451c7d1560e7bba7ca06df8b",
+  "prompts": {},
+  "sessions": {
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
