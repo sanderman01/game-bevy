@@ -439,6 +439,7 @@ fn start_recordings(
             ffmpeg: settings.ffmpeg.clone(),
             forced_encoder: settings.forced_encoder.clone(),
             probe_timeout: settings.probe_timeout,
+            stall_timeout: settings.stall_timeout,
             encoder_cache: settings.encoder_cache.clone(),
         });
         writers.0.push((shared.clone(), thread));
@@ -1027,16 +1028,24 @@ mod tests {
             VideoLength::Time(Duration::from_secs(3600)),
         );
         recording(&mut app, entity);
+        let started = Instant::now();
         for _ in 0..2 {
             app.update();
             std::thread::sleep(Duration::from_millis(20));
             deliver_all(&mut app, 8);
         }
+        let recorded = started.elapsed();
         app.world_mut().trigger(VideoStopRequested { entity });
         let saved = finished(&mut app).unwrap();
         assert_eq!(saved.ended, VideoEnd::Stopped);
-        // A few ticks of 1/60 s, nowhere near an hour.
-        assert!((1..30).contains(&saved.frames), "{}", saved.frames);
+        // The ticks up to the last delivered stamp plus one period: bounded by the wall time the
+        // frames were requested over, whatever the machine's load. Nowhere near an hour.
+        let bound = (recorded.as_secs_f64() * 60.0).ceil() as u32 + 2;
+        assert!(
+            (1..=bound).contains(&saved.frames),
+            "{} frames in {recorded:?}",
+            saved.frames
+        );
         let bytes = std::fs::metadata(&path).unwrap().len();
         assert_eq!(bytes, u64::from(saved.frames) * 8 * 8 * 4);
     }
@@ -1221,7 +1230,10 @@ mod tests {
         assert_eq!(readbacks(&mut app), crate::readback::MAX_IN_FLIGHT as usize);
         std::thread::sleep(Duration::from_millis(300));
         // The recording gives up on them and stalls, but the GPU slots stay taken.
-        assert_eq!(finished(&mut app), Err(VideoError::TimedOut(STALL_TIMEOUT)));
+        assert_eq!(
+            finished(&mut app),
+            Err(VideoError::TimedOut(Duration::from_millis(200)))
+        );
         assert_eq!(readbacks(&mut app), crate::readback::MAX_IN_FLIGHT as usize);
         let window = app
             .world_mut()

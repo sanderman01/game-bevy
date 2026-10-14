@@ -225,8 +225,10 @@ pub(crate) fn encode_args(
     args
 }
 
-/// Output ticks to fill before a frame at `stamp`: those from `next` up to, not including, the
-/// first tick at or after `stamp`, and never past `limit`. Tick `k` is at `k / fps`.
+/// Output ticks to fill before a frame at `stamp`: those from `next` up to the tick nearest
+/// `stamp`, which the new frame takes, and never past `limit`. Tick `k` is at `k / fps`.
+/// Nearest, not next: a game running at the output rate has stamps that jitter around the ticks,
+/// and rounding up would flip frames between duplicated and dropped.
 pub(crate) fn ticks_until(
     stamp: Duration,
     fps: u32,
@@ -234,7 +236,7 @@ pub(crate) fn ticks_until(
     limit: u64,
 ) -> std::ops::Range<u64> {
     const NANOS: u128 = 1_000_000_000;
-    let end = (stamp.as_nanos() * fps as u128).div_ceil(NANOS);
+    let end = (stamp.as_nanos() * fps as u128 + NANOS / 2) / NANOS;
     let end = (end.min(limit as u128)) as u64;
     next..end.max(next)
 }
@@ -387,6 +389,8 @@ pub(crate) struct WriterJob {
     pub ffmpeg: OsString,
     pub forced_encoder: Option<String>,
     pub probe_timeout: Duration,
+    /// Reported in [`VideoError::TimedOut`] when a recording stalls before its first frame.
+    pub stall_timeout: Duration,
     /// Per app, so tests with fake programs do not share a probe result.
     pub encoder_cache: Arc<OnceLock<&'static EncoderSpec>>,
 }
@@ -534,7 +538,9 @@ impl Session<'_> {
     /// of what ffmpeg printed. Safe to call twice.
     fn shutdown(&mut self) -> String {
         self.stdin = None;
-        if let Some(mut child) = self.shared.lock_child().take() {
+        // Out of the slot first, so the lock is not held while reaping.
+        let child = self.shared.lock_child().take();
+        if let Some(mut child) = child {
             let _ = child.kill();
             let _ = child.wait();
         }
@@ -635,12 +641,12 @@ fn next_frame(job: &WriterJob, shared: &WriterShared) -> Result<Option<Frame>, S
 }
 
 /// The error for a recording that ended before any frame was encoded.
-fn no_frames(shared: &WriterShared) -> Stop {
+fn no_frames(job: &WriterJob, shared: &WriterShared) -> Stop {
     match shared.end.get() {
         Some(End {
             reason: VideoEnd::Stalled,
             ..
-        }) => VideoError::TimedOut(super::STALL_TIMEOUT).into(),
+        }) => VideoError::TimedOut(job.stall_timeout).into(),
         Some(end) => VideoError::NoFrames(end.reason).into(),
         // Closed without an end: the main side dropped it.
         None => Stop::Cancelled,
@@ -664,7 +670,7 @@ fn write(
     let spec = spec?;
 
     let Some(first) = next_frame(job, shared)? else {
-        return Err(no_frames(shared));
+        return Err(no_frames(job, shared));
     };
     let format = first.image.texture_descriptor.format;
     if !matches!(
@@ -709,7 +715,10 @@ fn write(
         .spawn()
         .map_err(spawn_error)?;
     session.stdin = child.stdin.take();
-    if let Some(stderr) = child.stderr.take() {
+    let stderr = child.stderr.take();
+    // Registered before anything else can fail, so every error path reaps it.
+    session.register(child)?;
+    if let Some(stderr) = stderr {
         session.stderr = Some(
             std::thread::Builder::new()
                 .name("video-ffmpeg-stderr".into())
@@ -717,7 +726,6 @@ fn write(
                 .map_err(|err| ffmpeg_error(err.to_string()))?,
         );
     }
-    session.register(child)?;
 
     let mut written: u64 = 0;
     let mut buffer = Vec::with_capacity((size.x * size.y * 4) as usize);
@@ -777,9 +785,6 @@ fn write(
     let Some(end) = shared.end.get().copied() else {
         return Err(Stop::Cancelled);
     };
-    if written == 0 {
-        return Err(no_frames(shared));
-    }
     // Closing stdin tells ffmpeg to finish the file.
     session.stdin = None;
     let status = session.wait(None)?;
@@ -787,6 +792,10 @@ fn write(
         return Err(ffmpeg_error(format!("ffmpeg exited with {status}")).into());
     }
     temp.as_file().sync_all().map_err(write_error)?;
+    // An empty file must not replace an earlier recording at `path`.
+    if temp.as_file().metadata().map_err(write_error)?.len() == 0 {
+        return Err(ffmpeg_error("ffmpeg exited successfully but wrote nothing".into()).into());
+    }
     // After this, cancel loses: the file is published even if the request is gone.
     if shared
         .state
@@ -855,9 +864,19 @@ pub(crate) mod tests {
     /// Whether the process whose pid the fake wrote is gone (or never started).
     pub(crate) fn fake_exited(dir: &Path) -> bool {
         match std::fs::read_to_string(dir.join("pid")) {
-            Ok(pid) => !Path::new(&format!("/proc/{}", pid.trim())).exists(),
+            Ok(pid) => process_gone(pid.trim()),
             Err(_) => true,
         }
+    }
+
+    /// `kill -0` fails once a process is reaped; a zombie still answers it.
+    pub(crate) fn process_gone(pid: &str) -> bool {
+        !Command::new("kill")
+            .args(["-0", pid])
+            .stderr(Stdio::null())
+            .status()
+            .unwrap()
+            .success()
     }
 
     pub(crate) fn test_image(width: u32, height: u32, format: TextureFormat) -> Image {
@@ -889,13 +908,28 @@ pub(crate) mod tests {
         // 30 fps: a frame at 100 ms covers ticks 0..3 (0, 33, 67 ms); one at exactly 100 ms
         // owns tick 3.
         assert_eq!(ticks_until(ms(100), 30, 0, 30), 0..3);
-        assert_eq!(ticks_until(ms(101), 30, 0, 30), 0..4);
+        assert_eq!(ticks_until(ms(101), 30, 0, 30), 0..3);
+        assert_eq!(ticks_until(ms(118), 30, 0, 30), 0..4);
         // Two frames inside one tick: the second adds nothing, so the first is dropped.
         assert_eq!(ticks_until(ms(10), 30, 1, 30), 1..1);
         // A gap repeats the previous frame.
         assert_eq!(ticks_until(ms(500), 30, 4, 30), 4..15);
         // Never past the limit.
         assert_eq!(ticks_until(ms(5000), 30, 20, 30), 20..30);
+    }
+
+    /// A game at the output rate, stamps jittering 0.3 ms either way: one tick per frame, none
+    /// dropped or doubled.
+    #[test]
+    fn jitter_around_the_ticks_gives_one_tick_per_frame() {
+        let mut next = 0;
+        for k in 1..600u64 {
+            let jitter = if k % 2 == 0 { 0.3 } else { -0.3 };
+            let stamp = Duration::from_secs_f64((k as f64 * 1000.0 / 60.0 + jitter) / 1000.0);
+            let ticks = ticks_until(stamp, 60, next, 10_000);
+            assert_eq!(ticks, next..k, "frame {k}");
+            next = ticks.end;
+        }
     }
 
     #[test]
@@ -1007,6 +1041,7 @@ pub(crate) mod tests {
             ffmpeg,
             forced_encoder: Some("libx264".into()),
             probe_timeout: Duration::from_secs(5),
+            stall_timeout: Duration::from_secs(5),
             encoder_cache: default(),
         };
         (job, sender)
@@ -1056,7 +1091,7 @@ pub(crate) mod tests {
         let pid = child.id();
         assert!(matches!(session.register(child), Err(Stop::Cancelled)));
         session.shutdown();
-        assert!(!Path::new(&format!("/proc/{pid}")).exists());
+        assert!(process_gone(&pid.to_string()));
     }
 
     #[cfg(unix)]
@@ -1083,6 +1118,32 @@ pub(crate) mod tests {
         // After publishing, cancel loses.
         shared.cancel();
         assert!(!shared.cancelled());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_empty_output_does_not_replace_an_earlier_file() {
+        let _guard = lock_processes();
+        let dir = tempfile::tempdir().unwrap();
+        let ffmpeg = fake_ffmpeg(dir.path(), "exit 0", "cat > /dev/null; exit 0");
+        let (job, sender) = job(dir.path(), ffmpeg, frames(1));
+        std::fs::write(&job.path, b"earlier").unwrap();
+        let path = job.path.clone();
+        let (shared, thread) = spawn_writer(job);
+        sender.send(frame(4, Duration::ZERO)).unwrap();
+        shared.end(End {
+            reason: VideoEnd::Completed,
+            cutoff: None,
+        });
+        drop(sender);
+        thread.join().unwrap();
+        assert!(
+            matches!(shared.result.get(), Some(Err(VideoError::Ffmpeg { status, .. })) if status.contains("wrote nothing")),
+            "{:?}",
+            shared.result.get()
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), b"earlier");
+        assert_eq!(only_entries(dir.path()), ["fake-ffmpeg", "out.mp4", "pid"]);
     }
 
     #[cfg(unix)]
