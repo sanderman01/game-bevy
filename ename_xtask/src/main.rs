@@ -51,7 +51,7 @@ fn main() -> ExitCode {
                 ExitCode::SUCCESS
             }
         }
-        cli::Command::Mv { from, to } => match mv::mv(&from, &to) {
+        cli::Command::Mv { from, to } => match mv::mv(Path::new(policy::ASSET_ROOT), &from, &to) {
             Ok(moved) => {
                 for m in &moved {
                     println!(

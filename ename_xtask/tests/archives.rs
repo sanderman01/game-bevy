@@ -75,11 +75,15 @@ fn mv_refuses_paths_inside_an_archive() {
     let inside = root.path().join("basegame/basic/a.txt");
     let loose = root.path().join("loose.txt");
     assert!(matches!(
-        mv(&inside, &root.path().join("out.txt")),
+        mv(root.path(), &inside, &root.path().join("out.txt")),
         Err(MvError::InsideArchive { .. })
     ));
     assert!(matches!(
-        mv(&loose, &root.path().join("basegame/basic/new.txt")),
+        mv(
+            root.path(),
+            &loose,
+            &root.path().join("basegame/basic/new.txt")
+        ),
         Err(MvError::InsideArchive { .. })
     ));
     assert!(loose.exists());
