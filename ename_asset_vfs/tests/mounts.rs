@@ -159,10 +159,16 @@ fn origin_classifies_paths_whether_or_not_they_exist() {
     let root = root_with(&[("a/pkg.zip", &fixture("basic.zip")), ("a/loose.txt", b"l")]);
     let mounts = Mounts::new(root.path());
     let archive = root.path().join("a/pkg.zip");
-    assert_eq!(mounts.origin(Path::new("a/loose.txt")), Origin::Loose);
-    assert_eq!(mounts.origin(Path::new("a/new/thing.txt")), Origin::Loose);
     assert_eq!(
-        mounts.origin(Path::new("a/pkg/sub/deep/c.txt")),
+        mounts.origin(Path::new("a/loose.txt")).unwrap(),
+        Origin::Loose
+    );
+    assert_eq!(
+        mounts.origin(Path::new("a/new/thing.txt")).unwrap(),
+        Origin::Loose
+    );
+    assert_eq!(
+        mounts.origin(Path::new("a/pkg/sub/deep/c.txt")).unwrap(),
         Origin::Member {
             archive: archive.clone(),
             member: "sub/deep/c.txt".into()
@@ -170,7 +176,7 @@ fn origin_classifies_paths_whether_or_not_they_exist() {
     );
     for path in ["a/pkg", "a/pkg/sub", "a/pkg/new.txt", "a/pkg/new/dir/x.txt"] {
         assert_eq!(
-            mounts.origin(Path::new(path)),
+            mounts.origin(Path::new(path)).unwrap(),
             Origin::InMount {
                 archive: archive.clone()
             },
@@ -179,11 +185,15 @@ fn origin_classifies_paths_whether_or_not_they_exist() {
     }
     // A filesystem path, absolute and not yet existing.
     assert!(matches!(
-        mounts.origin_of_file(&root.path().join("a/pkg/new.scn.ron")),
+        mounts
+            .origin_of_file(&root.path().join("a/pkg/new.scn.ron"))
+            .unwrap(),
         Origin::InMount { .. }
     ));
     assert_eq!(
-        mounts.origin_of_file(&root.path().join("a/new.scn.ron")),
+        mounts
+            .origin_of_file(&root.path().join("a/new.scn.ron"))
+            .unwrap(),
         Origin::Loose
     );
 }
@@ -399,7 +409,7 @@ fn a_directory_named_like_an_archive_is_ordinary() {
         b"x"
     );
     assert_eq!(
-        vfs.mounts().origin(Path::new("odd.zip/x.txt")),
+        vfs.mounts().origin(Path::new("odd.zip/x.txt")).unwrap(),
         Origin::Loose
     );
     assert!(vfs.mounts().problems().is_empty());
@@ -438,17 +448,23 @@ fn origin_normalizes_and_refuses_paths_outside_the_root() {
     let mounts = Mounts::new(root.path());
     let archive = root.path().join("pkg.zip");
     assert!(matches!(
-        mounts.origin(Path::new("other/../pkg/./a.txt")),
+        mounts.origin(Path::new("other/../pkg/./a.txt")).unwrap(),
         Origin::Member { .. }
     ));
     assert!(matches!(
-        mounts.origin(Path::new("pkg/../pkg/new.txt")),
+        mounts.origin(Path::new("pkg/../pkg/new.txt")).unwrap(),
         Origin::InMount { .. }
     ));
-    assert_eq!(mounts.origin(Path::new("../outside.txt")), Origin::Outside);
-    assert_eq!(mounts.origin(&root.path().join("x.txt")), Origin::Outside);
     assert_eq!(
-        mounts.origin(Path::new("pkg.zip")),
+        mounts.origin(Path::new("../outside.txt")).unwrap(),
+        Origin::Outside
+    );
+    assert_eq!(
+        mounts.origin(&root.path().join("x.txt")).unwrap(),
+        Origin::Outside
+    );
+    assert_eq!(
+        mounts.origin(Path::new("pkg.zip")).unwrap(),
         Origin::Archive { archive }
     );
 }
@@ -611,4 +627,176 @@ fn a_replaced_archive_is_detected_on_reopen() {
         .unwrap()
         .unwrap_err();
     assert_eq!(err.kind(), ErrorKind::InvalidData, "{err}");
+}
+
+/// Reads `pkg/a.txt` from `bytes` mounted as `pkg.zip`, or the problem that made it unavailable.
+fn mount_zip(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let root = root_with(&[("pkg.zip", bytes)]);
+    let mounts = Mounts::new(root.path());
+    mounts
+        .read_file(Path::new("pkg/a.txt"))
+        .unwrap()
+        .map_err(|err| format!("{err} {:?}", mounts.problems()))
+}
+
+/// The end record of `zip` and its offset.
+fn eocd_offset(zip: &[u8]) -> usize {
+    (0..zip.len() - 3)
+        .rev()
+        .find(|&i| zip[i..i + 4] == [0x50, 0x4b, 0x05, 0x06])
+        .unwrap()
+}
+
+#[test]
+fn a_zip_comment_holding_the_end_signature_is_not_mistaken_for_the_end() {
+    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    writer.start_file("a.txt", options).unwrap();
+    writer.write_all(b"first").unwrap();
+    let mut comment = b"PK\x05\x06".to_vec();
+    comment.extend([0xff; 18]);
+    writer.set_raw_comment(comment.into()).unwrap();
+    let bytes = writer.finish().unwrap().into_inner();
+    assert_eq!(mount_zip(&bytes).unwrap(), b"first");
+}
+
+#[test]
+fn a_zip_whose_disk_and_total_counts_differ_is_refused() {
+    let mut bytes = fixture("basic.zip");
+    let at = eocd_offset(&bytes);
+    bytes[at + 8..at + 10].copy_from_slice(&3u16.to_le_bytes());
+    assert!(mount_zip(&bytes).unwrap_err().contains("disk"));
+}
+
+/// `zip64.zip` saturates only the central directory offset, so its counts come from the Zip64
+/// record. Changing them there, and nowhere else, must be noticed.
+#[test]
+fn zip64_counts_and_record_size_are_checked() {
+    let original = fixture("zip64.zip");
+    assert!(mount_zip(&original).is_ok());
+    let record = (0..original.len() - 3)
+        .rev()
+        .find(|&i| original[i..i + 4] == [0x50, 0x4b, 0x06, 0x06])
+        .unwrap();
+    let mut counts = original.clone();
+    counts[record + 24..record + 32].copy_from_slice(&9u64.to_le_bytes());
+    counts[record + 32..record + 40].copy_from_slice(&9u64.to_le_bytes());
+    assert!(mount_zip(&counts).is_err());
+    let mut record_size = original.clone();
+    record_size[record + 4..record + 12].copy_from_slice(&(1u64 << 40).to_le_bytes());
+    assert!(
+        mount_zip(&record_size)
+            .unwrap_err()
+            .contains("Zip64 record")
+    );
+}
+
+/// Reads `pkg/a.txt` from `bytes` mounted as `pkg.tar`, or the problem that made it unavailable.
+fn mount_tar(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let root = root_with(&[("pkg.tar", bytes)]);
+    let mounts = Mounts::new(root.path());
+    mounts
+        .read_file(Path::new("pkg/a.txt"))
+        .unwrap()
+        .map_err(|err| format!("{err} {:?}", mounts.problems()))
+}
+
+#[test]
+fn a_tar_without_its_end_block_is_refused() {
+    let full = tar_of(|builder| tar_file(builder, "a.txt", b"a"));
+    assert_eq!(mount_tar(&full).unwrap(), b"a");
+    // Header and one data block, then nothing.
+    assert!(mount_tar(&full[..1024]).unwrap_err().contains("truncated"));
+    assert!(mount_tar(&full[..1100]).unwrap_err().contains("truncated"));
+    assert!(
+        mount_tar(b"not a tar at all")
+            .unwrap_err()
+            .contains("truncated")
+    );
+    assert!(mount_tar(b"").unwrap_err().contains("truncated"));
+}
+
+#[test]
+fn a_tar_ending_on_a_long_name_is_refused() {
+    let mut bytes = tar_of(|builder| {
+        let mut header = tar::Header::new_gnu();
+        header.set_entry_type(tar::EntryType::GNULongName);
+        header.set_size(6);
+        header.set_cksum();
+        builder.append(&header, &b"a.txt\0"[..]).unwrap();
+    });
+    bytes.extend([0; 1024]);
+    assert!(mount_tar(&bytes).unwrap_err().contains("no entry after it"));
+}
+
+/// Historic tars summed the header as signed bytes; that sum differs once a name has a byte
+/// above 0x7f.
+#[test]
+fn a_tar_with_a_signed_header_checksum_is_read() {
+    let mut bytes = tar_of(|builder| tar_file(builder, "é.txt", b"e"));
+    let signed: i64 = bytes[..512]
+        .iter()
+        .enumerate()
+        .map(|(i, &b)| {
+            if (148..156).contains(&i) {
+                32
+            } else {
+                i64::from(b as i8)
+            }
+        })
+        .sum();
+    bytes[148..156].copy_from_slice(format!("{signed:06o}\0 ").as_bytes());
+    let root = root_with(&[("pkg.tar", &bytes)]);
+    let mounts = Mounts::new(root.path());
+    assert_eq!(
+        mounts.read_file(Path::new("pkg/é.txt")).unwrap().unwrap(),
+        b"e"
+    );
+}
+
+/// Pre-POSIX tar wrote directories as regular entries with a trailing slash.
+#[test]
+fn a_v7_tar_directory_is_a_directory() {
+    let bytes = tar_of(|builder| {
+        let mut header = tar::Header::new_old();
+        header.set_size(0);
+        header.set_mode(0o755);
+        header.set_entry_type(tar::EntryType::Regular);
+        header.set_cksum();
+        builder.append_data(&mut header, "dir/", &b""[..]).unwrap();
+        tar_file(builder, "dir/a.txt", b"a");
+    });
+    let root = root_with(&[("pkg.tar", &bytes)]);
+    let mounts = Mounts::new(root.path());
+    assert!(mounts.is_dir(Path::new("pkg/dir")).unwrap().unwrap());
+    assert_eq!(
+        mounts
+            .read_file(Path::new("pkg/dir/a.txt"))
+            .unwrap()
+            .unwrap(),
+        b"a"
+    );
+}
+
+/// What a recursive remove or a rename of a directory would take with it.
+#[test]
+fn holds_archive_sees_archives_anywhere_below() {
+    let root = root_with(&[
+        ("mods/deep/pkg.zip", &fixture("basic.zip")),
+        ("loose/a.txt", b"a"),
+    ]);
+    let mounts = Mounts::new(root.path());
+    for path in [
+        "",
+        "mods",
+        "mods/deep",
+        "mods/deep/pkg",
+        "mods/deep/pkg.zip",
+    ] {
+        assert!(mounts.holds_archive(Path::new(path)).unwrap(), "{path}");
+    }
+    for path in ["loose", "loose/a.txt", "missing"] {
+        assert!(!mounts.holds_archive(Path::new(path)).unwrap(), "{path}");
+    }
 }

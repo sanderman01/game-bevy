@@ -216,6 +216,10 @@ pub struct Mounts {
     root: PathBuf,
     limits: Limits,
     dirs: RwLock<HashMap<PathBuf, Arc<DirInfo>>>,
+    /// One lock per directory being listed, so concurrent first questions wait for one listing.
+    listing: Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>,
+    #[cfg(test)]
+    listings: std::sync::atomic::AtomicUsize,
     files: OpenFiles,
     problems: Mutex<Vec<MountProblem>>,
 }
@@ -227,6 +231,9 @@ impl Mounts {
             root: root.into(),
             limits: Limits::default(),
             dirs: RwLock::default(),
+            listing: Mutex::default(),
+            #[cfg(test)]
+            listings: Default::default(),
             files: OpenFiles::default(),
             problems: Mutex::default(),
         }
@@ -246,9 +253,10 @@ impl Mounts {
             .clone()
     }
 
-    /// Classifies `path`, relative to the asset root, existing or not.
-    pub fn origin(&self, path: &Path) -> Origin {
-        match self.locate(path, true, true).expect("io allowed") {
+    /// Classifies `path`, relative to the asset root, existing or not. Fails when a directory on
+    /// the way could not be listed: a writer must then refuse, not guess.
+    pub fn origin(&self, path: &Path) -> io::Result<Origin> {
+        Ok(match self.locate(path, true, true).expect("io allowed")? {
             Located::Loose => Origin::Loose,
             Located::Outside => Origin::Outside,
             Located::Archive(mount) => Origin::Archive {
@@ -266,17 +274,37 @@ impl Mounts {
                     _ => Origin::InMount { archive },
                 }
             }
-        }
+        })
     }
 
     /// Classifies a filesystem path, absolute or relative to the current directory, by first
     /// making it relative to the asset root with symlinks resolved. A path outside the root is
     /// loose: it is not part of the asset tree at all.
-    pub fn origin_of_file(&self, path: &Path) -> Origin {
+    pub fn origin_of_file(&self, path: &Path) -> io::Result<Origin> {
         match self.logical_path(path) {
             Some(logical) => self.origin(&logical),
-            None => Origin::Loose,
+            None => Ok(Origin::Loose),
         }
+    }
+
+    /// Whether anything under `path`, itself included, is a mount or an archive file: what a
+    /// recursive remove or a rename of `path` would destroy or move.
+    pub fn holds_archive(&self, path: &Path) -> io::Result<bool> {
+        if !self.origin(path)?.is_loose() {
+            return Ok(true);
+        }
+        let Some(path) = normalize(path) else {
+            return Ok(false);
+        };
+        let mut stack = vec![path.into_owned()];
+        while let Some(dir) = stack.pop() {
+            let info = self.dir_info(&dir, true).expect("io allowed")?;
+            if !info.archive_files.is_empty() {
+                return Ok(true);
+            }
+            stack.extend(info.subdirs.iter().map(|name| dir.join(name)));
+        }
+        Ok(false)
     }
 
     /// `path` relative to the asset root, or `None` when it lies outside it. A path that doesn't
@@ -317,8 +345,10 @@ impl Mounts {
     }
 
     pub(crate) fn read_file_answer(&self, path: &Path, io: bool) -> Answer<Vec<u8>> {
-        let Some(located) = self.locate(path, false, io) else {
-            return Answer::NeedsIo;
+        let located = match self.locate(path, false, io) {
+            None => return Answer::NeedsIo,
+            Some(Err(err)) => return Answer::Ready(Err(err)),
+            Some(Ok(located)) => located,
         };
         let Located::Mounted { mount, member } = located else {
             return Answer::Loose;
@@ -346,8 +376,10 @@ impl Mounts {
     }
 
     pub(crate) fn read_dir_answer(&self, path: &Path, io: bool) -> Answer<Vec<DirEntry>> {
-        let Some(located) = self.locate(path, true, io) else {
-            return Answer::NeedsIo;
+        let located = match self.locate(path, true, io) {
+            None => return Answer::NeedsIo,
+            Some(Err(err)) => return Answer::Ready(Err(err)),
+            Some(Ok(located)) => located,
         };
         let Located::Mounted { mount, member } = located else {
             return Answer::Loose;
@@ -371,8 +403,10 @@ impl Mounts {
     }
 
     pub(crate) fn is_dir_answer(&self, path: &Path, io: bool) -> Answer<bool> {
-        let Some(located) = self.locate(path, true, io) else {
-            return Answer::NeedsIo;
+        let located = match self.locate(path, true, io) {
+            None => return Answer::NeedsIo,
+            Some(Err(err)) => return Answer::Ready(Err(err)),
+            Some(Ok(located)) => located,
         };
         let Located::Mounted { mount, member } = located else {
             return Answer::Loose;
@@ -395,20 +429,32 @@ impl Mounts {
     /// directory nobody has looked at yet was never mounted, so `false` is right for it too.
     #[cfg(feature = "bevy")]
     pub(crate) fn is_known_archive(&self, path: &Path) -> bool {
-        matches!(self.locate(path, true, false), Some(Located::Archive(_)))
+        matches!(
+            self.locate(path, true, false),
+            Some(Ok(Located::Archive(_)))
+        )
     }
 
     /// Rewrites a loose directory's listing so each archive shows as its mount directory: archive
     /// files are dropped and mount directories added. Returns each path with whether it is a
-    /// mount, or `None` when the directory has not been classified and `io` is false.
+    /// mount, or `None` when the directory has not been classified and `io` is false. Nothing
+    /// outside the asset root is mounted, so a listing there comes back unchanged.
     pub(crate) fn overlay_listing(
         &self,
         dir: &Path,
         entries: &[PathBuf],
         io: bool,
-    ) -> Option<Vec<(PathBuf, bool)>> {
-        let dir = normalize(dir)?;
-        let info = self.dir_info(&dir, io)?;
+    ) -> Option<io::Result<Vec<(PathBuf, bool)>>> {
+        let Some(dir) = normalize(dir) else {
+            return Some(Ok(entries
+                .iter()
+                .map(|entry| (entry.clone(), false))
+                .collect()));
+        };
+        let info = match self.dir_info(&dir, io)? {
+            Ok(info) => info,
+            Err(err) => return Some(Err(err)),
+        };
         let mut out: Vec<(PathBuf, bool)> = entries
             .iter()
             .filter(|entry| {
@@ -420,12 +466,12 @@ impl Mounts {
             .chain(info.mounts.keys().map(|name| (dir.join(name), true)))
             .collect();
         out.sort();
-        Some(out)
+        Some(Ok(out))
     }
 
-    fn dir_info(&self, dir: &Path, io: bool) -> Option<Arc<DirInfo>> {
+    fn dir_info(&self, dir: &Path, io: bool) -> Option<io::Result<Arc<DirInfo>>> {
         if let Some(info) = self.dirs.read().unwrap_or_else(|e| e.into_inner()).get(dir) {
-            return Some(info.clone());
+            return Some(Ok(info.clone()));
         }
         io.then(|| self.classify(dir))
     }
@@ -434,9 +480,9 @@ impl Mounts {
     /// anything else means nothing below is mounted. `include_last` also classifies `path` itself,
     /// which a file read does not need. `None` when a directory on the way has not been listed
     /// and `io` is false.
-    fn locate(&self, path: &Path, include_last: bool, io: bool) -> Option<Located> {
+    fn locate(&self, path: &Path, include_last: bool, io: bool) -> Option<io::Result<Located>> {
         let Some(path) = normalize(path) else {
-            return Some(Located::Outside);
+            return Some(Ok(Located::Outside));
         };
         let mut prefixes: Vec<&Path> = path.ancestors().collect();
         prefixes.reverse();
@@ -450,30 +496,78 @@ impl Mounts {
             let missing = {
                 let dirs = self.dirs.read().unwrap_or_else(|e| e.into_inner());
                 match walk(&dirs, &path, &prefixes, checked, components) {
-                    Ok(located) => return Some(located),
+                    Ok(located) => return Some(Ok(located)),
                     Err(missing) => missing.to_path_buf(),
                 }
             };
             if !io {
                 return None;
             }
-            self.classify(&missing);
+            if let Err(err) = self.classify(&missing) {
+                return Some(Err(err));
+            }
         }
     }
 
+    /// Lists one loose directory once, however many threads ask at the same time. A failed
+    /// listing is not cached, so the next question tries again.
+    fn classify(&self, dir: &Path) -> io::Result<Arc<DirInfo>> {
+        let lock = self
+            .listing
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(dir.to_path_buf())
+            .or_default()
+            .clone();
+        let _listing = lock.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(info) = self.dirs.read().unwrap_or_else(|e| e.into_inner()).get(dir) {
+            return Ok(info.clone());
+        }
+        let result = self.list(dir).map(|info| {
+            let info = Arc::new(info);
+            self.dirs
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(dir.to_path_buf(), info.clone());
+            info
+        });
+        self.listing
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(dir);
+        result
+    }
+
     /// Lists one loose directory and records what in it is a mount, reporting shadowed and
-    /// conflicting archives once.
-    fn classify(&self, dir: &Path) -> Arc<DirInfo> {
+    /// conflicting archives. A directory that is missing or not a directory holds nothing.
+    fn list(&self, dir: &Path) -> io::Result<DirInfo> {
+        #[cfg(test)]
+        self.listings
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let physical = self.root.join(dir);
         let mut info = DirInfo::default();
         let mut files: HashSet<OsString> = HashSet::new();
         let mut archives: HashMap<OsString, Vec<(OsString, Format)>> = HashMap::new();
-        for entry in std::fs::read_dir(&physical).into_iter().flatten().flatten() {
+        let entries = match std::fs::read_dir(&physical) {
+            Ok(entries) => entries,
+            Err(err)
+                if matches!(
+                    err.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
+                return Ok(info);
+            }
+            Err(err) => return Err(listing_error(&physical, err)),
+        };
+        for entry in entries {
+            let entry = entry.map_err(|err| listing_error(&physical, err))?;
             let name = entry.file_name();
-            let Ok(mut file_type) = entry.file_type() else {
-                continue;
-            };
+            let mut file_type = entry
+                .file_type()
+                .map_err(|err| listing_error(&entry.path(), err))?;
             if file_type.is_symlink() {
+                // A broken link is neither a directory nor a file, as the platform reader sees it.
                 let Ok(metadata) = std::fs::metadata(entry.path()) else {
                     continue;
                 };
@@ -561,13 +655,7 @@ impl Mounts {
                 info.mounts.insert(stem, mount);
             }
         }
-        let info = Arc::new(info);
-        self.dirs
-            .write()
-            .unwrap_or_else(|e| e.into_inner())
-            .entry(dir.to_path_buf())
-            .or_insert(info)
-            .clone()
+        Ok(info)
     }
 
     /// The mount's index, building it on first use when `io` allows.
@@ -713,7 +801,7 @@ fn walk<'p>(
 
 /// `path` with `.` dropped and `..` applied, borrowed when it is already clean. `None` when it is
 /// absolute or climbs above the root.
-fn normalize(path: &Path) -> Option<Cow<'_, Path>> {
+pub(crate) fn normalize(path: &Path) -> Option<Cow<'_, Path>> {
     if path
         .components()
         .all(|component| matches!(component, Component::Normal(_)))
@@ -776,6 +864,13 @@ fn hint_redundant_folder(logical: &Path, index: &ArchiveIndex) {
     }
 }
 
+fn listing_error(path: &Path, err: io::Error) -> io::Error {
+    io::Error::new(
+        err.kind(),
+        format!("listing {} to find archives: {err}", path.display()),
+    )
+}
+
 fn not_found(path: &Path, mount: &Mount, member: &str) -> io::Error {
     io::Error::new(
         io::ErrorKind::NotFound,
@@ -790,7 +885,10 @@ fn not_found(path: &Path, mount: &Mount, member: &str) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::{Answer, Mounts};
-    use std::path::Path;
+    use std::{
+        path::{Path, PathBuf},
+        sync::{Arc, Barrier, atomic::Ordering},
+    };
 
     /// A loose tree costs one cached listing per directory, never an entry per file, and once a
     /// directory is listed every question about its files is answered from memory.
@@ -805,7 +903,12 @@ mod tests {
         }
         let mounts = Mounts::new(root.path());
         for dir in ["", "a", "a/b"] {
-            assert!(mounts.overlay_listing(Path::new(dir), &[], true).is_some());
+            assert!(
+                mounts
+                    .overlay_listing(Path::new(dir), &[], true)
+                    .unwrap()
+                    .is_ok()
+            );
         }
         assert_eq!(mounts.dirs.read().unwrap().len(), 3);
         for i in 0..50 {
@@ -819,5 +922,64 @@ mod tests {
             }
         }
         assert_eq!(mounts.dirs.read().unwrap().len(), 3);
+    }
+
+    /// Threads asking about one unlisted directory at once share one listing.
+    #[test]
+    fn concurrent_first_questions_list_a_directory_once() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("a/b")).unwrap();
+        let mounts = Arc::new(Mounts::new(root.path()));
+        let barrier = Arc::new(Barrier::new(8));
+        let threads: Vec<_> = (0..8)
+            .map(|i| {
+                let (mounts, barrier) = (mounts.clone(), barrier.clone());
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    let path = format!("a/b/{i}.png");
+                    assert!(mounts.origin(Path::new(&path)).unwrap().is_loose());
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+        assert_eq!(mounts.listings.load(Ordering::Relaxed), 3);
+    }
+
+    #[test]
+    fn a_listing_outside_the_root_is_returned_unchanged() {
+        let root = tempfile::tempdir().unwrap();
+        let mounts = Mounts::new(root.path());
+        let entries = [PathBuf::from("../x.zip")];
+        let overlaid = mounts
+            .overlay_listing(Path::new(".."), &entries, false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(overlaid, [(PathBuf::from("../x.zip"), false)]);
+    }
+
+    /// A directory that could not be listed is an error, and is listed again next time.
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_listing_is_an_error_and_is_not_cached() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let locked = root.path().join("locked");
+        std::fs::create_dir_all(locked.join("inner")).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // Root ignores permissions; nothing to test then.
+        if std::fs::read_dir(&locked).is_ok() {
+            return;
+        }
+        let mounts = Mounts::new(root.path());
+        assert!(mounts.origin(Path::new("locked/inner/x.txt")).is_err());
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(
+            mounts
+                .origin(Path::new("locked/inner/x.txt"))
+                .unwrap()
+                .is_loose()
+        );
     }
 }

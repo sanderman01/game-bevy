@@ -34,7 +34,8 @@ work without the other, and nobody compiles archive dependencies they don't use.
 | `zip` | `.zip` mounts (Deflate through pure-Rust `miniz_oxide`). |
 | `tar` | `.tar` mounts, parsed in the crate with no dependency. |
 
-The mount code always compiles; with no format nothing ever mounts. That keeps the write guard
+The mount code always compiles; with no format nothing ever mounts. This departs from the plan,
+which compiled it only with a format on. That keeps the write guard
 and problem reporting in the same crate as the formats, so they work whichever crate turned a
 format on: a target can enable `ename_asset_vfs/zip` and add `ArchiveSourcePlugin` itself, before
 `AssetContentPlugin`, and still get both. `ename_asset_content` and `ename_engine` forward
@@ -66,8 +67,11 @@ ename_xtask ──> ArchiveVfs ──> StdVfs + Mounts
 ## Finding mounts
 
 Mounts are found one loose directory at a time. The first question that passes through a
-directory lists it once and records its subdirectories and archives; every later question about
-anything in it is answered from memory. A loose tree costs one extra listing per directory and
+directory lists it once, however many threads ask at the same time, and records its
+subdirectories and archives; every later question about anything in it is answered from memory.
+A directory that can't be listed (other than one that is missing) is an error, not cached:
+reads fail, the write guard refuses, and the next question lists it again. Nothing outside the
+asset root is mounted. A loose tree costs one extra listing per directory and
 nothing per file. Reading a file needs its ancestors listed, never its own directory.
 
 The asset reader answers from memory on the async thread whenever it can: anything known to be
@@ -85,15 +89,18 @@ file on demand.
   from the central one, so it is resolved on the first read and cached. Every read verifies the
   CRC32 and decoded length.
 - Tar: parsed in the crate, one positioned 512-byte read per header, skipping the data. ustar and
-  GNU headers, GNU long names and PAX `path` and `size` are understood. Tar has no payload
-  checksum.
+  GNU headers, GNU long names, PAX `path` and `size`, pre-POSIX directories (a trailing `/`) and
+  signed header checksums are understood. A tar must end with a zero block: a truncated file, or
+  one that was never a tar, is refused rather than mounted empty. Tar has no payload checksum.
 - A read is one positioned read of exactly the member's bytes (`read_exact_at` on Unix, a
   `seek_read` loop on Windows) on a blocking worker, then an inflate for Deflate members. Reads
   name their own offsets and never rely on a file cursor, so they don't serialise on one; only
   looking up the open file takes a short lock. Open archive files are kept in an LRU of 64.
-- An archive is identified by length, modification time and (on Unix) inode when it is indexed. A
-  file reopened after eviction that no longer matches fails with `InvalidData` rather than being
-  read through a stale index.
+- An archive is identified by length, modification time and, on Unix, device and inode when it is
+  indexed; on Windows, where the file index is unstable in std, creation time stands in. A file
+  reopened after eviction that no longer matches fails with `InvalidData` rather than being read
+  through a stale index. On Windows a replacement copied with all three times preserved and the
+  same length goes unnoticed.
 - The archive is located from `FileAssetReader::get_base_path().join(asset_root)`, the same root
   Bevy's file reader uses, so this is desktop only.
 - Store already-compressed formats uncompressed, e.g. `zip -n .png:.jpg:.ktx2`.
@@ -109,9 +116,12 @@ entries; and for encrypted zip members or a compression method other than Stored
 Limits:
 
 - Member count counts every record, directories and tar extension headers included. A zip's
-  declared count and central directory size are read from its end record and checked before the
-  `zip` crate parses or allocates anything for them; duplicate names are caught by comparing that
-  count with the distinct names the crate keeps.
+  declared count and central directory size are read from its end record (the one whose comment
+  ends exactly at the end of the file, from its Zip64 version when a Zip64 locator precedes it)
+  and checked before the `zip` crate parses or allocates anything for them. Its on-disk and total
+  counts must agree, the directory size must fit the count and the file, and a Zip64 record's
+  extensible data is capped at 64 KiB. Duplicate names are caught by comparing that count with
+  the distinct names the crate keeps.
 - Tar extension bodies (GNU long names, PAX) are capped at 64 KiB before they are read.
 - Path length is capped at 4096 bytes and each name at 255.
 - Member size (default 1 GiB) is checked against the declared size when indexing. Inflating
@@ -125,7 +135,8 @@ Listings hide dot-files and `.meta` exactly as loose listings do.
 - A real `core/` shadows `core.zip`, reported as a shadowed archive.
 - `core.zip` together with `core.tar` makes the mount unavailable, and is reported.
 - A file `core` beside `core.zip` wins, as the platform reader sees it; the archive does not mount
-  and is reported.
+  and is reported. This departs from the plan, which made the mount unavailable instead, because
+  the tooling and the game would otherwise disagree about what `core` is.
 - A case-only clash such as `core.zip` beside `Core/` is a warning, logged once when the directory
   is first listed.
 - A corrupt, unreadable or unavailable archive answers with an IO error, never `NotFound`. Three
@@ -147,8 +158,10 @@ Nothing writes into a mount.
 
 - The default source's writer refuses any path inside a mount, a mounted archive file itself, and
   any path that is absolute or climbs above the asset root, on all its methods and both ends of a
-  rename. Paths are normalized first, so `pkg/../pkg/x` is inside `pkg`. That covers Bevy writing
-  a default `.meta`.
+  rename. Paths are normalized first, so `pkg/../pkg/x` is inside `pkg`, and the normalized path
+  is what gets written: through a symlink the OS would read `link/..` differently. Removing a
+  directory, removing the assets in one, or renaming one is refused when a mount or an archive
+  file lies anywhere under it. That covers Bevy writing a default `.meta`.
 - `ename_fix` skips archive-backed assets and counts them.
 - `ename_mv` refuses moves into or out of a mount.
 - The editor's stage save calls `check_writable` (in `ename_asset_vfs`, re-exported by

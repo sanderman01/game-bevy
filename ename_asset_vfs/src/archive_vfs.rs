@@ -50,9 +50,11 @@ impl Vfs for ArchiveVfs {
                 .map(|entry| (entry.path.as_path(), entry.is_dir))
                 .collect();
             let paths: Vec<PathBuf> = entries.iter().map(|entry| entry.path.clone()).collect();
-            let Some(overlaid) = self.mounts.overlay_listing(path, &paths, true) else {
-                return Ok(entries);
-            };
+            let overlaid = self
+                .mounts
+                .overlay_listing(path, &paths, true)
+                .expect("io allowed")
+                .map_err(|err| vfs_error(path, err))?;
             Ok(overlaid
                 .into_iter()
                 .map(|(path, mount)| DirEntry {

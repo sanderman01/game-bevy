@@ -35,9 +35,17 @@ pub fn fix(
                 continue;
             }
             // Writing the sidecar would create a loose directory that shadows the archive.
-            if !mounts.origin(&asset.path).is_loose() {
-                summary.archived += 1;
-                continue;
+            match mounts.origin(&asset.path) {
+                Ok(origin) if origin.is_loose() => {}
+                Ok(_) => {
+                    summary.archived += 1;
+                    continue;
+                }
+                Err(err) => {
+                    eprintln!("ename_fix: {}: {err}", asset.path.display());
+                    summary.failed += 1;
+                    continue;
+                }
             }
             fix_one(asset_root, asset, &mut summary);
         }

@@ -8,7 +8,10 @@
 //! Compiled with the `bevy` feature alone, so the guard is present whichever crate turned an
 //! archive format on.
 
-use crate::{Mounts, Origin, mount::Answer};
+use crate::{
+    Mounts, Origin,
+    mount::{Answer, normalize},
+};
 use async_channel::{Receiver, Sender};
 use bevy::{
     app::{App, Plugin, Startup},
@@ -43,7 +46,7 @@ pub fn check_writable(world: &World, path: &Path) -> io::Result<()> {
     let Some(mounts) = world.get_resource::<ArchiveMounts>() else {
         return Ok(());
     };
-    match mounts.0.origin_of_file(path) {
+    match mounts.0.origin_of_file(path)? {
         Origin::Loose => Ok(()),
         _ => Err(read_only(path)),
     }
@@ -263,19 +266,23 @@ impl AssetReader for ArchiveAssetReader {
                     let loose: Vec<PathBuf> =
                         self.inner.read_directory(path).await?.collect().await;
                     let overlaid = match self.mounts.overlay_listing(path, &loose, false) {
-                        Some(overlaid) => Some(overlaid),
+                        Some(overlaid) => overlaid,
                         None => {
                             let mounts = self.mounts.clone();
                             let dir = path.to_path_buf();
-                            let entries = loose.clone();
-                            blocking::unblock(move || mounts.overlay_listing(&dir, &entries, true))
-                                .await
+                            blocking::unblock(move || {
+                                mounts
+                                    .overlay_listing(&dir, &loose, true)
+                                    .expect("io allowed")
+                            })
+                            .await
                         }
                     };
-                    match overlaid {
-                        Some(overlaid) => overlaid.into_iter().map(|(path, _)| path).collect(),
-                        None => loose,
-                    }
+                    overlaid
+                        .map_err(|err| reader_error(path, err))?
+                        .into_iter()
+                        .map(|(path, _)| path)
+                        .collect()
                 }
             };
             let stream: Box<PathStream> = Box::new(bevy::tasks::futures_lite::stream::iter(paths));
@@ -316,40 +323,50 @@ pub(crate) struct GuardedWriter {
 }
 
 impl GuardedWriter {
-    async fn check(&self, paths: &[&Path]) -> Result<(), AssetWriterError> {
+    /// The normalized form of `path`, or an error when it is not loose. Callers delegate exactly
+    /// this, never the original: through a symlink, `link/../pkg` is not `pkg` to the OS.
+    /// `whole_tree` also refuses a directory with a mount or an archive file anywhere below it,
+    /// for operations that remove or move everything under `path`.
+    async fn check(&self, path: &Path, whole_tree: bool) -> Result<PathBuf, AssetWriterError> {
         let mounts = self.mounts.clone();
-        let paths: Vec<PathBuf> = paths.iter().map(|path| path.to_path_buf()).collect();
+        let path = path.to_path_buf();
         blocking::unblock(move || {
-            for path in paths {
-                if !mounts.origin(&path).is_loose() {
-                    return Err(AssetWriterError::Io(read_only(&path)));
-                }
+            let refused = if whole_tree {
+                mounts.holds_archive(&path)?
+            } else {
+                !mounts.origin(&path)?.is_loose()
+            };
+            if refused {
+                return Err(read_only(&path));
             }
-            Ok(())
+            Ok(normalize(&path)
+                .expect("a loose path is inside the root")
+                .into_owned())
         })
         .await
+        .map_err(AssetWriterError::Io)
     }
 }
 
 impl AssetWriter for GuardedWriter {
     async fn write<'a>(&'a self, path: &'a Path) -> Result<Box<Writer>, AssetWriterError> {
-        self.check(&[path]).await?;
-        self.inner.write(path).await
+        let path = self.check(path, false).await?;
+        self.inner.write(&path).await
     }
 
     async fn write_meta<'a>(&'a self, path: &'a Path) -> Result<Box<Writer>, AssetWriterError> {
-        self.check(&[path]).await?;
-        self.inner.write_meta(path).await
+        let path = self.check(path, false).await?;
+        self.inner.write_meta(&path).await
     }
 
     async fn remove<'a>(&'a self, path: &'a Path) -> Result<(), AssetWriterError> {
-        self.check(&[path]).await?;
-        self.inner.remove(path).await
+        let path = self.check(path, false).await?;
+        self.inner.remove(&path).await
     }
 
     async fn remove_meta<'a>(&'a self, path: &'a Path) -> Result<(), AssetWriterError> {
-        self.check(&[path]).await?;
-        self.inner.remove_meta(path).await
+        let path = self.check(path, false).await?;
+        self.inner.remove_meta(&path).await
     }
 
     async fn rename<'a>(
@@ -357,8 +374,10 @@ impl AssetWriter for GuardedWriter {
         old_path: &'a Path,
         new_path: &'a Path,
     ) -> Result<(), AssetWriterError> {
-        self.check(&[old_path, new_path]).await?;
-        self.inner.rename(old_path, new_path).await
+        // The old path may be a directory, moving everything under it.
+        let old_path = self.check(old_path, true).await?;
+        let new_path = self.check(new_path, false).await?;
+        self.inner.rename(&old_path, &new_path).await
     }
 
     async fn rename_meta<'a>(
@@ -366,31 +385,32 @@ impl AssetWriter for GuardedWriter {
         old_path: &'a Path,
         new_path: &'a Path,
     ) -> Result<(), AssetWriterError> {
-        self.check(&[old_path, new_path]).await?;
-        self.inner.rename_meta(old_path, new_path).await
+        let old_path = self.check(old_path, false).await?;
+        let new_path = self.check(new_path, false).await?;
+        self.inner.rename_meta(&old_path, &new_path).await
     }
 
     async fn create_directory<'a>(&'a self, path: &'a Path) -> Result<(), AssetWriterError> {
-        self.check(&[path]).await?;
-        self.inner.create_directory(path).await
+        let path = self.check(path, false).await?;
+        self.inner.create_directory(&path).await
     }
 
     async fn remove_directory<'a>(&'a self, path: &'a Path) -> Result<(), AssetWriterError> {
-        self.check(&[path]).await?;
-        self.inner.remove_directory(path).await
+        let path = self.check(path, true).await?;
+        self.inner.remove_directory(&path).await
     }
 
     async fn remove_empty_directory<'a>(&'a self, path: &'a Path) -> Result<(), AssetWriterError> {
-        self.check(&[path]).await?;
-        self.inner.remove_empty_directory(path).await
+        let path = self.check(path, false).await?;
+        self.inner.remove_empty_directory(&path).await
     }
 
     async fn remove_assets_in_directory<'a>(
         &'a self,
         path: &'a Path,
     ) -> Result<(), AssetWriterError> {
-        self.check(&[path]).await?;
-        self.inner.remove_assets_in_directory(path).await
+        let path = self.check(path, true).await?;
+        self.inner.remove_assets_in_directory(&path).await
     }
 
     async fn write_bytes<'a>(
@@ -398,8 +418,8 @@ impl AssetWriter for GuardedWriter {
         path: &'a Path,
         bytes: &'a [u8],
     ) -> Result<(), AssetWriterError> {
-        self.check(&[path]).await?;
-        self.inner.write_bytes(path, bytes).await
+        let path = self.check(path, false).await?;
+        self.inner.write_bytes(&path, bytes).await
     }
 
     async fn write_meta_bytes<'a>(
@@ -407,8 +427,8 @@ impl AssetWriter for GuardedWriter {
         path: &'a Path,
         bytes: &'a [u8],
     ) -> Result<(), AssetWriterError> {
-        self.check(&[path]).await?;
-        self.inner.write_meta_bytes(path, bytes).await
+        let path = self.check(path, false).await?;
+        self.inner.write_meta_bytes(&path, bytes).await
     }
 }
 
@@ -433,7 +453,7 @@ mod tests {
             archive_in(&mounts, &E::ModifiedAsset(PathBuf::from("mods/core.zip"))),
             None
         );
-        mounts.origin(Path::new("mods/core"));
+        mounts.origin(Path::new("mods/core")).unwrap();
         let p = PathBuf::from;
         assert_eq!(
             archive_in(&mounts, &E::ModifiedAsset(p("mods/core.zip"))),

@@ -194,7 +194,7 @@ fn the_default_writer_refuses_paths_inside_a_mount() {
     );
     let mounts = &app.world().resource::<ArchiveMounts>().0;
     assert!(matches!(
-        mounts.origin(Path::new("pkg/a.txt")),
+        mounts.origin(Path::new("pkg/a.txt")).unwrap(),
         Origin::Member { .. }
     ));
 }
@@ -250,4 +250,71 @@ fn loose_files_still_reload_beside_an_archive() {
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
     assert_eq!(text(&mut app, &member), "first");
+}
+
+fn default_writer(app: &App) -> &dyn bevy::asset::io::ErasedAssetWriter {
+    app.world()
+        .resource::<AssetServer>()
+        .get_source(AssetSourceId::Default)
+        .unwrap()
+        .writer()
+        .unwrap()
+}
+
+/// The writer delegates the path it checked. Through a symlink the OS reads `link/..` as the
+/// link target's parent, which here holds `pkg.zip`: writing the original path there would
+/// create a loose `pkg/` shadowing that archive.
+#[cfg(unix)]
+#[test]
+fn the_writer_writes_exactly_the_path_it_checked() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(root.path().join("deep/inner")).unwrap();
+    std::fs::copy(
+        "tests/fixtures/archives/basic.zip",
+        root.path().join("deep/pkg.zip"),
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(root.path().join("deep/inner"), root.path().join("link")).unwrap();
+    let app = app_over(root.path());
+    block_on(default_writer(&app).write_bytes(Path::new("link/../pkg/x.txt"), b"x")).unwrap();
+    assert!(root.path().join("pkg/x.txt").exists());
+    assert!(!root.path().join("deep/pkg").exists());
+}
+
+/// Removing or moving a directory would take every archive under it along.
+#[test]
+fn the_writer_refuses_recursive_operations_over_an_archive() {
+    let root = root_with("basic.zip");
+    std::fs::create_dir_all(root.path().join("mods/deep")).unwrap();
+    std::fs::rename(
+        root.path().join("pkg.zip"),
+        root.path().join("mods/deep/pkg.zip"),
+    )
+    .unwrap();
+    std::fs::create_dir_all(root.path().join("plain")).unwrap();
+    std::fs::write(root.path().join("plain/a.txt"), "a").unwrap();
+    let app = app_over(root.path());
+    let writer = default_writer(&app);
+    block_on(async {
+        assert!(writer.remove_directory(Path::new("mods")).await.is_err());
+        assert!(
+            writer
+                .remove_assets_in_directory(Path::new("mods/deep"))
+                .await
+                .is_err()
+        );
+        assert!(
+            writer
+                .rename(Path::new("mods"), Path::new("elsewhere"))
+                .await
+                .is_err()
+        );
+        writer
+            .rename(Path::new("plain"), Path::new("moved"))
+            .await
+            .unwrap();
+        writer.remove_directory(Path::new("moved")).await.unwrap();
+    });
+    assert!(root.path().join("mods/deep/pkg.zip").exists());
+    assert!(!root.path().join("moved").exists());
 }

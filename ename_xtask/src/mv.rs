@@ -69,7 +69,12 @@ impl Display for MvError {
 /// paths. Every path is resolved relative to the current directory, the same as `git mv`.
 pub fn mv(from: &Path, to: &Path) -> Result<Vec<Moved>, MvError> {
     for path in [from, to] {
-        if let Some(archive) = archive_holding(path) {
+        let holding = archive_holding(path).map_err(|source| MvError::RenameFailed {
+            from: from.to_path_buf(),
+            to: to.to_path_buf(),
+            source,
+        })?;
+        if let Some(archive) = holding {
             return Err(MvError::InsideArchive {
                 path: path.to_path_buf(),
                 archive,
@@ -167,12 +172,13 @@ fn is_inside_git_work_tree(dir: &Path) -> bool {
 
 /// The archive `path` lies inside, if any. `ename_mv` takes plain filesystem paths and no asset
 /// root, so mounts are looked for all the way up from the filesystem root.
-fn archive_holding(path: &Path) -> Option<PathBuf> {
-    let absolute = std::path::absolute(path).ok()?;
-    let root = absolute.ancestors().last()?;
-    match Mounts::new(root).origin_of_file(&absolute) {
+/// Fails when a directory on the way can't be listed, rather than guessing.
+fn archive_holding(path: &Path) -> std::io::Result<Option<PathBuf>> {
+    let absolute = std::path::absolute(path)?;
+    let root = absolute.ancestors().last().unwrap_or(&absolute);
+    Ok(match Mounts::new(root).origin_of_file(&absolute)? {
         Origin::Member { archive, .. } | Origin::InMount { archive } => Some(archive),
         // Moving an archive file itself is fine: no game is reading it.
         Origin::Loose | Origin::Outside | Origin::Archive { .. } => None,
-    }
+    })
 }
