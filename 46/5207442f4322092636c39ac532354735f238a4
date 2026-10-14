@@ -1,0 +1,42 @@
+ename_engine/src/command/registry.rs
+  s_baf869300155eb::t_a753cc99cad082 157-160,291-292,478-482
+  s_baf869300155eb::t_601bbfd1c9f6e9 51,53-54
+  s_baf869300155eb::t_97d3a761d336f1 1-50,52,55-156,161-290,293-477,483-486
+ename_engine/src/command/jobs.rs
+  s_baf869300155eb::t_00771baa359915 1-97,102-118,121-175,178-181,183-244,246-279,281-282,284-285,288-358,364-389
+  s_baf869300155eb::t_e0f04eb821f2e1 359-363
+  s_baf869300155eb::t_a753cc99cad082 98-101,119-120,176-177,182,245,280,283,287
+  s_baf869300155eb::t_93cff54c02c594 286
+ename_engine/Cargo.toml
+  s_baf869300155eb::t_e0f04eb821f2e1 26-28
+ename_engine/src/lib.rs
+  s_baf869300155eb::t_e0f04eb821f2e1 2,12,138
+ename_engine/src/command/run_id.rs
+  s_baf869300155eb::t_f0ae8b19946d05 1-69
+ename_engine/src/command/mod.rs
+  s_baf869300155eb::t_0c4424b54ab9ce 1-62
+ename_engine/src/command/error.rs
+  s_baf869300155eb::t_757eb039971e6b 1-45,51-58
+  s_baf869300155eb::t_a753cc99cad082 46-50
+ename_engine/src/command/tests.rs
+  s_baf869300155eb::t_7b76f7650db233 1-190,192-246,251-306,311-325,329-346,350-469,474-505,512-515,522-535
+  s_baf869300155eb::t_a753cc99cad082 191,247-250,307-310,326-328,347-349,470-473,506-511,516-521
+Cargo.lock
+  s_baf869300155eb::t_0e5498e751b095 3027-3029
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "465207442f4322092636c39ac532354735f238a4",
+  "prompts": {},
+  "sessions": {
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
