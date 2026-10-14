@@ -20,7 +20,7 @@ use bevy::{
     },
 };
 use ename_engine::screenshot::{
-    RetainScreenshotOutcome, ScreenshotRequest, ScreenshotSource, check_png_path,
+    CaptureSource, RetainScreenshotOutcome, ScreenshotRequest, check_png_path,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -137,7 +137,7 @@ fn capture_screenshot(In(params): In<Option<Value>>, world: &mut World) -> BrpRe
     let request = world
         .spawn((
             ScreenshotRequest {
-                source: ScreenshotSource::Camera(camera),
+                source: CaptureSource::Camera(camera),
                 path,
             },
             RetainScreenshotOutcome,
@@ -286,7 +286,7 @@ mod tests {
         let request = world.entity(request);
         assert_eq!(
             request.get::<ScreenshotRequest>().unwrap().source,
-            ScreenshotSource::Camera(camera)
+            CaptureSource::Camera(camera)
         );
         assert!(request.contains::<RetainScreenshotOutcome>());
     }

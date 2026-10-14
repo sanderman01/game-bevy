@@ -17,8 +17,8 @@ use bevy::{
 use ename_engine::{
     camera::MainCamera,
     screenshot::{
-        RetainScreenshotOutcome, ScreenshotError, ScreenshotOutcome, ScreenshotRequest,
-        ScreenshotSource, check_png_path,
+        CaptureSource, RetainScreenshotOutcome, ScreenshotError, ScreenshotOutcome,
+        ScreenshotRequest, check_png_path,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -66,8 +66,8 @@ pub(crate) fn capture(In(params): In<Option<Value>>, world: &mut World) -> BrpRe
     let CaptureParams { path, source } = parse_some(params)?;
     check_path(&path)?;
     let source = match source {
-        Source::Window => ScreenshotSource::PrimaryWindow,
-        Source::MainCamera => ScreenshotSource::Camera(main_camera(world)?),
+        Source::Window => CaptureSource::PrimaryWindow,
+        Source::MainCamera => CaptureSource::Camera(main_camera(world)?),
     };
     let request = world
         .spawn((ScreenshotRequest { source, path }, RetainScreenshotOutcome))
@@ -196,7 +196,7 @@ mod tests {
         let entity = world.entity(request_of(&response));
         assert_eq!(
             entity.get::<ScreenshotRequest>().unwrap().source,
-            ScreenshotSource::PrimaryWindow
+            CaptureSource::PrimaryWindow
         );
         assert!(entity.contains::<RetainScreenshotOutcome>());
     }
@@ -233,7 +233,7 @@ mod tests {
                 .get::<ScreenshotRequest>(request_of(&response))
                 .unwrap()
                 .source,
-            ScreenshotSource::Camera(camera)
+            CaptureSource::Camera(camera)
         );
 
         world.spawn((MainCamera, Camera::default(), RenderTarget::default()));
@@ -245,7 +245,7 @@ mod tests {
     fn result_reports_pending_saved_and_failed() {
         let mut world = World::new();
         let request = ScreenshotRequest {
-            source: ScreenshotSource::PrimaryWindow,
+            source: CaptureSource::PrimaryWindow,
             path: "/tmp/a.png".into(),
         };
         let pending = world.spawn(request.clone()).id();

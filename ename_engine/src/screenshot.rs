@@ -8,7 +8,7 @@
 //! fn screenshot_game_camera(mut commands: Commands, camera: Single<Entity, With<MainCamera>>) {
 //!     commands
 //!         .spawn(ScreenshotRequest {
-//!             source: ScreenshotSource::Camera(*camera),
+//!             source: CaptureSource::Camera(*camera),
 //!             path: "shots/game.png".into(),
 //!         })
 //!         .observe(|finished: On<ScreenshotFinished>| info!("{:?}", finished.result));
@@ -29,8 +29,9 @@
 //! Requests start in `Last`, after everything that sets a camera's `is_active` and `viewport`
 //! for the frame, so the crop is the viewport the frame was rendered with. The GPU readback
 //! arrives a frame or two later; encoding and writing then run on the async compute pool.
-//! Requests on the same target in the same frame share one readback, because Bevy captures a
-//! target at most once per frame and silently drops the rest.
+//! Requests on the same target in the same frame share one readback with each other and with
+//! any video recording, because Bevy captures a target at most once per frame and silently drops
+//! the rest.
 //!
 //! A readback that never arrives fails the request after 5 s of real time. Its Bevy
 //! `Screenshot` entity is left for Bevy to clear: a late delivery inserts into it, which would
@@ -44,21 +45,23 @@
 use std::{
     io::{BufWriter, Write as _},
     path::{Path, PathBuf},
-    sync::Arc,
     time::Duration,
 };
 
 use bevy::{
-    camera::{NormalizedRenderTarget, RenderTarget},
+    camera::RenderTarget,
     prelude::*,
-    render::{
-        render_resource::TextureFormat,
-        view::screenshot::{Screenshot, ScreenshotCaptured},
-    },
+    render::render_resource::TextureFormat,
     tasks::{AsyncComputeTaskPool, Task, futures::check_ready},
-    window::{PrimaryWindow, WindowRef},
+    window::PrimaryWindow,
 };
 use image::ImageFormat;
+
+pub use crate::readback::CaptureSource;
+use crate::readback::{
+    FrameReadBack, Limit, ReadbackQueue, ReadbackSystems, ReadbackTag, SourceError,
+    add_readback_plugin, resolve_source,
+};
 
 /// How long a request waits for its readback before failing with [`ScreenshotError::TimedOut`].
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -66,19 +69,10 @@ const CAPTURE_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long a request with [`RetainScreenshotOutcome`] stays alive after it finishes.
 const OUTCOME_TTL: Duration = Duration::from_secs(30);
 
-/// What to capture.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ScreenshotSource {
-    /// The primary window, everything composited.
-    PrimaryWindow,
-    /// What this camera rendered this frame, cropped to its viewport.
-    Camera(Entity),
-}
-
 /// A capture to take. See the module docs.
 #[derive(Component, Clone, Debug)]
 pub struct ScreenshotRequest {
-    pub source: ScreenshotSource,
+    pub source: CaptureSource,
     /// Must end in `.png`, any case. A relative path resolves against the process's working
     /// directory. Missing parent directories are created and an existing file is replaced.
     pub path: PathBuf,
@@ -137,10 +131,12 @@ pub struct ScreenshotPlugin;
 
 impl Plugin for ScreenshotPlugin {
     fn build(&self, app: &mut App) {
+        add_readback_plugin(app);
         app.add_systems(Update, (finish_captures, expire_captures))
             // `Last`: a camera's `is_active` and `viewport` are settled by then, including the
             // editor's, which are set in `PostUpdate`.
-            .add_systems(Last, start_captures);
+            .add_systems(Last, start_captures.in_set(ReadbackSystems::Request))
+            .add_observer(deliver_capture);
     }
 }
 
@@ -149,7 +145,6 @@ impl Plugin for ScreenshotPlugin {
 #[derive(Component)]
 enum CaptureStage {
     Waiting {
-        crop: Option<URect>,
         deadline: Duration,
     },
     Writing(Task<Result<SavedScreenshot, ScreenshotError>>),
@@ -159,11 +154,16 @@ enum CaptureStage {
     },
 }
 
-/// The requests one Bevy `Screenshot` entity delivers to. A plain list rather than a
-/// relationship: a request may be despawned at any time, and every lookup through this list
-/// already treats a missing request as one that no longer wants the image.
-#[derive(Component)]
-struct ScreenshotFanOut(Vec<Entity>);
+impl From<SourceError> for ScreenshotError {
+    fn from(error: SourceError) -> Self {
+        match error {
+            SourceError::NotACamera(entity) => Self::NotACamera(entity),
+            SourceError::CameraInactive(entity) => Self::CameraInactive(entity),
+            SourceError::UnsupportedTarget(entity) => Self::UnsupportedTarget(entity),
+            SourceError::NoWindow => Self::NoWindow,
+        }
+    }
+}
 
 fn start_captures(
     mut commands: Commands,
@@ -173,28 +173,18 @@ fn start_captures(
     >,
     cameras: Query<(&Camera, &RenderTarget)>,
     primary_window: Query<Entity, With<PrimaryWindow>>,
+    mut queue: ResMut<ReadbackQueue>,
     time: Res<Time<Real>>,
 ) {
     let now = time.elapsed();
     let primary_window = primary_window.single().ok();
-    let mut groups: Vec<(NormalizedRenderTarget, RenderTarget, Vec<Entity>)> = Vec::new();
 
     for (entity, request, retain) in &requests {
-        let resolved = check_png_path(&request.path)
-            .and_then(|()| match request.source {
-                ScreenshotSource::PrimaryWindow => {
-                    Ok((RenderTarget::Window(WindowRef::Primary), None))
-                }
-                ScreenshotSource::Camera(camera) => {
-                    resolve_camera(camera, cameras.get(camera).ok())
-                }
-            })
-            .and_then(|(target, crop)| match target.normalize(primary_window) {
-                Some(normalized) => Ok((normalized, target, crop)),
-                None => Err(ScreenshotError::NoWindow),
-            });
-        let (normalized, target, crop) = match resolved {
-            Ok(resolved) => resolved,
+        let resolved = check_png_path(&request.path).and_then(|()| {
+            resolve_source(request.source, &cameras, primary_window).map_err(Into::into)
+        });
+        let source = match resolved {
+            Ok(source) => source,
             Err(err) => {
                 commands.entity(entity).try_insert(CaptureStage::Done {
                     expires: now + OUTCOME_TTL,
@@ -205,27 +195,21 @@ fn start_captures(
         };
 
         commands.entity(entity).try_insert(CaptureStage::Waiting {
-            crop,
             deadline: now + CAPTURE_TIMEOUT,
         });
-        match groups.iter_mut().find(|(key, ..)| *key == normalized) {
-            Some((.., members)) => members.push(entity),
-            None => groups.push((normalized, target, vec![entity])),
-        }
-    }
-
-    for (_, target, members) in groups {
-        commands
-            .spawn((Screenshot(target), ScreenshotFanOut(members)))
-            .observe(deliver_capture);
+        let tag = ReadbackTag {
+            crop: source.crop,
+            seq: 0,
+            requested_at: now,
+        };
+        queue.request(&source, entity, tag, Limit::Unbounded);
     }
 }
 
-/// Hands one readback to every request still waiting on it. Checks the deadline itself, so a
-/// late readback fails the same way whether this or [`expire_captures`] runs first.
+/// Starts writing one readback, unless the request has moved on. Checks the deadline itself, so
+/// a late readback fails the same way whether this or [`expire_captures`] runs first.
 fn deliver_capture(
-    captured: On<ScreenshotCaptured>,
-    fan_outs: Query<&ScreenshotFanOut>,
+    frame: On<FrameReadBack>,
     mut requests: Query<(
         &ScreenshotRequest,
         &mut CaptureStage,
@@ -234,33 +218,28 @@ fn deliver_capture(
     time: Res<Time<Real>>,
     mut commands: Commands,
 ) {
-    let Ok(ScreenshotFanOut(members)) = fan_outs.get(captured.entity) else {
+    // A request the game despawned, a recording, or one that has already timed out takes nothing.
+    let Ok((request, mut stage, retain)) = requests.get_mut(frame.entity) else {
+        return;
+    };
+    let CaptureStage::Waiting { deadline } = *stage else {
         return;
     };
     let now = time.elapsed();
-    // Shared, so each request's task copies the pixels on its own thread, not on this one.
-    let image = Arc::new(captured.image.clone());
-    for &entity in members {
-        // A request the game despawned, or one that has already timed out, takes nothing.
-        let Ok((request, mut stage, retain)) = requests.get_mut(entity) else {
-            continue;
+    if now >= deadline {
+        *stage = CaptureStage::Done {
+            expires: now + OUTCOME_TTL,
         };
-        let CaptureStage::Waiting { crop, deadline } = *stage else {
-            continue;
-        };
-        if now >= deadline {
-            *stage = CaptureStage::Done {
-                expires: now + OUTCOME_TTL,
-            };
-            report(&mut commands, entity, retain, Err(timed_out()));
-            continue;
-        }
-        let image = image.clone();
-        let path = request.path.clone();
-        *stage = CaptureStage::Writing(
-            AsyncComputeTaskPool::get().spawn(async move { write_png(&image, crop, &path) }),
-        );
+        report(&mut commands, frame.entity, retain, Err(timed_out()));
+        return;
     }
+    // Shared, so each request's task copies the pixels on its own thread, not on this one.
+    let image = frame.image.clone();
+    let crop = frame.tag.crop;
+    let path = request.path.clone();
+    *stage = CaptureStage::Writing(
+        AsyncComputeTaskPool::get().spawn(async move { write_png(&image, crop, &path) }),
+    );
 }
 
 fn finish_captures(
@@ -290,7 +269,7 @@ fn expire_captures(
     let now = time.elapsed();
     for (entity, mut stage, retain) in &mut requests {
         match *stage {
-            CaptureStage::Waiting { deadline, .. } if now >= deadline => {
+            CaptureStage::Waiting { deadline } if now >= deadline => {
                 *stage = CaptureStage::Done {
                     expires: now + OUTCOME_TTL,
                 };
@@ -335,32 +314,6 @@ pub fn check_png_path(path: &Path) -> Result<(), ScreenshotError> {
         Some(extension) if extension.eq_ignore_ascii_case("png") => Ok(()),
         _ => Err(ScreenshotError::NotPng(path.to_path_buf())),
     }
-}
-
-/// The target to read back for `entity`'s camera, and the crop that is its viewport.
-fn resolve_camera(
-    entity: Entity,
-    camera: Option<(&Camera, &RenderTarget)>,
-) -> Result<(RenderTarget, Option<URect>), ScreenshotError> {
-    let Some((camera, target)) = camera else {
-        return Err(ScreenshotError::NotACamera(entity));
-    };
-    if !camera.is_active {
-        return Err(ScreenshotError::CameraInactive(entity));
-    }
-    let target = match target {
-        RenderTarget::Window(_) | RenderTarget::Image(_) => target.clone(),
-        RenderTarget::TextureView(_) | RenderTarget::None { .. } => {
-            return Err(ScreenshotError::UnsupportedTarget(entity));
-        }
-    };
-    let crop = camera.viewport.as_ref().map(|viewport| {
-        URect::from_corners(
-            viewport.physical_position,
-            viewport.physical_position + viewport.physical_size,
-        )
-    });
-    Ok((target, crop))
 }
 
 /// Converts, crops and writes one readback. Runs on the async compute pool.
@@ -435,10 +388,15 @@ fn write_png(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::readback::ReadbackFanOut;
     use bevy::{
         asset::RenderAssetUsages,
-        camera::{ManualTextureViewHandle, Viewport},
-        render::render_resource::{Extent3d, TextureDimension},
+        camera::Viewport,
+        render::{
+            render_resource::{Extent3d, TextureDimension},
+            view::screenshot::{Screenshot, ScreenshotCaptured},
+        },
+        window::WindowRef,
     };
     use image::GenericImageView as _;
 
@@ -484,10 +442,6 @@ mod tests {
         }
     }
 
-    fn entity() -> Entity {
-        Entity::from_raw_u32(7).unwrap()
-    }
-
     #[test]
     fn path_must_end_in_png() {
         assert!(check_png_path(Path::new("a/b.png")).is_ok());
@@ -496,64 +450,6 @@ mod tests {
             assert_eq!(
                 check_png_path(Path::new(bad)),
                 Err(ScreenshotError::NotPng(bad.into()))
-            );
-        }
-    }
-
-    #[test]
-    fn resolve_camera_into_an_image_uses_the_image_and_its_viewport() {
-        let image = Handle::<Image>::default();
-        let target = RenderTarget::Image(image.clone().into());
-        let camera = camera(true, Some((UVec2::new(2, 3), UVec2::new(10, 20))));
-        let (resolved, crop) = resolve_camera(entity(), Some((&camera, &target))).unwrap();
-        assert_eq!(resolved.as_image(), Some(&image));
-        assert_eq!(
-            crop,
-            Some(URect::from_corners(UVec2::new(2, 3), UVec2::new(12, 23)))
-        );
-    }
-
-    #[test]
-    fn resolve_camera_into_a_window_without_viewport_has_no_crop() {
-        let target = RenderTarget::Window(WindowRef::Primary);
-        let (resolved, crop) =
-            resolve_camera(entity(), Some((&camera(true, None), &target))).unwrap();
-        assert!(matches!(resolved, RenderTarget::Window(WindowRef::Primary)));
-        assert_eq!(crop, None);
-    }
-
-    #[test]
-    fn resolve_camera_into_a_window_crops_to_its_viewport() {
-        let target = RenderTarget::Window(WindowRef::Primary);
-        let camera = camera(true, Some((UVec2::new(200, 50), UVec2::new(600, 400))));
-        let (_, crop) = resolve_camera(entity(), Some((&camera, &target))).unwrap();
-        assert_eq!(
-            crop,
-            Some(URect::from_corners(
-                UVec2::new(200, 50),
-                UVec2::new(800, 450)
-            ))
-        );
-    }
-
-    #[test]
-    fn resolve_camera_rejects_what_it_cannot_capture() {
-        let window = RenderTarget::Window(WindowRef::Primary);
-        assert_eq!(
-            resolve_camera(entity(), None).unwrap_err(),
-            ScreenshotError::NotACamera(entity())
-        );
-        assert_eq!(
-            resolve_camera(entity(), Some((&camera(false, None), &window))).unwrap_err(),
-            ScreenshotError::CameraInactive(entity())
-        );
-        for target in [
-            RenderTarget::TextureView(ManualTextureViewHandle(0)),
-            RenderTarget::None { size: UVec2::ONE },
-        ] {
-            assert_eq!(
-                resolve_camera(entity(), Some((&camera(true, None), &target))).unwrap_err(),
-                ScreenshotError::UnsupportedTarget(entity())
             );
         }
     }
@@ -708,7 +604,7 @@ mod tests {
         app
     }
 
-    fn request(app: &mut App, source: ScreenshotSource, path: &Path, retain: bool) -> Entity {
+    fn request(app: &mut App, source: CaptureSource, path: &Path, retain: bool) -> Entity {
         let mut entity = app.world_mut().spawn(ScreenshotRequest {
             source,
             path: path.to_path_buf(),
@@ -721,25 +617,30 @@ mod tests {
 
     fn screenshots(app: &mut App) -> Vec<(Entity, Vec<Entity>)> {
         app.world_mut()
-            .query_filtered::<(Entity, &ScreenshotFanOut), With<Screenshot>>()
+            .query_filtered::<(Entity, &ReadbackFanOut), With<Screenshot>>()
             .iter(app.world())
-            .map(|(entity, fan_out)| (entity, fan_out.0.clone()))
+            .map(|(entity, fan_out)| {
+                let members = fan_out.members.iter().map(|(entity, _)| *entity).collect();
+                (entity, members)
+            })
             .collect()
     }
 
     fn set_deadline(app: &mut App, entity: Entity, deadline: Duration) {
         let mut stage = app.world_mut().get_mut::<CaptureStage>(entity).unwrap();
-        let CaptureStage::Waiting { deadline: d, .. } = &mut *stage else {
+        let CaptureStage::Waiting { deadline: d } = &mut *stage else {
             panic!("not waiting");
         };
         *d = deadline;
     }
 
+    /// Delivers a readback and applies the triggers the fan-out queued.
     fn deliver(app: &mut App, screenshot: Entity, image: Image) {
         app.world_mut().trigger(ScreenshotCaptured {
             entity: screenshot,
             image,
         });
+        app.world_mut().flush();
     }
 
     fn finished(app: &App) -> &[(Entity, Result<SavedScreenshot, ScreenshotError>)] {
@@ -751,7 +652,7 @@ mod tests {
         let mut app = app();
         let entity = request(
             &mut app,
-            ScreenshotSource::PrimaryWindow,
+            CaptureSource::PrimaryWindow,
             Path::new("x.jpg"),
             true,
         );
@@ -777,7 +678,7 @@ mod tests {
             .id();
         let entity = request(
             &mut app,
-            ScreenshotSource::Camera(camera),
+            CaptureSource::Camera(camera),
             Path::new("x.png"),
             false,
         );
@@ -799,13 +700,13 @@ mod tests {
             .id();
         let first = request(
             &mut app,
-            ScreenshotSource::PrimaryWindow,
+            CaptureSource::PrimaryWindow,
             Path::new("a.png"),
             false,
         );
         let second = request(
             &mut app,
-            ScreenshotSource::Camera(camera),
+            CaptureSource::Camera(camera),
             Path::new("b.png"),
             false,
         );
@@ -820,7 +721,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("shot.png");
         let mut app = app();
-        let entity = request(&mut app, ScreenshotSource::PrimaryWindow, &path, true);
+        let entity = request(&mut app, CaptureSource::PrimaryWindow, &path, true);
         app.update();
         let (screenshot, _) = screenshots(&mut app)[0];
         deliver(
@@ -854,7 +755,7 @@ mod tests {
             let mut app = app();
             let entity = request(
                 &mut app,
-                ScreenshotSource::PrimaryWindow,
+                CaptureSource::PrimaryWindow,
                 Path::new("x.png"),
                 true,
             );
@@ -884,7 +785,7 @@ mod tests {
         let mut app = app();
         let entity = request(
             &mut app,
-            ScreenshotSource::PrimaryWindow,
+            CaptureSource::PrimaryWindow,
             Path::new("x.jpg"),
             true,
         );
@@ -921,8 +822,8 @@ mod tests {
             .id();
         let whole = dir.path().join("whole.png");
         let cropped = dir.path().join("cropped.png");
-        let first = request(&mut app, ScreenshotSource::PrimaryWindow, &whole, false);
-        let second = request(&mut app, ScreenshotSource::Camera(camera), &cropped, false);
+        let first = request(&mut app, CaptureSource::PrimaryWindow, &whole, false);
+        let second = request(&mut app, CaptureSource::Camera(camera), &cropped, false);
         app.update();
         let (screenshot, _) = screenshots(&mut app)[0];
         deliver(
@@ -957,8 +858,8 @@ mod tests {
         let mut app = app();
         let waiting = dir.path().join("w.png");
         let writing = dir.path().join("x.png");
-        let waiting = request(&mut app, ScreenshotSource::PrimaryWindow, &waiting, true);
-        let writing = request(&mut app, ScreenshotSource::PrimaryWindow, &writing, true);
+        let waiting = request(&mut app, CaptureSource::PrimaryWindow, &waiting, true);
+        let writing = request(&mut app, CaptureSource::PrimaryWindow, &writing, true);
         app.update();
         let (screenshot, _) = screenshots(&mut app)[0];
 
@@ -984,7 +885,7 @@ mod tests {
         let mut app = app();
         let entity = request(
             &mut app,
-            ScreenshotSource::PrimaryWindow,
+            CaptureSource::PrimaryWindow,
             Path::new("x.png"),
             false,
         );
@@ -1010,13 +911,13 @@ mod tests {
             let mut app = app();
             let first = request(
                 &mut app,
-                ScreenshotSource::PrimaryWindow,
+                CaptureSource::PrimaryWindow,
                 Path::new("a.jpg"),
                 retain,
             );
             let second = request(
                 &mut app,
-                ScreenshotSource::PrimaryWindow,
+                CaptureSource::PrimaryWindow,
                 Path::new("b.jpg"),
                 retain,
             );
