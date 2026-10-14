@@ -10,6 +10,11 @@ license.workspace = true
 # `setpriority` for the video encoder's ffmpeg child.
 libc.workspace = true
 
+[features]
+# `.zip` and `.tar` asset archives, mounted under the `Default` asset source.
+zip = ["ename_asset_content/zip"]
+tar = ["ename_asset_content/tar"]
+
 [dependencies]
 avian3d.workspace = true
 bevy.workspace = true
@@ -26,8 +31,14 @@ thiserror.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+# `stage_archive.rs` mounts an archive to save into.
+ename_asset_vfs = { workspace = true, features = ["tar", "zip"] }
 # Only for the headless GPU test of the video NV12 shader. Bevy's version, so it unifies.
 wgpu = { version = "29.0.3", default-features = false, features = ["wgsl", "vulkan", "metal", "dx12"] }
+
+[[test]]
+name = "stage_archive"
+required-features = ["tar", "zip"]
 
 [lints]
 workspace = true

@@ -4,6 +4,9 @@
 //! is, the other knows what a package is, and neither needs the other to be useful. This crate is
 //! where they meet. It is also where the plugin lives, because deciding what goes in an `App` is
 //! composition, not asset logic. See `docs/design/crate-layout.md`.
+//!
+//! With the `zip` or `tar` feature it also mounts archives under the `Default` asset source, and
+//! folds their problems into the [`ContentReport`]. See `docs/assets-archives.md`.
 
 // The door a consumer opens by depending on this crate alone: enough to read a `ContentReport`
 // -- every type its fields name, down to the version requirement inside a `Requirement` -- and to
@@ -31,7 +34,12 @@ use bevy::{
 use ename_asset_alias::{AliasSourcePlugin, ContentIndexCell, IgnoredFiles};
 use ename_asset_package::{build_index, scan_packages};
 use ename_asset_vfs::AssetReaderVfs;
-use std::{path::PathBuf, sync::Arc};
+#[cfg(any(feature = "zip", feature = "tar"))]
+use ename_asset_vfs::{ArchiveMounts, ArchiveSourcePlugin, MountProblem, Mounts};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 /// The default asset root, matching `AssetPlugin::file_path`'s own default. Exported so a
 /// caller that needs an absolute filesystem path for something outside the asset pipeline (for
@@ -42,7 +50,8 @@ pub const DEFAULT_ASSET_ROOT: &str = "assets";
 /// them in.
 const DEFAULT_SEARCH_PATHS: &[&str] = &[];
 
-/// Adds the `alias://` asset source and the startup scan that fills its index.
+/// Adds the `alias://` asset source and the startup scan that fills its index, and with the `zip`
+/// or `tar` feature, [`ArchiveSourcePlugin`](ename_asset_vfs::ArchiveSourcePlugin).
 ///
 /// **Must be added before `AssetPlugin`.** `ename_engine` does that with
 /// `add_before::<AssetPlugin>`, and `AliasSourcePlugin` asserts on it.
@@ -129,6 +138,8 @@ struct ContentScanConfig {
     search_paths: Vec<String>,
     load_order_file: Option<PathBuf>,
     ignored: IgnoredFiles,
+    #[cfg(any(feature = "zip", feature = "tar"))]
+    mounts: Option<Arc<Mounts>>,
 }
 
 /// Where [`start_content_scan`] leaves the report for [`mirror_content_scan`] to pick up.
@@ -140,12 +151,23 @@ struct ContentReportCell(Arc<OnceCell<ContentReport>>);
 
 impl Plugin for AssetContentPlugin {
     fn build(&self, app: &mut App) {
+        #[cfg(any(feature = "zip", feature = "tar"))]
+        let mounts = {
+            app.add_plugins(
+                ArchiveSourcePlugin::default().with_asset_root(self.asset_root.clone()),
+            );
+            app.world()
+                .get_resource::<ArchiveMounts>()
+                .map(|mounts| mounts.0.clone())
+        };
         app.add_plugins(AliasSourcePlugin::default().with_asset_root(self.asset_root.clone()))
             .init_resource::<ContentReportCell>()
             .insert_resource(ContentScanConfig {
                 search_paths: self.search_paths.clone(),
                 load_order_file: self.load_order_file.clone(),
                 ignored: self.ignored.clone(),
+                #[cfg(any(feature = "zip", feature = "tar"))]
+                mounts,
             })
             .add_systems(Startup, start_content_scan)
             .add_systems(Update, mirror_content_scan);
@@ -193,6 +215,13 @@ fn start_content_scan(
                 scan_packages(&vfs, &config.search_paths, &load_order, &config.ignored).await;
             let (index, mut report) = build_index(&scan);
             report.problems.extend(problems);
+            // Mounts the scan passed through have been classified and indexed by now.
+            #[cfg(any(feature = "zip", feature = "tar"))]
+            if let Some(mounts) = &config.mounts {
+                report
+                    .problems
+                    .extend(mounts.problems().iter().map(mount_problem));
+            }
 
             // The one place the finished report is listed. `build_index` narrates the fold as it
             // happens, interleaved with a line per package; this is the block at the end of the
@@ -232,4 +261,40 @@ fn mirror_content_scan(
     };
     commands.insert_resource(index.clone());
     commands.insert_resource(report.clone());
+}
+
+#[cfg(any(feature = "zip", feature = "tar"))]
+fn mount_problem(problem: &MountProblem) -> Problem {
+    Problem {
+        path: problem.logical.clone(),
+        kind: ProblemKind::Mount,
+        detail: format!(
+            "{} {}: {}",
+            problem.kind,
+            problem.physical.display(),
+            problem.detail
+        ),
+    }
+}
+
+/// Refuses a filesystem write into an archive mount. `path` is a filesystem path, absolute or
+/// relative to the current directory; the asset root is resolved with symlinks first.
+///
+/// Always compiled and a no-op without mounts, so a caller never needs a feature of its own to
+/// stay safe: whichever way features unify, if archives are mounted this checks them.
+pub fn check_writable(world: &bevy::ecs::world::World, path: &Path) -> std::io::Result<()> {
+    #[cfg(any(feature = "zip", feature = "tar"))]
+    if let Some(mounts) = world.get_resource::<ArchiveMounts>()
+        && !mounts.0.origin_of_file(path).is_loose()
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::ReadOnlyFilesystem,
+            format!(
+                "{} is inside an archive, which is read-only",
+                path.display()
+            ),
+        ));
+    }
+    let _ = (world, path);
+    Ok(())
 }

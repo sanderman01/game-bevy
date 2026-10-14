@@ -391,12 +391,36 @@ impl Mounts {
     /// else means nothing below is mounted. `include_last` also classifies `path` itself, which a
     /// file read does not need.
     fn resolve(&self, path: &Path, include_last: bool) -> Resolved {
+        self.walk(path, include_last, |prefix| Some(self.prefix(prefix)))
+            .expect("every prefix is classified")
+    }
+
+    /// True when `path` is known to be loose from cached classifications alone, so a reader can
+    /// skip the blocking hop that classifying a new prefix needs.
+    #[cfg(feature = "bevy")]
+    pub(crate) fn is_known_loose(&self, path: &Path, include_last: bool) -> bool {
+        let cached = |prefix: &Path| {
+            let prefixes = self.prefixes.lock().unwrap_or_else(|e| e.into_inner());
+            prefixes.get(prefix)?.get().cloned()
+        };
+        matches!(self.walk(path, include_last, cached), Some(Resolved::Loose))
+    }
+
+    /// Walks `path`'s prefixes: a real directory continues the walk, an archive mounts, anything
+    /// else means nothing below is mounted. `include_last` also classifies `path` itself, which a
+    /// file read does not need. `None` when `classify` has no answer for a prefix.
+    fn walk(
+        &self,
+        path: &Path,
+        include_last: bool,
+        mut classify: impl FnMut(&Path) -> Option<Prefix>,
+    ) -> Option<Resolved> {
         let mut parts = Vec::new();
         for component in path.components() {
             match component {
                 Component::Normal(part) => parts.push(part),
                 Component::CurDir => {}
-                _ => return Resolved::Loose,
+                _ => return Some(Resolved::Loose),
             }
         }
         let checked = if include_last {
@@ -407,20 +431,20 @@ impl Mounts {
         let mut prefix = PathBuf::new();
         for (i, part) in parts.iter().enumerate().take(checked) {
             prefix.push(part);
-            match self.prefix(&prefix) {
+            match classify(&prefix)? {
                 Prefix::Dir => {}
-                Prefix::Plain => return Resolved::Loose,
+                Prefix::Plain => return Some(Resolved::Loose),
                 Prefix::Mount(mount) => {
                     let member = parts[i + 1..]
                         .iter()
                         .map(|part| part.to_string_lossy())
                         .collect::<Vec<_>>()
                         .join("/");
-                    return Resolved::Mounted { mount, member };
+                    return Some(Resolved::Mounted { mount, member });
                 }
             }
         }
-        Resolved::Loose
+        Some(Resolved::Loose)
     }
 
     fn prefix(&self, prefix: &Path) -> Prefix {
@@ -555,7 +579,7 @@ fn hint_redundant_folder(prefix: &Path, index: &ArchiveIndex) {
 }
 
 /// The mount directory an archive file in a listing would appear as, if it is one.
-fn mount_path_of(entry: &Path) -> Option<PathBuf> {
+pub(crate) fn mount_path_of(entry: &Path) -> Option<PathBuf> {
     let extension = entry.extension()?.to_str()?;
     FORMATS
         .iter()

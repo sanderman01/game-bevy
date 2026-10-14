@@ -56,6 +56,14 @@ jobs:
           cargo check -p ename_asset_vfs --no-default-features --features zip,tar --all-targets
           cargo check -p ename_asset_vfs --no-default-features --features bevy,zip,tar --all-targets
 
+      # Aliases must never pull an archive format into the graph.
+      - name: Check aliases build without archives
+        run: |
+          if cargo tree -p ename_asset_alias -e features | grep -E '(zip|tar) v[0-9]'; then
+            exit 1
+          fi
+          cargo check -p ename_asset_content --all-targets
+
       - name: Check the package scanner without Bevy
         run: cargo check -p ename_asset_package --no-default-features --all-targets
 

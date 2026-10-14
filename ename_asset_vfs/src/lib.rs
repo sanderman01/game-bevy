@@ -6,10 +6,13 @@
 //!
 //! With the `zip` or `tar` feature it also mounts archives: `assets/basegame/core.zip` reads as
 //! the directory `basegame/core`. [`Mounts`] is the Bevy-free core and [`ArchiveVfs`] its tooling
-//! front. See `docs/assets-archives.md`.
+//! front, and with `bevy` too, [`ArchiveSourcePlugin`] puts them under Bevy's `Default` asset
+//! source. See `docs/assets-archives.md`.
 
 mod vfs;
 
+#[cfg(all(feature = "bevy", any(feature = "zip", feature = "tar")))]
+mod archive_source;
 #[cfg(any(feature = "zip", feature = "tar"))]
 mod archive_vfs;
 #[cfg(any(feature = "zip", feature = "tar"))]
@@ -24,4 +27,9 @@ pub use crate::vfs::AssetReaderVfs;
 pub use crate::{
     archive_vfs::ArchiveVfs,
     mount::{Limits, MountProblem, MountProblemKind, Mounts, Origin},
+};
+
+#[cfg(all(feature = "bevy", any(feature = "zip", feature = "tar")))]
+pub use crate::archive_source::{
+    ArchiveAssetReader, ArchiveMounts, ArchiveSourcePlugin, GuardedWriter,
 };

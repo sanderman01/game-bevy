@@ -6,6 +6,11 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[features]
+# `.zip` and `.tar` mounts under the `Default` source, and their problems in the content report.
+zip = ["ename_asset_vfs/zip"]
+tar = ["ename_asset_vfs/tar"]
+
 [dependencies]
 async-lock.workspace = true
 bevy.workspace = true
@@ -14,7 +19,13 @@ ename_asset_package = { workspace = true, features = ["bevy"] }
 ename_asset_vfs = { workspace = true, features = ["bevy"] }
 
 [dev-dependencies]
+# Loader settings in `archive_load.rs`, which a fixture `.meta` sets.
+serde = { workspace = true, features = ["derive"] }
 tempfile.workspace = true
+
+[[test]]
+name = "archive_load"
+required-features = ["tar", "zip"]
 
 [lints]
 workspace = true

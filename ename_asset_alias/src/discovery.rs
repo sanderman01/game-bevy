@@ -93,6 +93,10 @@ pub enum ProblemKind {
     /// The user's load order file could not be read. The scan carries on with no user
     /// constraints. Produced by `ename_asset_content`.
     UnparseableLoadOrder,
+    /// An archive mount is shadowed, conflicting or unreadable; the detail says which. Produced
+    /// by whoever mounts archives (`ename_asset_content`, `ename_xtask`); this crate has no
+    /// archive vocabulary.
+    Mount,
 }
 
 impl Display for ProblemKind {
@@ -115,6 +119,7 @@ impl Display for ProblemKind {
             Self::DeadOverride => "dead overrides entry",
             Self::DeadRemoval => "dead removes entry",
             Self::UnparseableLoadOrder => "unparseable load order",
+            Self::Mount => "archive mount",
         };
         f.write_str(text)
     }

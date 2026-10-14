@@ -11,7 +11,7 @@ use std::path::Path;
 /// repo's content check out clean" is a question CI should never answer with a guess about which
 /// contest was deliberate. Confirming an intentional override is what `ename_content_list` is for.
 pub fn check(asset_root: &Path, search_paths: &[String], load_order_path: Option<&Path>) -> bool {
-    let scan = crate::scan::scan(asset_root, search_paths, load_order_path);
+    let (scan, _) = crate::scan::scan(asset_root, search_paths, load_order_path);
     let (_, report) = build_index(&scan);
     print_report(&report);
     report.problems.is_empty() && report.contests.is_empty()

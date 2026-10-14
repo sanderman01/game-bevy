@@ -3,11 +3,12 @@
 
 use ename_asset_alias::IgnoredFiles;
 use ename_asset_package::{LoadOrder, Problem, ProblemKind, Scan, scan_packages};
-use ename_asset_vfs::StdVfs;
-use std::path::Path;
+use ename_asset_vfs::{ArchiveVfs, Mounts};
+use std::{path::Path, sync::Arc};
 
 /// Scans `asset_root` for packages under `search_paths`, resolved against the load order at
-/// `load_order_path`.
+/// `load_order_path`, with archives mounted. Returns the mounts too, so a subcommand can tell
+/// which assets live inside an archive.
 ///
 /// A missing `load_order_path` reads as no user constraints, same as `LoadOrder::read_from_path`
 /// does for a missing file. Every subcommand in this crate starts here, so `ename_check`,
@@ -16,8 +17,8 @@ pub(crate) fn scan(
     asset_root: &Path,
     search_paths: &[String],
     load_order_path: Option<&Path>,
-) -> Scan {
-    let vfs = StdVfs::new(asset_root);
+) -> (Scan, Arc<Mounts>) {
+    let vfs = ArchiveVfs::new(asset_root);
     let (load_order, extra_problems) = read_load_order(load_order_path);
     let mut scan = futures_lite::future::block_on(scan_packages(
         &vfs,
@@ -26,7 +27,19 @@ pub(crate) fn scan(
         &IgnoredFiles::default(),
     ));
     scan.problems.extend(extra_problems);
-    scan
+    // The same fold `ename_asset_content` does, so `ename_check` fails on a broken archive.
+    scan.problems
+        .extend(vfs.mounts().problems().into_iter().map(|problem| Problem {
+            path: problem.logical,
+            kind: ProblemKind::Mount,
+            detail: format!(
+                "{} {}: {}",
+                problem.kind,
+                problem.physical.display(),
+                problem.detail
+            ),
+        }));
+    (scan, vfs.mounts().clone())
 }
 
 fn read_load_order(path: Option<&Path>) -> (LoadOrder, Vec<Problem>) {

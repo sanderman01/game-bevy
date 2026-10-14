@@ -14,6 +14,8 @@ pub struct FixSummary {
     /// A sidecar `ename_fix` could not read or could not write. Counted separately from
     /// `created`/`guids_assigned`, neither of which is incremented for the same asset.
     pub failed: usize,
+    /// An asset inside an archive, which is read-only. Its sidecar is left as it is.
+    pub archived: usize,
 }
 
 /// Scans `asset_root`, then walks every discovered asset and repairs whichever guid is missing.
@@ -25,13 +27,19 @@ pub fn fix(
     search_paths: &[String],
     load_order_path: Option<&Path>,
 ) -> FixSummary {
-    let scan = crate::scan::scan(asset_root, search_paths, load_order_path);
+    let (scan, mounts) = crate::scan::scan(asset_root, search_paths, load_order_path);
     let mut summary = FixSummary::default();
     for package in &scan.packages {
         for asset in &package.assets {
-            if asset.guid.is_none() {
-                fix_one(asset_root, asset, &mut summary);
+            if asset.guid.is_some() {
+                continue;
             }
+            // Writing the sidecar would create a loose directory that shadows the archive.
+            if !mounts.origin(&asset.path).is_loose() {
+                summary.archived += 1;
+                continue;
+            }
+            fix_one(asset_root, asset, &mut summary);
         }
     }
     summary

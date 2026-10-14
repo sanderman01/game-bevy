@@ -9,11 +9,14 @@
 //! rename rather than failing the whole command over one untracked sidecar. Outside a git work
 //! tree, every file is a plain rename.
 //!
+//! A path inside an archive mount is refused, as source or destination: archives are read-only.
+//!
 //! This command does not touch alias content. A derived alias that named the old path goes stale
 //! until `ename_fix` is run again, which recomputes it -- the same two-step story
 //! `scratch/content-addressing-design.md` describes for a bulk asset's alias surviving a move.
 
 use ename_asset_alias::DEFAULT_IGNORED_SIDECAR_EXTENSIONS;
+use ename_asset_vfs::{Mounts, Origin};
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -30,6 +33,11 @@ pub struct Moved {
 #[derive(Debug)]
 pub enum MvError {
     SourceMissing(PathBuf),
+    /// `path` is inside the archive mounted from `archive`, which is read-only.
+    InsideArchive {
+        path: PathBuf,
+        archive: PathBuf,
+    },
     RenameFailed {
         from: PathBuf,
         to: PathBuf,
@@ -41,6 +49,12 @@ impl Display for MvError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::SourceMissing(path) => write!(f, "{} does not exist", path.display()),
+            Self::InsideArchive { path, archive } => write!(
+                f,
+                "{} is inside the archive {}, which is read-only",
+                path.display(),
+                archive.display()
+            ),
             Self::RenameFailed { from, to, source } => write!(
                 f,
                 "could not move {} to {}: {source}",
@@ -54,6 +68,14 @@ impl Display for MvError {
 /// Moves `from` and, if they exist, `from` + `.meta` and `from` + `.alias`, to the matching `to`
 /// paths. Every path is resolved relative to the current directory, the same as `git mv`.
 pub fn mv(from: &Path, to: &Path) -> Result<Vec<Moved>, MvError> {
+    for path in [from, to] {
+        if let Some(archive) = archive_holding(path) {
+            return Err(MvError::InsideArchive {
+                path: path.to_path_buf(),
+                archive,
+            });
+        }
+    }
     if !from.exists() {
         return Err(MvError::SourceMissing(from.to_path_buf()));
     }
@@ -141,4 +163,15 @@ fn is_inside_git_work_tree(dir: &Path) -> bool {
         .args(["rev-parse", "--is-inside-work-tree"])
         .output()
         .is_ok_and(|out| out.status.success())
+}
+
+/// The archive `path` lies inside, if any. `ename_mv` takes plain filesystem paths and no asset
+/// root, so mounts are looked for all the way up from the filesystem root.
+fn archive_holding(path: &Path) -> Option<PathBuf> {
+    let absolute = std::path::absolute(path).ok()?;
+    let root = absolute.ancestors().last()?;
+    match Mounts::new(root).origin_of_file(&absolute) {
+        Origin::Loose => None,
+        Origin::Member { archive, .. } | Origin::InMount { archive } => Some(archive),
+    }
 }

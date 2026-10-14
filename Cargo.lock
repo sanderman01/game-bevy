@@ -2982,6 +2982,7 @@ dependencies = [
  "ename_asset_alias",
  "ename_asset_package",
  "ename_asset_vfs",
+ "serde",
  "tempfile",
 ]
 
@@ -3044,6 +3045,7 @@ dependencies = [
  "big_space",
  "ename_asset_alias",
  "ename_asset_content",
+ "ename_asset_vfs",
  "image",
  "libc",
  "ron",
@@ -3094,6 +3096,7 @@ dependencies = [
  "tempfile",
  "toml",
  "uuid",
+ "zip",
 ]
 
 [[package]]

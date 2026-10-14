@@ -88,13 +88,14 @@ with, because an `AssetReader` can't reach a resource.
 
 ## Tooling
 
-`ename_xtask` reads the same two asset crates the running game does, through `StdVfs`, so what it
-reports matches what the game would load. Run it via the `xtask` cargo alias:
+`ename_xtask` reads the same asset crates the running game does, through `ArchiveVfs` (`StdVfs`
+with [archives](assets-archives.md) mounted), so what it reports matches what the game would load. Run it via the `xtask` cargo alias:
 
 - `cargo xtask ename_check` -- exits non-zero if the content tree has a problem or a contested
   alias; the thing to run in CI.
-- `cargo xtask ename_fix` -- writes missing `.alias` files and assigns missing guids.
+- `cargo xtask ename_fix` -- writes missing `.alias` files and assigns missing guids. Assets inside
+  an archive are skipped and counted.
 - `cargo xtask ename_content_list` -- dumps the resolved alias index.
 - `cargo xtask ename_mv <from> <to>` -- moves an asset and its `.meta`, `.alias` and `.license` sidecars together,
-  using `git mv` where possible so history follows the rename.
+  using `git mv` where possible so history follows the rename. Refuses paths inside an archive.
 - `cargo xtask ename_content_build` -- stub; will bake `content-index.ron` for a shipping build.

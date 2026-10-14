@@ -42,8 +42,8 @@ fn main() -> ExitCode {
             let load_order_path = policy::load_order_path();
             let summary = fix::fix(asset_root, &search_paths, load_order_path.as_deref());
             println!(
-                "wrote {} new .alias files, assigned {} guids, {} failed",
-                summary.created, summary.guids_assigned, summary.failed
+                "wrote {} new .alias files, assigned {} guids, {} failed, {} skipped inside archives",
+                summary.created, summary.guids_assigned, summary.failed, summary.archived
             );
             if summary.failed > 0 {
                 ExitCode::FAILURE

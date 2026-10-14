@@ -240,6 +240,8 @@ pub enum SaveStageError {
     Format(#[from] super::StageFormatError),
     #[error("failed to write stage file: {0}")]
     Io(#[from] std::io::Error),
+    #[error("cannot save the stage: {0}")]
+    ReadOnlySource(std::io::Error),
 }
 
 /// Saves every entity tagged `StageMember(id)` to `path` -- a literal filesystem destination,
@@ -252,6 +254,9 @@ pub enum SaveStageError {
 /// file always has exactly one top-level entity -- the invariant [`spawn_stage_root`]'s
 /// membership tagging depends on. See `scratch/scenes-spec.md`.
 pub fn write_stage_file(path: &str, world: &mut World, id: StageId) -> Result<(), SaveStageError> {
+    // Before anything is serialised or reparented: a stage inside an archive cannot be saved back.
+    ename_asset_content::check_writable(world, std::path::Path::new(path))
+        .map_err(SaveStageError::ReadOnlySource)?;
     let root = world.resource_scope(
         |world, formats: Mut<StageFormats>| -> Result<Entity, SaveStageError> {
             let mut query = world.query::<(Entity, &StageMember)>();
