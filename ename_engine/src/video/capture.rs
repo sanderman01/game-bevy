@@ -77,6 +77,8 @@ pub(crate) enum DropReason {
     Conflict,
     /// The frame did not fit the target, which was resized.
     Mismatch,
+    /// The source cannot be recorded at all (format or usage); the recording fails.
+    Unsupported,
     /// The recording's buffers were gone by the time the frame was encoded.
     Unused,
     /// The GPU reported an error mapping the buffer.
@@ -86,11 +88,12 @@ pub(crate) enum DropReason {
 }
 
 impl DropReason {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 8] = [
         Self::NoSlot,
         Self::NoSource,
         Self::Conflict,
         Self::Mismatch,
+        Self::Unsupported,
         Self::Unused,
         Self::MapError,
         Self::SendFailed,
@@ -102,6 +105,7 @@ impl DropReason {
             Self::NoSource => "no_source",
             Self::Conflict => "conflict",
             Self::Mismatch => "mismatch",
+            Self::Unsupported => "unsupported",
             Self::Unused => "unused",
             Self::MapError => "map_error",
             Self::SendFailed => "send_failed",
@@ -401,6 +405,8 @@ struct RingBuffers {
     bind_groups: Option<(TextureViewId, [BindGroup; 2])>,
     slots: [Buffer; RING],
     shared: Arc<CaptureShared>,
+    /// The window the recording reads, whose redirect is kept while the recording lives.
+    window: Option<Entity>,
 }
 
 impl RingBuffers {
@@ -419,6 +425,7 @@ impl RingBuffers {
                 })
             }),
             shared: shared.clone(),
+            window: None,
         }
     }
 }
@@ -525,8 +532,12 @@ fn prepare_capture_targets(
     // A recording that has ended holds the last reference to its ring.
     gpu.rings
         .retain(|_, ring| Arc::strong_count(&ring.shared) > 1);
+    // A live recording keeps its window's redirect however rarely it captures; others go once
+    // idle, so a slow output rate does not reallocate the texture every tick.
+    let recorded: Vec<Entity> = gpu.rings.values().filter_map(|ring| ring.window).collect();
     gpu.redirects.retain(|window, redirect| {
-        windows.contains_key(window) && frame - redirect.last_used < REDIRECT_IDLE_FRAMES
+        windows.contains_key(window)
+            && (recorded.contains(window) || frame - redirect.last_used < REDIRECT_IDLE_FRAMES)
     });
     let jobs = std::mem::take(&mut extracted.jobs);
     if (extracted.warm || !jobs.is_empty()) && gpu.pipelines.is_none() {
@@ -539,6 +550,12 @@ fn prepare_capture_targets(
             shared.fail(DropReason::Unused);
             continue;
         }
+        let Some(slot) = shared.slots.reserve() else {
+            shared.fail(DropReason::NoSlot);
+            continue;
+        };
+        // After reserving: a callback marks the failure before freeing its slot, and reserving
+        // acquires that slot, so a just-failed buffer is always seen here and never reused.
         let size = job.rect.size();
         let ring = gpu
             .rings
@@ -547,9 +564,9 @@ fn prepare_capture_targets(
         if ring.size != size || shared.ring_failed.swap(false, Ordering::AcqRel) {
             *ring = RingBuffers::new(&device, &shared, size);
         }
-        let Some(slot) = shared.slots.reserve() else {
-            shared.fail(DropReason::NoSlot);
-            continue;
+        ring.window = match &job.key {
+            NormalizedRenderTarget::Window(window) => Some(window.entity()),
+            _ => None,
         };
         let source = match &job.key {
             NormalizedRenderTarget::Window(window) => {
@@ -587,6 +604,28 @@ fn prepare_capture_targets(
             }
         }
     }
+    warm_blit(gpu, &prepared.redirected, &device);
+}
+
+/// Builds the blit pipeline for each redirected window's format here rather than in the pass.
+fn warm_blit(
+    gpu: &mut CaptureGpu,
+    redirected: &[(NormalizedRenderTarget, Entity)],
+    device: &RenderDevice,
+) {
+    let CaptureGpu {
+        pipelines,
+        redirects,
+        ..
+    } = gpu;
+    let Some(pipelines) = pipelines.as_mut() else {
+        return;
+    };
+    for (_, window) in redirected {
+        if let Some(redirect) = redirects.get(window) {
+            pipelines.blit(device, redirect.format);
+        }
+    }
 }
 
 /// The window's redirect texture as the capture source, installing the redirect if the
@@ -610,7 +649,7 @@ fn prepare_window(
         .ok_or(DropReason::NoSource)?;
     if !is_supported(format) {
         let _ = job.shared.error.set(VideoError::UnsupportedFormat(format));
-        return Err(DropReason::Mismatch);
+        return Err(DropReason::Unsupported);
     }
     let size = UVec2::new(extracted.physical_width, extracted.physical_height);
     if job.rect.max.cmpgt(size).any() {
@@ -654,12 +693,17 @@ fn prepare_image(
     let format = image.view_format();
     if !is_supported(format) {
         let _ = job.shared.error.set(VideoError::UnsupportedFormat(format));
-        return Err(DropReason::Mismatch);
+        return Err(DropReason::Unsupported);
     }
-    let usage = image.texture_descriptor.usage;
+    // wgpu validates the view's usage, which defaults to the texture's.
+    let usage = image
+        .texture_view_descriptor
+        .as_ref()
+        .and_then(|descriptor| descriptor.usage)
+        .unwrap_or(image.texture_descriptor.usage);
     if !usage.contains(TextureUsages::TEXTURE_BINDING) {
         let _ = job.shared.error.set(VideoError::UnreadableTarget(usage));
-        return Err(DropReason::Mismatch);
+        return Err(DropReason::Unsupported);
     }
     let size = UVec2::new(
         image.texture_descriptor.size.width,
@@ -923,9 +967,14 @@ mod tests {
         assert_eq!(drops, [("no_slot", 1), ("conflict", 1), ("send_failed", 1)]);
     }
 
+    fn drops_of(shared: &CaptureShared, reason: &str) -> u64 {
+        shared.drops().find(|(name, _)| *name == reason).unwrap().1
+    }
+
     /// Ring buffers on a real GPU: a delivered frame frees its slot and unmaps when the writer
-    /// drops it, a recording closed while mapping frees its slot, and a buffer whose map failed
-    /// is left mappable. Skipped without an adapter.
+    /// drops it; a recording closed while a map is in flight still delivers it, and a writer
+    /// gone by then frees it; a failed map frees its slot and marks the ring for replacement;
+    /// a frame held from a replaced ring still frees its slot. Skipped without an adapter.
     #[test]
     fn mapped_slots_are_released_on_every_path() {
         let Some((device, _queue)) = gpu() else {
@@ -935,8 +984,78 @@ mod tests {
         let wait = || {
             device.poll(PollType::wait_indefinitely()).unwrap();
         };
+        let job = |shared: &Arc<CaptureShared>, seq| CaptureJob {
+            shared: shared.clone(),
+            key: NormalizedRenderTarget::None {
+                width: 4,
+                height: 2,
+            },
+            rect: URect::new(0, 0, 4, 2),
+            seq,
+            stamp: Duration::ZERO,
+        };
         let (shared, receiver) = CaptureShared::new();
         let ring = RingBuffers::new(&device, &shared, UVec2::new(4, 2));
+
+        // Delivered: the writer's drop unmaps and frees, and the buffer maps again.
+        let slot = shared.slots.reserve().unwrap();
+        map_slot(job(&shared, 0), slot, ring.slots[slot].clone());
+        wait();
+        let ready = receiver.try_recv().unwrap();
+        assert_eq!(ready.frame.with(|bytes| bytes.len()), 12);
+        assert_eq!(shared.slots.free_count(), RING - 1);
+        drop(ready);
+        assert_eq!(shared.slots.free_count(), RING);
+        map_slot(job(&shared, 1), slot, ring.slots[slot].clone());
+        wait();
+        drop(receiver.try_recv().unwrap());
+
+        // Closed while the map is in flight: the frame still reaches the writer, which then
+        // sees its channel close.
+        let slot = shared.slots.reserve().unwrap();
+        map_slot(job(&shared, 2), slot, ring.slots[slot].clone());
+        shared.close();
+        wait();
+        drop(receiver.try_recv().unwrap());
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Disconnected)
+        ));
+        assert_eq!(shared.slots.free_count(), RING);
+
+        // The writer gone while a map is in flight: the send fails and the slot comes back.
+        let (shared, receiver) = CaptureShared::new();
+        let ring = RingBuffers::new(&device, &shared, UVec2::new(4, 2));
+        let slot = shared.slots.reserve().unwrap();
+        map_slot(job(&shared, 0), slot, ring.slots[slot].clone());
+        drop(receiver);
+        wait();
+        assert_eq!(shared.slots.free_count(), RING);
+        assert_eq!(drops_of(&shared, "send_failed"), 1);
+
+        // A failed map (the buffer is destroyed first) frees the slot, counts the error, and
+        // marks the ring for replacement rather than touching the buffer again.
+        let slot = shared.slots.reserve().unwrap();
+        let doomed = ring.slots[slot].clone();
+        map_slot(job(&shared, 1), slot, doomed.clone());
+        doomed.destroy();
+        wait();
+        assert_eq!(shared.slots.free_count(), RING);
+        assert_eq!(drops_of(&shared, "map_error"), 1);
+        assert!(shared.ring_failed.load(Ordering::Acquire));
+    }
+
+    /// A frame held by the writer from a ring that is then replaced keeps its own buffer, and
+    /// frees its slot when dropped; the new ring's buffer for that slot is untouched.
+    #[test]
+    fn a_frame_from_a_replaced_ring_frees_its_slot() {
+        let Some((device, _queue)) = gpu() else {
+            eprintln!("no GPU adapter; skipping");
+            return;
+        };
+        let (shared, receiver) = CaptureShared::new();
+        let old = RingBuffers::new(&device, &shared, UVec2::new(4, 2));
+        let held_slot = shared.slots.reserve().unwrap();
         let job = |seq| CaptureJob {
             shared: shared.clone(),
             key: NormalizedRenderTarget::None {
@@ -947,52 +1066,24 @@ mod tests {
             seq,
             stamp: Duration::ZERO,
         };
+        map_slot(job(0), held_slot, old.slots[held_slot].clone());
+        device.poll(PollType::wait_indefinitely()).unwrap();
+        let held = receiver.try_recv().unwrap();
 
-        // Delivered: the writer's drop unmaps and frees.
+        let new = RingBuffers::new(&device, &shared, UVec2::new(4, 2));
+        drop(old);
+        // The held slot stays taken, so the new ring cannot hand its buffer out yet.
+        let others: Vec<usize> = std::iter::from_fn(|| shared.slots.reserve()).collect();
+        assert!(!others.contains(&held_slot));
+        for &slot in &others {
+            shared.slots.free(slot);
+        }
+        drop(held);
         let slot = shared.slots.reserve().unwrap();
-        map_slot(job(0), slot, ring.slots[slot].clone());
-        wait();
-        let ready = receiver.try_recv().unwrap();
-        assert_eq!(ready.frame.with(|bytes| bytes.len()), 12);
-        assert_eq!(shared.slots.free_count(), RING - 1);
-        drop(ready);
-        assert_eq!(shared.slots.free_count(), RING);
-        // Unmapped: mapping it again works.
-        map_slot(job(1), slot, ring.slots[slot].clone());
-        wait();
+        assert_eq!(slot, held_slot);
+        map_slot(job(1), slot, new.slots[slot].clone());
+        device.poll(PollType::wait_indefinitely()).unwrap();
         drop(receiver.try_recv().unwrap());
-
-        // Closed while mapping: the send fails, the frame is dropped, the slot comes back.
-        let slot = shared.slots.reserve().unwrap();
-        shared.close();
-        map_slot(job(2), slot, ring.slots[slot].clone());
-        wait();
         assert_eq!(shared.slots.free_count(), RING);
-        assert_eq!(
-            shared
-                .drops()
-                .find(|(name, _)| *name == "send_failed")
-                .unwrap()
-                .1,
-            1
-        );
-
-        // A failed map (the buffer is destroyed first) frees the slot, counts the error, and
-        // marks the ring for replacement rather than touching the buffer again.
-        let slot = shared.slots.reserve().unwrap();
-        let doomed = ring.slots[slot].clone();
-        map_slot(job(3), slot, doomed.clone());
-        doomed.destroy();
-        wait();
-        assert_eq!(shared.slots.free_count(), RING);
-        assert_eq!(
-            shared
-                .drops()
-                .find(|(name, _)| *name == "map_error")
-                .unwrap()
-                .1,
-            1
-        );
-        assert!(shared.ring_failed.load(Ordering::Acquire));
     }
 }
