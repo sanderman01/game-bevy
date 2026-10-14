@@ -13,6 +13,8 @@ acting on it.
 - [Asset aliases](assets-aliases.md). How an asset gets a name, and how the alias source resolves
   it.
 - [Asset packages](assets-packages.md). Search paths, manifests, and load order.
+- [Asset archives](assets-archives.md). Reading `.zip` and `.tar` files as directories of the
+  asset tree.
 - [Commands and jobs](design/commands.md). How a crate registers functionality once for the
   agent tools and a future console, and how slow work is tracked.
 - [Video capture](design/video-capture.md). Why recording pipes raw frames to an `ffmpeg`

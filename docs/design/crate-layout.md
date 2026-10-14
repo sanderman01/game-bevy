@@ -7,8 +7,8 @@ The long-form analysis behind this is in `scratch/crate-structure-review.md`.
 ## Naming
 
 Project codename is `ename`. Every engine-side crate is prefixed with it: `ename_engine`,
-`ename_asset_alias`, `ename_asset_package`, `ename_asset_content`, `ename_editor`, `ename_remote`,
-`ename_mcp`, `ename_xtask`. Bare names like `engine` and `editor` collide with anything and
+`ename_asset_vfs`, `ename_asset_alias`, `ename_asset_package`, `ename_asset_content`,
+`ename_editor`, `ename_remote`, `ename_mcp`, `ename_xtask`. Bare names like `engine` and `editor` collide with anything and
 resolve independently once there is more than one workspace.
 
 `example_` crates are the exception: these are demo crates showing how a game project consumes
@@ -27,28 +27,37 @@ ename_remote                  -> ename_engine
 example_game_lib              -> ename_engine, ename_asset_alias
 ename_editor                  -> ename_engine
 ename_engine                  -> ename_asset_content, bevy, avian3d, big_space, serde, schemars
-ename_asset_content           -> ename_asset_alias, ename_asset_package, async-lock, bevy
-ename_asset_package           -> ename_asset_alias, semver, serde, toml, thiserror, tracing
+ename_asset_content           -> ename_asset_alias, ename_asset_package, ename_asset_vfs, async-lock, bevy
+ename_asset_package           -> ename_asset_alias, ename_asset_vfs, semver, serde, toml, thiserror, tracing
                                  + bevy, behind the default `bevy` feature
-ename_asset_alias             -> async-lock, serde, toml, glob, uuid, thiserror   (no first-party deps)
+ename_asset_alias             -> ename_asset_vfs, async-lock, serde, toml, glob, uuid, thiserror
                                  + bevy, behind the default `bevy` feature
+ename_asset_vfs               -> thiserror   (no first-party deps)
+                                 + bevy, zip, tar, each behind its own feature
 
 ename_mcp (bin)               -> rmcp, reqwest, tokio, serde_json  (no first-party deps, no bevy)
-ename_xtask (bin)             -> ename_asset_alias, ename_asset_package, dirs, futures-lite, toml, uuid
+ename_xtask (bin)             -> ename_asset_alias, ename_asset_package, ename_asset_vfs (zip, tar),
+                                 dirs, futures-lite, toml, uuid
                                  (no bevy; no other first-party crate)
 ```
 
 `ename_mcp` and `ename_xtask` hang off the bottom with no arrow to anything because they are not
 layers. `ename_mcp` is a separate process that talks to the game over a socket. See
 [agent tooling](agent-tooling.md). `ename_xtask` sits beside it as a second standalone tool, not a
-layer: it reads the two bottom asset crates with `StdVfs` the same way the running game's scan
+layer: it reads the bottom asset crates with `StdVfs` the same way the running game's scan
 does, and `scripts/check-layers.sh` enforces that it names nothing above them.
 
 Dependencies point down only. Nothing points sideways between the asset crates and `ename_editor`,
 and nothing points up. There is no `core`, `common`, or `shared` crate on the release path. If a
 cycle appears, the fix is to move the shared type down a layer or invert the call into an event.
 
-The asset layer is three crates, not one. `ename_asset_alias` is the leaf. It owns the alias
+The asset layer is four crates, not one. `ename_asset_vfs` is the leaf: it owns reading the asset
+tree as a filesystem, the `Vfs` trait, `StdVfs`, `AssetReaderVfs`, and the `.zip`/`.tar` mounts
+described in [asset archives](../assets-archives.md). It is its own crate because several asset
+crates name `Vfs` directly and archives must be usable without aliases. Each archive format is a
+feature, so a build that wants aliases and no archives never compiles `zip` or `tar`.
+
+`ename_asset_alias` sits on it and names nothing else first-party. It owns the alias
 end to end: what one is, the `.alias` sidecars and `_alias_rules.toml` folder rules that name one, the
 walk that finds them, the validation that rejects one `AssetPath` would misread, and the `alias://`
 source that serves it. Adding `AliasPlugins` is the whole setup, which is what lets the crate be
