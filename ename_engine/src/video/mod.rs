@@ -1,9 +1,8 @@
 //! Video: record the primary window, or what one camera rendered, to an `.mp4` or `.mkv` file.
 //!
 //! Spawn a [`VideoRequest`] on a fresh entity. The entity is the request: when the recording
-//! finishes, either way, [`VideoFinished`] is triggered on it and it is despawned, unless it also
-//! has [`RetainVideoOutcome`]. Trigger [`VideoStopRequested`] on it to end early and keep what was
-//! recorded.
+//! finishes, either way, [`VideoFinished`] is triggered on it and it is despawned. Trigger
+//! [`VideoStopRequested`] on it to end early and keep what was recorded.
 //!
 //! ```ignore
 //! fn record_game_camera(mut commands: Commands, camera: Single<Entity, With<MainCamera>>) {
@@ -91,8 +90,6 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Everything after the channel closes: queued writes, padding, ffmpeg's exit, fsync.
 const FINALIZE_TIMEOUT: Duration = Duration::from_secs(60);
-/// How long a request with [`RetainVideoOutcome`] stays alive after it finishes.
-const OUTCOME_TTL: Duration = Duration::from_secs(5 * 60);
 /// How long exiting waits for writer threads.
 const SHUTDOWN_BOUND: Duration = Duration::from_secs(2);
 const MAX_FRAME_RATE: u32 = 240;
@@ -130,10 +127,6 @@ pub struct VideoStopRequested {
     pub entity: Entity,
 }
 
-/// Keeps a finished request alive for 5 minutes with a [`VideoOutcome`], for callers that poll.
-#[derive(Component, Default)]
-pub struct RetainVideoOutcome;
-
 /// Where a request is, for pollers. Written only when a value changes.
 #[derive(Component, Clone, Debug, Default, PartialEq, Eq)]
 pub struct VideoProgress {
@@ -153,7 +146,7 @@ pub enum VideoPhase {
     Recording,
     /// Encoding the last frames and closing the file.
     Finalizing,
-    /// Finished; the outcome is in [`VideoOutcome`].
+    /// Finished and reported with [`VideoFinished`].
     Done,
 }
 
@@ -293,10 +286,6 @@ pub struct VideoFinished {
     pub result: Result<SavedVideo, VideoError>,
 }
 
-/// The finished result, kept on a request with [`RetainVideoOutcome`].
-#[derive(Component, Clone, Debug)]
-pub struct VideoOutcome(pub Result<SavedVideo, VideoError>);
-
 /// Whether `path` names a container this records to: `.mp4` or `.mkv`, any case.
 pub fn check_video_path(path: &Path) -> Result<(), VideoError> {
     match Container::from_path(path) {
@@ -331,7 +320,6 @@ impl Plugin for VideoPlugin {
             (
                 advance_starting,
                 finish_recordings,
-                expire_recordings,
                 update_progress,
                 command::sync_job_progress,
             )
@@ -427,9 +415,7 @@ enum RecordingStage {
         deadline: Duration,
         skipped: u64,
     },
-    Done {
-        expires: Duration,
-    },
+    Done,
 }
 
 struct Recorder {
@@ -466,7 +452,7 @@ impl Recorder {
 
 fn start_recordings(
     mut commands: Commands,
-    requests: Query<(Entity, &VideoRequest, Has<RetainVideoOutcome>), Without<RecordingStage>>,
+    requests: Query<(Entity, &VideoRequest), Without<RecordingStage>>,
     cameras: Query<(&Camera, &RenderTarget)>,
     primary_window: Query<Entity, With<PrimaryWindow>>,
     settings: Res<VideoSettings>,
@@ -475,7 +461,7 @@ fn start_recordings(
 ) {
     let now = time.elapsed();
     let primary_window = primary_window.single().ok();
-    for (entity, request, retain) in &requests {
+    for (entity, request) in &requests {
         let checked = (|| {
             let container = Container::from_path(&request.path)
                 .ok_or_else(|| VideoError::UnsupportedContainer(request.path.clone()))?;
@@ -487,10 +473,8 @@ fn start_recordings(
         let container = match checked {
             Ok(container) => container,
             Err(err) => {
-                commands.entity(entity).try_insert(RecordingStage::Done {
-                    expires: now + OUTCOME_TTL,
-                });
-                report(&mut commands, entity, retain, Err(err));
+                commands.entity(entity).try_insert(RecordingStage::Done);
+                report(&mut commands, entity, Err(err));
                 continue;
             }
         };
@@ -524,17 +508,12 @@ fn start_recordings(
 /// slow probe never reads as a stall.
 fn advance_starting(
     mut commands: Commands,
-    mut requests: Query<(
-        Entity,
-        &VideoRequest,
-        &mut RecordingStage,
-        Has<RetainVideoOutcome>,
-    )>,
+    mut requests: Query<(Entity, &VideoRequest, &mut RecordingStage)>,
     settings: Res<VideoSettings>,
     time: Res<Time<Real>>,
 ) {
     let now = time.elapsed();
-    for (entity, request, mut stage, retain) in &mut requests {
+    for (entity, request, mut stage) in &mut requests {
         let RecordingStage::Starting {
             writer,
             since,
@@ -560,10 +539,8 @@ fn advance_starting(
         };
         if let Some(err) = failure {
             // Dropping the stage's writer handle cancels the writer.
-            *stage = RecordingStage::Done {
-                expires: now + OUTCOME_TTL,
-            };
-            report(&mut commands, entity, retain, Err(err));
+            *stage = RecordingStage::Done;
+            report(&mut commands, entity, Err(err));
             continue;
         }
         if writer.0.ready.get().is_none() {
@@ -571,12 +548,7 @@ fn advance_starting(
         }
         let RecordingStage::Starting {
             writer, capture, ..
-        } = std::mem::replace(
-            &mut *stage,
-            RecordingStage::Done {
-                expires: Duration::ZERO,
-            },
-        )
+        } = std::mem::replace(&mut *stage, RecordingStage::Done)
         else {
             unreachable!();
         };
@@ -744,23 +716,20 @@ fn request_frames(
 /// the request is not lost.
 fn stop_recording(
     stop: On<VideoStopRequested>,
-    mut requests: Query<(Option<&mut RecordingStage>, Has<RetainVideoOutcome>), With<VideoRequest>>,
+    mut requests: Query<Option<&mut RecordingStage>, With<VideoRequest>>,
     time: Res<Time<Real>>,
     mut commands: Commands,
 ) {
-    let Ok((stage, retain)) = requests.get_mut(stop.entity) else {
+    let Ok(stage) = requests.get_mut(stop.entity) else {
         return;
     };
     let Some(mut stage) = stage else {
         commands
             .entity(stop.entity)
-            .try_insert(RecordingStage::Done {
-                expires: time.elapsed() + OUTCOME_TTL,
-            });
+            .try_insert(RecordingStage::Done);
         report(
             &mut commands,
             stop.entity,
-            retain,
             Err(VideoError::NoFrames(VideoEnd::Stopped)),
         );
         return;
@@ -768,19 +737,19 @@ fn stop_recording(
     match &mut *stage {
         RecordingStage::Starting { stop, .. } => *stop = true,
         RecordingStage::Recording(recorder) => recorder.end(VideoEnd::Stopped, time.elapsed()),
-        RecordingStage::Finalizing { .. } | RecordingStage::Done { .. } => {}
+        RecordingStage::Finalizing { .. } | RecordingStage::Done => {}
     }
 }
 
 fn finish_recordings(
     mut commands: Commands,
-    mut requests: Query<(Entity, &mut RecordingStage, Has<RetainVideoOutcome>)>,
+    mut requests: Query<(Entity, &mut RecordingStage)>,
     mut writers: ResMut<ActiveWriters>,
     settings: Res<VideoSettings>,
     time: Res<Time<Real>>,
 ) {
     let now = time.elapsed();
-    for (entity, mut stage, retain) in &mut requests {
+    for (entity, mut stage) in &mut requests {
         let mut closing = None;
         let outcome = match &mut *stage {
             RecordingStage::Recording(recorder) => {
@@ -839,10 +808,8 @@ fn finish_recordings(
             if let RecordingStage::Recording(recorder) = &*stage {
                 recorder.capture.close();
             }
-            *stage = RecordingStage::Done {
-                expires: now + OUTCOME_TTL,
-            };
-            report(&mut commands, entity, retain, result);
+            *stage = RecordingStage::Done;
+            report(&mut commands, entity, result);
         }
     }
     writers.0.retain(|(_, thread)| !thread.is_finished());
@@ -851,12 +818,7 @@ fn finish_recordings(
 /// Stops capturing and gives the writer its end. The writer's channel closes once every frame
 /// still in flight has been delivered or dropped.
 fn close(stage: &mut RecordingStage, reason: VideoEnd, deadline: Duration) {
-    let RecordingStage::Recording(recorder) = std::mem::replace(
-        stage,
-        RecordingStage::Done {
-            expires: Duration::ZERO,
-        },
-    ) else {
+    let RecordingStage::Recording(recorder) = std::mem::replace(stage, RecordingStage::Done) else {
         return;
     };
     let Recorder {
@@ -909,21 +871,6 @@ fn stalled_ffmpeg(status: &str) -> VideoError {
     }
 }
 
-fn expire_recordings(
-    mut commands: Commands,
-    requests: Query<(Entity, &RecordingStage)>,
-    time: Res<Time<Real>>,
-) {
-    let now = time.elapsed();
-    for (entity, stage) in &requests {
-        if let RecordingStage::Done { expires } = stage
-            && now >= *expires
-        {
-            commands.entity(entity).try_despawn();
-        }
-    }
-}
-
 fn update_progress(
     mut requests: Query<(&RecordingStage, &mut VideoProgress)>,
     time: Res<Time<Real>>,
@@ -942,7 +889,7 @@ fn update_progress(
                 phase: VideoPhase::Finalizing,
                 ..progress.clone()
             },
-            RecordingStage::Done { .. } => VideoProgress {
+            RecordingStage::Done => VideoProgress {
                 phase: VideoPhase::Done,
                 ..progress.clone()
             },
@@ -957,22 +904,10 @@ fn shutdown_on_exit(mut exits: MessageReader<AppExit>, mut writers: ResMut<Activ
     }
 }
 
-/// Publishes a finished request; the caller has already moved it to `Done`.
-fn report(
-    commands: &mut Commands,
-    entity: Entity,
-    retain: bool,
-    result: Result<SavedVideo, VideoError>,
-) {
-    if retain {
-        commands
-            .entity(entity)
-            .try_insert(VideoOutcome(result.clone()));
-    }
+/// Publishes a finished request and despawns it; the caller has already moved it to `Done`.
+fn report(commands: &mut Commands, entity: Entity, result: Result<SavedVideo, VideoError>) {
     commands.trigger(VideoFinished { entity, result });
-    if !retain {
-        commands.entity(entity).try_despawn();
-    }
+    commands.entity(entity).try_despawn();
 }
 
 #[cfg(all(test, unix))]
@@ -1022,9 +957,10 @@ mod tests {
 
     fn record(app: &mut App, path: PathBuf, length: VideoLength) -> Entity {
         app.world_mut()
-            .spawn((
-                VideoRequest::new(CaptureSource::PrimaryWindow, path, length),
-                RetainVideoOutcome,
+            .spawn(VideoRequest::new(
+                CaptureSource::PrimaryWindow,
+                path,
+                length,
             ))
             .id()
     }

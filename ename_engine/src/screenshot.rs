@@ -1,8 +1,7 @@
 //! Screenshots: capture the primary window, or what one camera rendered, to a PNG file.
 //!
 //! Spawn a [`ScreenshotRequest`] on a fresh entity. The entity is the request: when the capture
-//! finishes, either way, [`ScreenshotFinished`] is triggered on it and it is despawned, unless it
-//! also has [`RetainScreenshotOutcome`].
+//! finishes, either way, [`ScreenshotFinished`] is triggered on it and it is despawned.
 //!
 //! ```ignore
 //! fn screenshot_game_camera(mut commands: Commands, camera: Single<Entity, With<MainCamera>>) {
@@ -72,9 +71,6 @@ use crate::readback::{
 /// How long a request waits for its readback before failing with [`ScreenshotError::TimedOut`].
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// How long a request with [`RetainScreenshotOutcome`] stays alive after it finishes.
-const OUTCOME_TTL: Duration = Duration::from_secs(30);
-
 /// A capture to take. See the module docs.
 #[derive(Component, Clone, Debug)]
 pub struct ScreenshotRequest {
@@ -83,11 +79,6 @@ pub struct ScreenshotRequest {
     /// directory. Missing parent directories are created and an existing file is replaced.
     pub path: PathBuf,
 }
-
-/// Keeps a finished request alive for 30 s with a [`ScreenshotOutcome`], for callers that poll
-/// rather than observe.
-#[derive(Component, Default)]
-pub struct RetainScreenshotOutcome;
 
 /// A PNG that was written.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -149,10 +140,6 @@ pub struct ScreenshotFinished {
     pub result: Result<SavedScreenshot, ScreenshotError>,
 }
 
-/// The finished result, kept on a request with [`RetainScreenshotOutcome`].
-#[derive(Component, Clone, Debug)]
-pub struct ScreenshotOutcome(pub Result<SavedScreenshot, ScreenshotError>);
-
 /// Captures [`ScreenshotRequest`]s and writes them to disk, and registers the
 /// `screenshot.capture` command.
 pub struct ScreenshotPlugin;
@@ -181,10 +168,8 @@ enum CaptureStage {
         deadline: Duration,
     },
     Writing(Task<Result<SavedScreenshot, ScreenshotError>>),
-    /// Terminal. Only a request with [`RetainScreenshotOutcome`] stays around in it.
-    Done {
-        expires: Duration,
-    },
+    /// Terminal: reported, and despawned with the next command flush.
+    Done,
 }
 
 impl From<SourceError> for ScreenshotError {
@@ -200,10 +185,7 @@ impl From<SourceError> for ScreenshotError {
 
 fn start_captures(
     mut commands: Commands,
-    requests: Query<
-        (Entity, &ScreenshotRequest, Has<RetainScreenshotOutcome>),
-        Without<CaptureStage>,
-    >,
+    requests: Query<(Entity, &ScreenshotRequest), Without<CaptureStage>>,
     cameras: Query<(&Camera, &RenderTarget)>,
     primary_window: Query<Entity, With<PrimaryWindow>>,
     mut queue: ResMut<ReadbackQueue>,
@@ -212,17 +194,15 @@ fn start_captures(
     let now = time.elapsed();
     let primary_window = primary_window.single().ok();
 
-    for (entity, request, retain) in &requests {
+    for (entity, request) in &requests {
         let resolved = check_png_path(&request.path).and_then(|()| {
             resolve_source(request.source, &cameras, primary_window).map_err(Into::into)
         });
         let source = match resolved {
             Ok(source) => source,
             Err(err) => {
-                commands.entity(entity).try_insert(CaptureStage::Done {
-                    expires: now + OUTCOME_TTL,
-                });
-                report(&mut commands, entity, retain, Err(err));
+                commands.entity(entity).try_insert(CaptureStage::Done);
+                report(&mut commands, entity, Err(err));
                 continue;
             }
         };
@@ -243,16 +223,12 @@ fn start_captures(
 /// a late readback fails the same way whether this or [`expire_captures`] runs first.
 fn deliver_capture(
     frame: On<FrameReadBack>,
-    mut requests: Query<(
-        &ScreenshotRequest,
-        &mut CaptureStage,
-        Has<RetainScreenshotOutcome>,
-    )>,
+    mut requests: Query<(&ScreenshotRequest, &mut CaptureStage)>,
     time: Res<Time<Real>>,
     mut commands: Commands,
 ) {
     // A request the game despawned, a recording, or one that has already timed out takes nothing.
-    let Ok((request, mut stage, retain)) = requests.get_mut(frame.entity) else {
+    let Ok((request, mut stage)) = requests.get_mut(frame.entity) else {
         return;
     };
     let CaptureStage::Waiting { deadline } = *stage else {
@@ -260,10 +236,8 @@ fn deliver_capture(
     };
     let now = time.elapsed();
     if now >= deadline {
-        *stage = CaptureStage::Done {
-            expires: now + OUTCOME_TTL,
-        };
-        report(&mut commands, frame.entity, retain, Err(timed_out()));
+        *stage = CaptureStage::Done;
+        report(&mut commands, frame.entity, Err(timed_out()));
         return;
     }
     // Shared, so each request's task copies the pixels on its own thread, not on this one.
@@ -275,65 +249,46 @@ fn deliver_capture(
     );
 }
 
-fn finish_captures(
-    mut commands: Commands,
-    mut requests: Query<(Entity, &mut CaptureStage, Has<RetainScreenshotOutcome>)>,
-    time: Res<Time<Real>>,
-) {
-    for (entity, mut stage, retain) in &mut requests {
+fn finish_captures(mut commands: Commands, mut requests: Query<(Entity, &mut CaptureStage)>) {
+    for (entity, mut stage) in &mut requests {
         let CaptureStage::Writing(task) = &mut *stage else {
             continue;
         };
         let Some(result) = check_ready(task) else {
             continue;
         };
-        *stage = CaptureStage::Done {
-            expires: time.elapsed() + OUTCOME_TTL,
-        };
-        report(&mut commands, entity, retain, result);
+        *stage = CaptureStage::Done;
+        report(&mut commands, entity, result);
     }
 }
 
 fn expire_captures(
     mut commands: Commands,
-    mut requests: Query<(Entity, &mut CaptureStage, Has<RetainScreenshotOutcome>)>,
+    mut requests: Query<(Entity, &mut CaptureStage)>,
     time: Res<Time<Real>>,
 ) {
     let now = time.elapsed();
-    for (entity, mut stage, retain) in &mut requests {
+    for (entity, mut stage) in &mut requests {
         match *stage {
             CaptureStage::Waiting { deadline } if now >= deadline => {
-                *stage = CaptureStage::Done {
-                    expires: now + OUTCOME_TTL,
-                };
-                report(&mut commands, entity, retain, Err(timed_out()));
-            }
-            CaptureStage::Done { expires } if now >= expires => {
-                commands.entity(entity).try_despawn();
+                *stage = CaptureStage::Done;
+                report(&mut commands, entity, Err(timed_out()));
             }
             _ => {}
         }
     }
 }
 
-/// Publishes a finished request. The caller has already moved it to [`CaptureStage::Done`],
-/// which is what keeps this from running twice for one request. `try_` throughout: an observer
-/// of an earlier report may already have despawned this request.
+/// Publishes a finished request and despawns it. The caller has already moved it to
+/// [`CaptureStage::Done`], which is what keeps this from running twice for one request. `try_`:
+/// an observer of an earlier report may already have despawned this request.
 fn report(
     commands: &mut Commands,
     entity: Entity,
-    retain: bool,
     result: Result<SavedScreenshot, ScreenshotError>,
 ) {
-    if retain {
-        commands
-            .entity(entity)
-            .try_insert(ScreenshotOutcome(result.clone()));
-    }
     commands.trigger(ScreenshotFinished { entity, result });
-    if !retain {
-        commands.entity(entity).try_despawn();
-    }
+    commands.entity(entity).try_despawn();
 }
 
 fn timed_out() -> ScreenshotError {
@@ -637,15 +592,13 @@ mod tests {
         app
     }
 
-    fn request(app: &mut App, source: CaptureSource, path: &Path, retain: bool) -> Entity {
-        let mut entity = app.world_mut().spawn(ScreenshotRequest {
-            source,
-            path: path.to_path_buf(),
-        });
-        if retain {
-            entity.insert(RetainScreenshotOutcome);
-        }
-        entity.id()
+    fn request(app: &mut App, source: CaptureSource, path: &Path) -> Entity {
+        app.world_mut()
+            .spawn(ScreenshotRequest {
+                source,
+                path: path.to_path_buf(),
+            })
+            .id()
     }
 
     fn screenshots(app: &mut App) -> Vec<(Entity, Vec<Entity>)> {
@@ -683,12 +636,7 @@ mod tests {
     #[test]
     fn a_bad_path_finishes_once_and_is_not_retried() {
         let mut app = app();
-        let entity = request(
-            &mut app,
-            CaptureSource::PrimaryWindow,
-            Path::new("x.jpg"),
-            true,
-        );
+        let entity = request(&mut app, CaptureSource::PrimaryWindow, Path::new("x.jpg"));
         app.update();
         app.update();
         assert_eq!(
@@ -696,7 +644,7 @@ mod tests {
             [(entity, Err(ScreenshotError::NotPng("x.jpg".into())))]
         );
         assert!(screenshots(&mut app).is_empty());
-        assert!(app.world().get::<ScreenshotOutcome>(entity).is_some());
+        assert!(app.world().get_entity(entity).is_err());
     }
 
     #[test]
@@ -709,12 +657,7 @@ mod tests {
                 RenderTarget::Window(WindowRef::Primary),
             ))
             .id();
-        let entity = request(
-            &mut app,
-            CaptureSource::Camera(camera),
-            Path::new("x.png"),
-            false,
-        );
+        let entity = request(&mut app, CaptureSource::Camera(camera), Path::new("x.png"));
         app.update();
         app.update();
         assert_eq!(
@@ -731,18 +674,8 @@ mod tests {
             .world_mut()
             .spawn((camera(true, None), RenderTarget::Window(WindowRef::Primary)))
             .id();
-        let first = request(
-            &mut app,
-            CaptureSource::PrimaryWindow,
-            Path::new("a.png"),
-            false,
-        );
-        let second = request(
-            &mut app,
-            CaptureSource::Camera(camera),
-            Path::new("b.png"),
-            false,
-        );
+        let first = request(&mut app, CaptureSource::PrimaryWindow, Path::new("a.png"));
+        let second = request(&mut app, CaptureSource::Camera(camera), Path::new("b.png"));
         app.update();
         let shots = screenshots(&mut app);
         assert_eq!(shots.len(), 1);
@@ -754,7 +687,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("shot.png");
         let mut app = app();
-        let entity = request(&mut app, CaptureSource::PrimaryWindow, &path, true);
+        let entity = request(&mut app, CaptureSource::PrimaryWindow, &path);
         app.update();
         let (screenshot, _) = screenshots(&mut app)[0];
         deliver(
@@ -774,11 +707,7 @@ mod tests {
             path: path.clone(),
             size: UVec2::new(4, 2),
         };
-        assert_eq!(finished(&app), [(entity, Ok(saved.clone()))]);
-        assert_eq!(
-            app.world().get::<ScreenshotOutcome>(entity).unwrap().0,
-            Ok(saved)
-        );
+        assert_eq!(finished(&app), [(entity, Ok(saved))]);
         assert!(path.exists());
     }
 
@@ -786,12 +715,7 @@ mod tests {
     fn a_late_capture_times_out_once_whichever_runs_first() {
         for deliver_first in [true, false] {
             let mut app = app();
-            let entity = request(
-                &mut app,
-                CaptureSource::PrimaryWindow,
-                Path::new("x.png"),
-                true,
-            );
+            let entity = request(&mut app, CaptureSource::PrimaryWindow, Path::new("x.png"));
             app.update();
             let (screenshot, _) = screenshots(&mut app)[0];
             set_deadline(&mut app, entity, Duration::ZERO);
@@ -813,23 +737,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_retained_outcome_expires() {
-        let mut app = app();
-        let entity = request(
-            &mut app,
-            CaptureSource::PrimaryWindow,
-            Path::new("x.jpg"),
-            true,
-        );
-        app.update();
-        assert!(app.world().get_entity(entity).is_ok());
-        *app.world_mut().get_mut::<CaptureStage>(entity).unwrap() = CaptureStage::Done {
-            expires: Duration::ZERO,
-        };
-        app.update();
-        assert!(app.world().get_entity(entity).is_err());
-    }
     /// Updates until `count` requests have reported, or gives up.
     fn update_until_finished(app: &mut App, count: usize) {
         for _ in 0..400 {
@@ -843,7 +750,7 @@ mod tests {
     }
 
     #[test]
-    fn one_readback_is_cropped_per_request_and_unretained_requests_despawn() {
+    fn one_readback_is_cropped_per_request_and_requests_despawn() {
         let dir = tempfile::tempdir().unwrap();
         let mut app = app();
         let camera = app
@@ -855,8 +762,8 @@ mod tests {
             .id();
         let whole = dir.path().join("whole.png");
         let cropped = dir.path().join("cropped.png");
-        let first = request(&mut app, CaptureSource::PrimaryWindow, &whole, false);
-        let second = request(&mut app, CaptureSource::Camera(camera), &cropped, false);
+        let first = request(&mut app, CaptureSource::PrimaryWindow, &whole);
+        let second = request(&mut app, CaptureSource::Camera(camera), &cropped);
         app.update();
         let (screenshot, _) = screenshots(&mut app)[0];
         deliver(
@@ -891,8 +798,8 @@ mod tests {
         let mut app = app();
         let waiting = dir.path().join("w.png");
         let writing = dir.path().join("x.png");
-        let waiting = request(&mut app, CaptureSource::PrimaryWindow, &waiting, true);
-        let writing = request(&mut app, CaptureSource::PrimaryWindow, &writing, true);
+        let waiting = request(&mut app, CaptureSource::PrimaryWindow, &waiting);
+        let writing = request(&mut app, CaptureSource::PrimaryWindow, &writing);
         app.update();
         let (screenshot, _) = screenshots(&mut app)[0];
 
@@ -914,14 +821,9 @@ mod tests {
     }
 
     #[test]
-    fn a_late_capture_after_an_unretained_timeout_is_ignored() {
+    fn a_late_capture_after_a_timeout_is_ignored() {
         let mut app = app();
-        let entity = request(
-            &mut app,
-            CaptureSource::PrimaryWindow,
-            Path::new("x.png"),
-            false,
-        );
+        let entity = request(&mut app, CaptureSource::PrimaryWindow, Path::new("x.png"));
         app.update();
         let (screenshot, _) = screenshots(&mut app)[0];
         set_deadline(&mut app, entity, Duration::ZERO);
@@ -940,33 +842,21 @@ mod tests {
     /// the same frame must not turn that request's queued commands into a panic.
     #[test]
     fn an_observer_may_despawn_another_reporting_request() {
-        for retain in [false, true] {
-            let mut app = app();
-            let first = request(
-                &mut app,
-                CaptureSource::PrimaryWindow,
-                Path::new("a.jpg"),
-                retain,
-            );
-            let second = request(
-                &mut app,
-                CaptureSource::PrimaryWindow,
-                Path::new("b.jpg"),
-                retain,
-            );
-            app.world_mut().entity_mut(first).observe(
-                move |_: On<ScreenshotFinished>, mut commands: Commands| {
-                    commands.entity(second).try_despawn();
-                },
-            );
-            app.world_mut().entity_mut(second).observe(
-                move |_: On<ScreenshotFinished>, mut commands: Commands| {
-                    commands.entity(first).try_despawn();
-                },
-            );
-            app.update();
-            app.update();
-            assert!(!finished(&app).is_empty(), "retain: {retain}");
-        }
+        let mut app = app();
+        let first = request(&mut app, CaptureSource::PrimaryWindow, Path::new("a.jpg"));
+        let second = request(&mut app, CaptureSource::PrimaryWindow, Path::new("b.jpg"));
+        app.world_mut().entity_mut(first).observe(
+            move |_: On<ScreenshotFinished>, mut commands: Commands| {
+                commands.entity(second).try_despawn();
+            },
+        );
+        app.world_mut().entity_mut(second).observe(
+            move |_: On<ScreenshotFinished>, mut commands: Commands| {
+                commands.entity(first).try_despawn();
+            },
+        );
+        app.update();
+        app.update();
+        assert!(!finished(&app).is_empty());
     }
 }
