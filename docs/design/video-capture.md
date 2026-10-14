@@ -41,7 +41,8 @@ an integer-means-frames rule would turn ten seconds into a sixth of a second wit
 **Time is real time.** Frames are stamped with real time when they are requested, so pausing or
 slowing virtual time does not stop or stretch a recording. Seconds and timecodes resample to a
 constant frame rate, repeating or dropping frames; each frame takes the tick nearest its stamp, so
-a game running at the output rate gets exactly one tick per frame despite jitter. A frame count writes each accepted frame once.
+a game running at the output rate gets exactly one tick per frame despite jitter. A frame count
+writes each accepted frame once.
 
 **A change of source ends the recording and keeps it.** A resize, a camera that goes inactive or
 disappears, five seconds without a frame, or a stop each end the recording early and report
