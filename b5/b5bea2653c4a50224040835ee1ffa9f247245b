@@ -1,0 +1,23 @@
+ename_engine/src/video/mod.rs
+  s_baf869300155eb::t_5ed3b37fdf2c5a 442,1031,1037,1041-1048,1233-1234,1236
+  s_baf869300155eb::t_5861feefb580dd 1235
+ename_engine/src/video/encoder.rs
+  s_baf869300155eb::t_5ed3b37fdf2c5a 228-231,239,392-393,541-543,644,649,673,718-721,795-798,867,872-881,911-912,921-934,1044,1094,1123-1147
+  s_baf869300155eb::t_666447577865ab 1148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b5b5bea2653c4a50224040835ee1ffa9f247245b",
+  "prompts": {},
+  "sessions": {
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
