@@ -736,6 +736,7 @@ impl Mounts {
         let result = File::open(&mount.physical)
             .map_err(IndexError::from)
             .and_then(|file| {
+                files::advise_random(&file);
                 let identity = Identity::of(&file)?;
                 let index = match mount.format.expect("a conflict is never indexed") {
                     #[cfg(feature = "zip")]

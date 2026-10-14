@@ -99,6 +99,8 @@ file on demand.
   `seek_read` loop on Windows) on a blocking worker, then an inflate for Deflate members. Reads
   name their own offsets and never rely on a file cursor, so they don't serialise on one; only
   looking up the open file takes a short lock. Open archive files are kept in an LRU of 64.
+  On Linux archive files are opened with `POSIX_FADV_RANDOM`: every read is an exact range, and
+  readahead around each 512-byte tar header would otherwise read most of the file while indexing.
 - An archive is identified by length, modification time and, on Unix, device and inode when it is
   indexed; on Windows, where the file index is unstable in std, creation time stands in. A file
   reopened after eviction that no longer matches fails with `InvalidData` rather than being read
@@ -165,7 +167,9 @@ Nothing writes into a mount.
   directory, removing the assets in one, or renaming one is refused when a mount or an archive
   file lies anywhere under it; a symlinked directory there is a link to those operations and is
   not walked. Where a symlink on the way leads is checked too, the last component and a `.meta`
-  included, so a link to `pkg.zip` can't be written through. That covers Bevy writing a default
+  included, so a link to `pkg.zip` can't be written through. The canonical file behind each
+  mounted archive is recorded too, so when `pkg.zip` is itself a symlink, its target can't be
+  written under its own name or through another link. That covers Bevy writing a default
   `.meta`.
 - `ename_fix` skips archive-backed assets and counts them.
 - `ename_mv` refuses moves into or out of a mount under the project's asset root.
