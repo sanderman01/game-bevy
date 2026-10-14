@@ -57,16 +57,21 @@ impl Plugin for VirtualCameraPlugin {
 #[reflect(Component)]
 pub struct MainCamera;
 
-/// The one camera the game renders through: the single entity with [`MainCamera`], `Camera` and
-/// `RenderTarget`. `Err` holds how many there are when that is not exactly one; a marker on
-/// something that is not a camera does not count.
+/// What counts as the game's camera: [`MainCamera`] on an entity that is a `Camera` with a
+/// `RenderTarget`. A marker on something that is not a camera does not count. Exactly one must
+/// match; use this filter in a query, or [`single_main_camera`] with a `World`, so every reader
+/// applies the same rule.
+pub type MainCameraFilter = (
+    With<MainCamera>,
+    With<Camera>,
+    With<bevy::camera::RenderTarget>,
+);
+
+/// The one camera the game renders through: the single entity matching [`MainCameraFilter`]. `Err`
+/// holds how many there are when that is not exactly one.
 pub fn single_main_camera(world: &mut World) -> Result<Entity, usize> {
     let cameras: Vec<Entity> = world
-        .query_filtered::<Entity, (
-            With<MainCamera>,
-            With<Camera>,
-            With<bevy::camera::RenderTarget>,
-        )>()
+        .query_filtered::<Entity, MainCameraFilter>()
         .iter(world)
         .collect();
     match cameras[..] {

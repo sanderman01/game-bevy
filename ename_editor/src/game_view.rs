@@ -19,7 +19,7 @@ use bevy::{
 use bevy_egui::{
     EguiPostUpdateSet, EguiTextureHandle, EguiUserTextures, EguiZoomFactor, PrimaryEguiContext,
 };
-use ename_engine::camera::MainCamera;
+use ename_engine::camera::MainCameraFilter;
 
 use crate::panels::{ActiveViewport, UiState};
 
@@ -27,7 +27,7 @@ use crate::panels::{ActiveViewport, UiState};
 /// first paint comes after the first [`resize_game_view`].
 const INITIAL_SIZE: UVec2 = UVec2::splat(64);
 
-/// Renders the stage's [`MainCamera`] into an image and paints it in the Game View tab.
+/// Renders the stage's [`MainCamera`](ename_engine::camera::MainCamera) into an image and paints it in the Game View tab.
 ///
 /// Registers [`GameViewTarget`], the image it owns, and the systems that keep that image's size
 /// and the camera's target in step with the tab.
@@ -44,11 +44,6 @@ impl Plugin for GameViewPlugin {
     }
 }
 
-/// The cameras the Game View can show. Exactly one must match. The same rule as
-/// `ename_engine::camera::single_main_camera`, which `editor.get_view` reports, so what the tab
-/// shows and what the agent is told agree.
-type GameViewCameraFilter = (With<MainCamera>, With<Camera>, With<RenderTarget>);
-
 /// The image the stage camera renders into, and the egui texture that paints it.
 #[derive(Resource)]
 pub(crate) struct GameViewTarget {
@@ -56,7 +51,7 @@ pub(crate) struct GameViewTarget {
     texture: egui::TextureId,
     /// Size of `image`, in physical pixels.
     size: UVec2,
-    /// Whether the loaded stage has a [`MainCamera`] at all. False leaves `image` holding the
+    /// Whether the loaded stage has a [`MainCamera`](ename_engine::camera::MainCamera) at all. False leaves `image` holding the
     /// last stage's final frame, which would read as live.
     camera_present: bool,
 }
@@ -103,7 +98,8 @@ fn resize_game_view(
     ui_state: Res<UiState>,
     window: Single<&Window, With<PrimaryWindow>>,
     zoom_factor: Single<&EguiZoomFactor, With<PrimaryEguiContext>>,
-    camera: Option<Single<(&mut Camera, &mut RenderTarget), GameViewCameraFilter>>,
+    // The engine's rule, which `editor.get_view` reports too, so the tab and the agent agree.
+    camera: Option<Single<(&mut Camera, &mut RenderTarget), MainCameraFilter>>,
     mut target: ResMut<GameViewTarget>,
     mut images: ResMut<Assets<Image>>,
 ) {
