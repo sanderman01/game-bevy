@@ -42,11 +42,14 @@
 //! frame, or a stop request each end the recording early. What was recorded is kept and reported
 //! as success, with [`SavedVideo::ended`] saying why. Ending before any frame is an error.
 //!
+//! The `video.record` command runs a request as a job; cancelling that job stops the recording.
+//!
 //! Despawning a request, or exiting the app, cancels the recording and deletes the partial file
 //! without reporting. Once the writer has started moving the finished file into place, cancel
 //! loses: the file appears. A hard kill of the game can leave an `.ename-video-*` temp file.
 
 mod capture;
+mod command;
 mod encoder;
 mod length;
 mod nv12;
@@ -163,6 +166,20 @@ pub enum VideoEnd {
     CameraInactive,
     SourceLost,
     Stalled,
+}
+
+impl VideoEnd {
+    /// Stable snake_case name, such as `source_resized`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Completed => "completed",
+            Self::Stopped => "stopped",
+            Self::SourceResized => "source_resized",
+            Self::CameraInactive => "camera_inactive",
+            Self::SourceLost => "source_lost",
+            Self::Stalled => "stalled",
+        }
+    }
 }
 
 /// A video that was written.
@@ -316,6 +333,7 @@ impl Plugin for VideoPlugin {
                 finish_recordings,
                 expire_recordings,
                 update_progress,
+                command::sync_job_progress,
             )
                 .chain(),
         )
@@ -333,6 +351,11 @@ impl Plugin for VideoPlugin {
         )
         .add_observer(stop_recording);
         capture::build_render(app);
+    }
+
+    /// `finish`, so every capture source a plugin added in `build` is in the command's schema.
+    fn finish(&self, app: &mut App) {
+        command::register(app);
     }
 }
 
@@ -1387,5 +1410,186 @@ mod tests {
         );
         drop(app);
         assert!(fake_exited(dir.path()));
+    }
+
+    /// [`app`] with the command registry, the capture sources and `video.record`.
+    fn command_app(dir: &Path) -> App {
+        let mut app = app(dir, "exit 0", CAT, |_| {});
+        app.add_plugins((crate::command::CommandPlugin, crate::capture::CapturePlugin));
+        command::register(&mut app);
+        app
+    }
+
+    fn start_command(app: &mut App, params: serde_json::Value) -> (crate::command::JobId, Entity) {
+        use crate::command::{Caller, CommandScope, CommandWorldExt, Reply};
+        let reply = app
+            .world_mut()
+            .call_command(
+                "video.record",
+                params,
+                Caller {
+                    scope: CommandScope::Development,
+                    cwd: None,
+                },
+            )
+            .unwrap();
+        let Reply::Job(job) = reply else {
+            panic!("not a job: {reply:?}");
+        };
+        let entity = app
+            .world_mut()
+            .query_filtered::<Entity, With<VideoRequest>>()
+            .single(app.world())
+            .unwrap();
+        (job, entity)
+    }
+
+    fn job_status(app: &App, job: &crate::command::JobId) -> crate::command::JobStatus {
+        app.world()
+            .resource::<crate::command::Jobs>()
+            .status(job, crate::command::CommandScope::Development)
+            .unwrap()
+    }
+
+    fn cancel(app: &mut App, job: &crate::command::JobId) {
+        use crate::command::{CommandScope, CommandWorldExt};
+        app.world_mut()
+            .cancel_job(job, CommandScope::Development)
+            .unwrap();
+    }
+
+    #[test]
+    fn the_command_records_and_reports_progress() {
+        let _guard = lock_processes();
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = command_app(dir.path());
+        let path = dir.path().join("a.mp4");
+        let (job, entity) = start_command(
+            &mut app,
+            serde_json::json!({ "path": path, "source": "window", "duration": { "frames": 2 } }),
+        );
+        recording(&mut app, entity);
+        let mut batch = jobs(&app);
+        for _ in 0..3 {
+            app.update();
+            batch.extend(jobs(&app));
+        }
+        assert_eq!(
+            job_status(&app, &job).progress.unwrap()["phase"],
+            "recording"
+        );
+        deliver(&batch);
+        finished(&mut app).unwrap();
+        let status = job_status(&app, &job);
+        assert_eq!(status.state, "succeeded", "{status:?}");
+        let result = status.result.unwrap();
+        assert_eq!(result["ended"], "completed");
+        assert_eq!(result["frames"], 2);
+        assert!(result.get("note").is_none());
+    }
+
+    #[test]
+    fn cancelling_the_job_stops_and_keeps_the_recording() {
+        let _guard = lock_processes();
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = command_app(dir.path());
+        let path = dir.path().join("a.mp4");
+        let (job, entity) = start_command(
+            &mut app,
+            serde_json::json!({ "path": path, "source": "window", "duration": { "seconds": 3600 } }),
+        );
+        recording(&mut app, entity);
+        deliver(&jobs(&app));
+        std::thread::sleep(Duration::from_millis(40));
+        update_and_deliver(&mut app);
+        cancel(&mut app, &job);
+        finished(&mut app).unwrap();
+        let status = job_status(&app, &job);
+        assert_eq!(status.state, "succeeded", "{status:?}");
+        let result = status.result.unwrap();
+        assert_eq!(result["ended"], "stopped");
+        assert!(result["note"].as_str().unwrap().contains("ended early"));
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn cancelling_before_the_first_frame_ends_cancelled() {
+        let _guard = lock_processes();
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = command_app(dir.path());
+        let path = dir.path().join("a.mp4");
+        let (job, _) = start_command(
+            &mut app,
+            serde_json::json!({ "path": path, "source": "window", "duration": { "frames": 5 } }),
+        );
+        cancel(&mut app, &job);
+        assert_eq!(
+            finished(&mut app),
+            Err(VideoError::NoFrames(VideoEnd::Stopped))
+        );
+        assert_eq!(job_status(&app, &job).state, "cancelled");
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn the_command_refuses_bad_params_before_spawning() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = command_app(dir.path());
+        let base = |path: &str, duration: serde_json::Value| serde_json::json!({ "path": path, "source": "window", "duration": duration });
+        for (params, kind) in [
+            (
+                base("/tmp/a.webm", serde_json::json!({ "frames": 1 })),
+                "unsupported_container",
+            ),
+            (
+                base("/tmp/a.mp4", serde_json::json!({ "frames": 0 })),
+                "invalid_duration",
+            ),
+            (
+                base("/tmp/a.mp4", serde_json::json!({ "seconds": -1 })),
+                "invalid_duration",
+            ),
+            (
+                base("/tmp/a.mp4", serde_json::json!({ "timecode": "x" })),
+                "invalid_duration",
+            ),
+            (
+                base(
+                    "/tmp/a.mp4",
+                    serde_json::json!({ "frames": 1, "seconds": 1 }),
+                ),
+                "invalid_params",
+            ),
+            (base("/tmp/a.mp4", serde_json::json!(10)), "invalid_params"),
+            (
+                serde_json::json!({ "path": "/tmp/a.mp4", "source": "window", "duration": { "frames": 1 }, "frame_rate": 241 }),
+                "invalid_frame_rate",
+            ),
+            (
+                serde_json::json!({ "path": "/tmp/a.mp4", "source": "moon", "duration": { "frames": 1 } }),
+                "unknown_source",
+            ),
+        ] {
+            use crate::command::{Caller, CommandScope, CommandWorldExt};
+            let err = app
+                .world_mut()
+                .call_command(
+                    "video.record",
+                    params.clone(),
+                    Caller {
+                        scope: CommandScope::Development,
+                        cwd: None,
+                    },
+                )
+                .unwrap_err();
+            assert_eq!(err.kind, kind, "{params}");
+        }
+        assert_eq!(
+            app.world_mut()
+                .query::<&VideoRequest>()
+                .iter(app.world())
+                .count(),
+            0
+        );
     }
 }

@@ -27,7 +27,9 @@ mod run_id;
 use bevy::prelude::*;
 
 pub use error::{CommandError, ErrorClass};
-pub use jobs::{JobCancelRequested, JobHandle, JobId, JobStatus, Jobs, OnCancel, RETENTION};
+pub use jobs::{
+    JobCancelRequested, JobHandle, JobId, JobStatus, JobWork, Jobs, OnCancel, RETENTION,
+};
 pub use registry::{
     Call, Caller, CommandAppExt, CommandInfo, CommandKind, CommandRegistry, CommandScope,
     CommandSpec, CommandWorldExt, Reply,

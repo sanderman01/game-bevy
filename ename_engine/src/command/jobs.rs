@@ -89,10 +89,16 @@ pub struct JobCancelRequested {
 }
 
 /// Ties a work entity to its job. Removing it, by despawn or otherwise, cancels a job that has
-/// not finished.
+/// not finished. Inserted by [`Call::start_job`](super::Call::start_job) only.
 #[derive(Component, Debug)]
 #[component(on_remove = work_removed)]
-pub(crate) struct JobWork(pub(crate) JobId);
+pub struct JobWork(pub(crate) JobId);
+
+impl JobWork {
+    pub fn job(&self) -> &JobId {
+        &self.0
+    }
+}
 
 fn work_removed(mut world: DeferredWorld, context: HookContext) {
     let Some(id) = world
