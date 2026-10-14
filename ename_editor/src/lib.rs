@@ -1,5 +1,6 @@
 //! `ename_editor` -- the egui editor: dock layout, selection, viewport, console, gizmo
-//! integration, and the `editor.view.*` BRP methods that switch between Scene and Game View.
+//! integration, and the `editor.get_view` / `editor.set_view` commands that switch between Scene
+//! and Game View.
 //!
 //! Sits above `ename_engine` and links into a target only when that target asks for it. A
 //! shipping build does not contain this crate, and it must never depend on `example_game_lib`. See
@@ -16,6 +17,7 @@ mod menu;
 mod panels;
 mod remote;
 mod selection;
+mod view_commands;
 mod viewport;
 
 use bevy::{app::PluginGroupBuilder, prelude::*};
@@ -64,6 +66,7 @@ impl PluginGroup for EditorPlugins {
             .add(game_view::GameViewPlugin)
             .add(gizmo::GizmoPlugin)
             .add(remote::RemoteViewPlugin)
+            .add(view_commands::ViewCommandsPlugin)
     }
 }
 

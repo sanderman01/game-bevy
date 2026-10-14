@@ -51,11 +51,7 @@ type GameViewCameraFilter = (With<MainCamera>, With<Camera>, With<RenderTarget>)
 /// Whether the Game View has a camera to show: exactly one entity matches
 /// [`GameViewCameraFilter`]. A `MainCamera` marker on an entity with no `Camera` does not count.
 pub(crate) fn camera_available(world: &mut World) -> bool {
-    world
-        .query_filtered::<(), GameViewCameraFilter>()
-        .iter(world)
-        .count()
-        == 1
+    ename_engine::camera::single_main_camera(world).is_ok()
 }
 
 /// The image the stage camera renders into, and the egui texture that paints it.

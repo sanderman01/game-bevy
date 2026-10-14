@@ -3008,6 +3008,7 @@ dependencies = [
  "egui_dock",
  "ename_engine",
  "rfd",
+ "schemars",
  "serde",
  "serde_json",
 ]
