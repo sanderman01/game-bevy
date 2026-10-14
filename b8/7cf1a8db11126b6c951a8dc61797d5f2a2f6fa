@@ -1,0 +1,28 @@
+ename_editor/src/lib.rs
+  s_baf869300155eb::t_4e36c506582e1f 2-3,20,69
+ename_editor/src/game_view.rs
+  s_baf869300155eb::t_4e36c506582e1f 54
+ename_editor/src/view_commands.rs
+  s_baf869300155eb::t_4e36c506582e1f 1-189,193-206,213-365,370-393
+  s_baf869300155eb::t_6a70c498659e50 190-192,207-212,366-369
+ename_editor/Cargo.toml
+  s_baf869300155eb::t_4e36c506582e1f 21
+Cargo.lock
+  s_baf869300155eb::t_b16f7bcebd7819 3011
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b87cf1a8db11126b6c951a8dc61797d5f2a2f6fa",
+  "prompts": {},
+  "sessions": {
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
