@@ -1,0 +1,33 @@
+ename_editor/src/game_view.rs
+  s_baf869300155eb::t_b6db1a489c9f95 47-49
+docs/design/agent-tooling.md
+  s_baf869300155eb::t_b69687a5fbe385 21,26-29,58-67,69-76,78-85
+ename_remote/src/lib.rs
+  s_baf869300155eb::t_d5c6766366b68e 28-29
+  s_baf869300155eb::t_00554a18c68a5a 42
+docs/design/crate-layout.md
+  s_baf869300155eb::t_eab9c37f1db191 92-97,135-141
+  s_baf869300155eb::t_11830036cfd69d 29
+ename_editor/Cargo.toml
+  s_baf869300155eb::t_d5c6766366b68e 10
+example_game_editor_bin/Cargo.toml
+  s_baf869300155eb::t_d5c6766366b68e 13-14
+scripts/check-layers.sh
+  s_baf869300155eb::t_d5c6766366b68e 26-28,30,40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "93cd9374939fef9855faf594877ad5259f7cae48",
+  "prompts": {},
+  "sessions": {
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
