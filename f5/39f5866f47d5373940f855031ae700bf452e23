@@ -1,0 +1,20 @@
+ename_engine/src/video/capture.rs
+  s_baf869300155eb::t_eda45fc7c4ce23 970-973,975-977,987,997-998,1000,1002,1009,1013-1014,1016,1019-1023,1025-1034,1040,1044,1047-1088
+  s_baf869300155eb::t_81258f8ab66708 80-81,91,96,108,408-409,428,535-537,539-540,553-558,567-569,607-628,652,696,698-703,706
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f539f5866f47d5373940f855031ae700bf452e23",
+  "prompts": {},
+  "sessions": {
+    "s_baf869300155eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ad934624-f33d-40bc-a8e5-0079dd65c578",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
