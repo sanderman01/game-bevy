@@ -3022,6 +3022,7 @@ dependencies = [
  "ename_asset_alias",
  "ename_asset_content",
  "image",
+ "libc",
  "ron",
  "tempfile",
  "thiserror 2.0.20",

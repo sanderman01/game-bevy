@@ -78,7 +78,8 @@ pub(crate) const ENCODERS: &[EncoderSpec] = &[
         input_args: &[],
         pix_fmt: "yuv420p",
         hw_upload: false,
-        quality_args: &["-preset", "veryfast", "-crf", "20"],
+        // Capped so the software fallback leaves cores for the game.
+        quality_args: &["-preset", "veryfast", "-crf", "20", "-threads", "4"],
     },
 ];
 
@@ -553,6 +554,42 @@ impl Session<'_> {
     }
 }
 
+/// An ffmpeg command at below-normal CPU priority, so encoding yields to the game.
+fn ffmpeg_command(program: &OsString) -> Command {
+    let mut command = Command::new(program);
+    lower_priority(&mut command);
+    command
+}
+
+/// Linux: nice 10 in the child before `exec`, so ffmpeg's threads inherit it.
+#[cfg(target_os = "linux")]
+#[allow(unsafe_code)]
+fn lower_priority(command: &mut Command) {
+    use std::os::unix::process::CommandExt as _;
+    let lower = || {
+        // SAFETY: `setpriority` takes plain integers and has no memory-safety preconditions.
+        unsafe { libc::setpriority(libc::PRIO_PROCESS as _, 0, 10) };
+        Ok(())
+    };
+    // SAFETY: `lower` runs in the forked child before `exec`. It only calls `setpriority`, which
+    // glibc documents as async-signal-safe (musl implements it as a bare syscall). It does not
+    // allocate, lock or touch the parent's state, and it ignores failure.
+    unsafe { command.pre_exec(lower) };
+}
+
+/// Windows: below-normal priority class, set by the process creation flags.
+#[cfg(windows)]
+fn lower_priority(command: &mut Command) {
+    use std::os::windows::process::CommandExt as _;
+    const BELOW_NORMAL_PRIORITY_CLASS: u32 = 0x0000_4000;
+    command.creation_flags(BELOW_NORMAL_PRIORITY_CLASS);
+}
+
+/// Elsewhere the libc does not document `setpriority` as async-signal-safe, so priority is left
+/// alone.
+#[cfg(not(any(target_os = "linux", windows)))]
+fn lower_priority(_command: &mut Command) {}
+
 fn ffmpeg_error(status: String) -> VideoError {
     VideoError::Ffmpeg {
         status,
@@ -604,7 +641,7 @@ fn pick_encoder(job: &WriterJob, session: &mut Session) -> Result<&'static Encod
             }
             .into());
         };
-        let child = Command::new(&job.ffmpeg)
+        let child = ffmpeg_command(&job.ffmpeg)
             .args(probe_args(spec))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -700,7 +737,7 @@ fn write(
     builder.permissions(std::os::unix::fs::PermissionsExt::from_mode(0o666));
     let temp = builder.tempfile_in(directory).map_err(write_error)?;
 
-    let mut child = Command::new(&job.ffmpeg)
+    let mut child = ffmpeg_command(&job.ffmpeg)
         .args(encode_args(
             spec,
             format,
@@ -1074,6 +1111,21 @@ pub(crate) mod tests {
 
     fn frames(n: u32) -> VideoLength {
         VideoLength::Frames(std::num::NonZeroU32::new(n).unwrap())
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn ffmpeg_runs_at_lower_priority() {
+        let _guard = lock_processes();
+        let output = ffmpeg_command(&"sh".into())
+            .args(["-c", "ps -o ni= -p $$"])
+            .output()
+            .unwrap();
+        let nice: i32 = String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .parse()
+            .unwrap();
+        assert!(nice >= 10, "{nice}");
     }
 
     #[cfg(unix)]

@@ -108,13 +108,13 @@ pub struct VideoRequest {
 }
 
 impl VideoRequest {
-    /// A request at 60 frames per second.
+    /// A request at 30 frames per second, enough for reviewing motion at half the cost of 60.
     pub fn new(source: CaptureSource, path: impl Into<PathBuf>, length: VideoLength) -> Self {
         Self {
             source,
             path: path.into(),
             length,
-            frame_rate: NonZeroU32::new(60).unwrap(),
+            frame_rate: NonZeroU32::new(30).unwrap(),
         }
     }
 }

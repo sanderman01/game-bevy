@@ -220,7 +220,7 @@ with its unit as the only key:
 | `{"timecode": "00:01:30"}` | The same, as `hh:mm:ss` or `hh:mm:ss.fff`. |
 
 A bare number is refused, because JSON cannot tell `10` frames from `10.0` seconds. `frame_rate`
-defaults to 60 and goes up to 240. The output is H.264, `yuv420p`, tagged as sRGB (BT.709
+defaults to 30 and goes up to 240. The output is H.264, `yuv420p`, tagged as sRGB (BT.709
 primaries and matrix, sRGB transfer). Odd sizes lose their last row or column.
 
 The tool waits for the file for up to 50 seconds. A longer recording comes back with
@@ -237,8 +237,9 @@ before its first frame is an error.
 Encoding runs in an `ffmpeg` child process, which must be on the game's `PATH`. The game picks the
 first encoder that passes a test encode: VAAPI, NVENC or QSV on Linux, then `libx264`.
 `ENAME_VIDEO_ENCODER=libx264` (or another known encoder name) in the game's environment forces
-one. When ffmpeg cannot keep up, frames are dropped rather than slowing the game, and
-`dropped_frames` counts them.
+one. ffmpeg runs at below-normal CPU priority (nice 10 on Linux) and `libx264`
+uses at most 4 threads. When ffmpeg cannot keep up, frames are dropped rather than slowing the game,
+and `dropped_frames` counts them.
 
 Video needs the `video` cargo feature, which `example_game_editor_bin` enables by default. Game code
 uses the same recorder through `ename_engine::video`: spawn a `VideoRequest` and observe

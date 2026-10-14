@@ -42,7 +42,7 @@ pub struct VideoRecordParams {
     /// {"seconds": 10} records 10 s of real time; {"timecode": "00:01:30"} is hh:mm:ss. At most
     /// 24 hours.
     pub duration: VideoDuration,
-    /// Output frames per second, 1 to 240. Defaults to 60.
+    /// Output frames per second, 1 to 240. Defaults to 30.
     #[serde(default)]
     pub frame_rate: Option<u32>,
     /// Wait for the file, up to 50 seconds. Defaults to true. A longer recording comes back

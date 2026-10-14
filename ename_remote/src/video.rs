@@ -299,7 +299,7 @@ mod tests {
             );
             assert_eq!(request.length, length);
             assert_eq!(request.source, CaptureSource::PrimaryWindow);
-            assert_eq!(request.frame_rate.get(), 60);
+            assert_eq!(request.frame_rate.get(), 30);
         }
         let request = recorded(
             &mut world,
