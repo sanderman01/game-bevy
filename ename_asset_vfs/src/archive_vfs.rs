@@ -45,17 +45,18 @@ impl Vfs for ArchiveVfs {
                 return entries.map_err(|err| vfs_error(path, err));
             }
             let entries = self.loose.read_dir(path).await?;
-            let is_dir: HashMap<PathBuf, bool> = entries
+            let is_dir: HashMap<&Path, bool> = entries
                 .iter()
-                .map(|entry| (entry.path.clone(), entry.is_dir))
+                .map(|entry| (entry.path.as_path(), entry.is_dir))
                 .collect();
-            let paths = entries.into_iter().map(|entry| entry.path).collect();
-            Ok(self
-                .mounts
-                .overlay_listing(paths)
+            let paths: Vec<PathBuf> = entries.iter().map(|entry| entry.path.clone()).collect();
+            let Some(overlaid) = self.mounts.overlay_listing(path, &paths, true) else {
+                return Ok(entries);
+            };
+            Ok(overlaid
                 .into_iter()
                 .map(|(path, mount)| DirEntry {
-                    is_dir: mount || is_dir.get(&path).copied().unwrap_or(false),
+                    is_dir: mount || is_dir.get(path.as_path()).copied().unwrap_or(false),
                     path,
                 })
                 .collect())

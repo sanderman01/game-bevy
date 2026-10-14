@@ -1,18 +1,43 @@
 //! Open archive files, and positioned reads from them.
 //!
-//! Reads name their offset explicitly and never move a shared cursor, so concurrent loads from one
-//! archive need no lock around the read itself.
+//! Reads name their offset explicitly and never rely on a shared cursor, so concurrent loads from
+//! one archive need no lock around the read itself; only finding the open file takes one.
 
 use std::{
     fs::File,
     io,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    time::SystemTime,
 };
 
 /// How many archive files stay open at once. Mods can ship many archives; a process has a limited
 /// number of file handles.
 const MAX_OPEN: usize = 64;
+
+/// Enough of a file's metadata to tell that it was replaced since it was indexed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Identity {
+    len: u64,
+    modified: Option<SystemTime>,
+    #[cfg(unix)]
+    inode: (u64, u64),
+}
+
+impl Identity {
+    pub(crate) fn of(file: &File) -> io::Result<Self> {
+        let metadata = file.metadata()?;
+        Ok(Self {
+            len: metadata.len(),
+            modified: metadata.modified().ok(),
+            #[cfg(unix)]
+            inode: {
+                use std::os::unix::fs::MetadataExt;
+                (metadata.dev(), metadata.ino())
+            },
+        })
+    }
+}
 
 /// The most recently used archive files, reopened on demand.
 #[derive(Default)]
@@ -22,15 +47,33 @@ pub(crate) struct OpenFiles {
 }
 
 impl OpenFiles {
-    pub(crate) fn get(&self, path: &Path) -> io::Result<Arc<File>> {
-        let mut files = self.files.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(i) = files.iter().position(|(open, _)| open == path) {
-            let entry = files.remove(i);
-            let file = entry.1.clone();
-            files.push(entry);
-            return Ok(file);
+    /// The open archive at `path`, reopening it if it was evicted. A reopened file that no longer
+    /// matches `identity` was replaced since it was indexed, and its index would read garbage.
+    pub(crate) fn get(&self, path: &Path, identity: &Identity) -> io::Result<Arc<File>> {
+        {
+            let mut files = self.files.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(i) = files.iter().position(|(open, _)| open == path) {
+                let entry = files.remove(i);
+                let file = entry.1.clone();
+                files.push(entry);
+                return Ok(file);
+            }
         }
+        // Opened outside the lock: other archives' reads need not wait on this one.
         let file = Arc::new(File::open(path)?);
+        if Identity::of(&file)? != *identity {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "{} changed since it was indexed; restart to use the new archive",
+                    path.display()
+                ),
+            ));
+        }
+        let mut files = self.files.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((_, open)) = files.iter().find(|(open, _)| open == path) {
+            return Ok(open.clone());
+        }
         if files.len() >= MAX_OPEN {
             files.remove(0);
         }

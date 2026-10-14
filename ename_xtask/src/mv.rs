@@ -171,7 +171,8 @@ fn archive_holding(path: &Path) -> Option<PathBuf> {
     let absolute = std::path::absolute(path).ok()?;
     let root = absolute.ancestors().last()?;
     match Mounts::new(root).origin_of_file(&absolute) {
-        Origin::Loose => None,
         Origin::Member { archive, .. } | Origin::InMount { archive } => Some(archive),
+        // Moving an archive file itself is fine: no game is reading it.
+        Origin::Loose | Origin::Outside | Origin::Archive { .. } => None,
     }
 }

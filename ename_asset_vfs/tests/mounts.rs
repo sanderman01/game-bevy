@@ -8,6 +8,7 @@ use futures_lite::future::block_on;
 use std::{
     io::{ErrorKind, Write},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 use tempfile::TempDir;
 
@@ -242,12 +243,18 @@ fn a_zip_and_a_tar_of_the_same_name_conflict() {
 #[test]
 fn a_file_beside_an_archive_of_its_name_conflicts() {
     let root = root_with(&[("core", b"a file"), ("core.zip", &fixture("basic.zip"))]);
-    let mounts = Mounts::new(root.path());
-    let err = mounts
-        .read_file(Path::new("core/manifest.toml"))
-        .unwrap()
-        .unwrap_err();
-    assert_ne!(err.kind(), ErrorKind::NotFound);
+    let vfs = ArchiveVfs::new(root.path());
+    // The file wins, exactly as the platform reader would see it, and the archive never lists.
+    assert_eq!(
+        listing(&vfs, ""),
+        [DirEntry {
+            path: "core".into(),
+            is_dir: false
+        }]
+    );
+    let mounts = vfs.mounts();
+    assert!(mounts.read_file(Path::new("core/manifest.toml")).is_none());
+    assert!(mounts.is_dir(Path::new("core")).is_none());
     assert_eq!(
         mounts.problems()[0].kind,
         MountProblemKind::ConflictingArchive
@@ -375,4 +382,233 @@ fn a_tar_with_a_link_or_a_duplicate_is_refused() {
         assert_eq!(problems.len(), 1, "{name}: {problems:?}");
         assert_eq!(problems[0].kind, MountProblemKind::CorruptArchive, "{name}");
     }
+}
+
+/// A directory whose name ends in `.zip` is an ordinary directory.
+#[test]
+fn a_directory_named_like_an_archive_is_ordinary() {
+    let root = root_with(&[("odd.zip/x.txt", b"x"), ("odd.tar/y.txt", b"y")]);
+    let vfs = ArchiveVfs::new(root.path());
+    let names: Vec<(PathBuf, bool)> = listing(&vfs, "")
+        .into_iter()
+        .map(|e| (e.path, e.is_dir))
+        .collect();
+    assert_eq!(names, [("odd.tar".into(), true), ("odd.zip".into(), true)]);
+    assert_eq!(
+        block_on(vfs.read_file(Path::new("odd.zip/x.txt"))).unwrap(),
+        b"x"
+    );
+    assert_eq!(
+        vfs.mounts().origin(Path::new("odd.zip/x.txt")),
+        Origin::Loose
+    );
+    assert!(vfs.mounts().problems().is_empty());
+}
+
+/// Names differing only in case are separate mounts and directories on a case-sensitive
+/// filesystem. The clash is a warning, not a problem; extensions match exactly, so `.ZIP` is a
+/// plain file.
+#[test]
+fn case_only_differences_are_kept_apart() {
+    let root = root_with(&[
+        ("Core/x.txt", b"x"),
+        ("core.zip", &fixture("basic.zip")),
+        ("other.ZIP", &fixture("basic.zip")),
+    ]);
+    let vfs = ArchiveVfs::new(root.path());
+    let names: Vec<(PathBuf, bool)> = listing(&vfs, "")
+        .into_iter()
+        .map(|e| (e.path, e.is_dir))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            ("Core".into(), true),
+            ("core".into(), true),
+            ("other.ZIP".into(), false)
+        ]
+    );
+    assert!(block_on(vfs.read_file(Path::new("core/a.txt"))).is_ok());
+    assert!(vfs.mounts().problems().is_empty());
+}
+
+#[test]
+fn origin_normalizes_and_refuses_paths_outside_the_root() {
+    let root = root_with(&[("pkg.zip", &fixture("basic.zip"))]);
+    let mounts = Mounts::new(root.path());
+    let archive = root.path().join("pkg.zip");
+    assert!(matches!(
+        mounts.origin(Path::new("other/../pkg/./a.txt")),
+        Origin::Member { .. }
+    ));
+    assert!(matches!(
+        mounts.origin(Path::new("pkg/../pkg/new.txt")),
+        Origin::InMount { .. }
+    ));
+    assert_eq!(mounts.origin(Path::new("../outside.txt")), Origin::Outside);
+    assert_eq!(mounts.origin(&root.path().join("x.txt")), Origin::Outside);
+    assert_eq!(
+        mounts.origin(Path::new("pkg.zip")),
+        Origin::Archive { archive }
+    );
+}
+
+/// Patches the central directory record of `name` in `zip` with `patch(record)`.
+fn patch_central(zip: &mut [u8], name: &[u8], patch: impl FnOnce(&mut [u8])) {
+    let at = (0..zip.len() - 46)
+        .find(|&i| zip[i..i + 4] == [0x50, 0x4b, 0x01, 0x02] && zip[i + 46..].starts_with(name))
+        .unwrap();
+    patch(&mut zip[at..at + 46 + name.len()]);
+}
+
+#[test]
+fn duplicate_zip_member_names_are_refused() {
+    let mut bytes = fixture("basic.zip");
+    // `b.ron` and `a.txt` have names of one length: rename one onto the other.
+    patch_central(&mut bytes, b"b.ron", |record| {
+        record[46..51].copy_from_slice(b"a.txt");
+    });
+    let root = root_with(&[("pkg.zip", &bytes)]);
+    let mounts = Mounts::new(root.path());
+    assert!(mounts.read_file(Path::new("pkg/a.txt")).unwrap().is_err());
+    let problems = mounts.problems();
+    assert!(problems[0].detail.contains("duplicate"), "{problems:?}");
+}
+
+/// Members whose data runs into the next local header overlap: the overlapping-file zip bomb.
+#[test]
+fn overlapping_zip_members_are_refused() {
+    let mut bytes = fixture("basic.zip");
+    // `a.txt` is stored, 6 bytes. Claim 200, which runs over the members after it.
+    patch_central(&mut bytes, b"a.txt", |record| {
+        record[20..24].copy_from_slice(&200u32.to_le_bytes());
+        record[24..28].copy_from_slice(&200u32.to_le_bytes());
+    });
+    let root = root_with(&[("pkg.zip", &bytes)]);
+    let mounts = Mounts::new(root.path());
+    assert!(mounts.read_file(Path::new("pkg/b.ron")).unwrap().is_err());
+    let problems = mounts.problems();
+    assert!(problems[0].detail.contains("overlaps"), "{problems:?}");
+}
+
+#[test]
+fn directory_records_count_against_the_member_limit() {
+    let zip = zip_of(&[("a/", b""), ("b/", b""), ("c/", b""), ("x.txt", b"x")]);
+    let root = root_with(&[("pkg.zip", &zip)]);
+    let mounts = Mounts::new(root.path()).with_limits(Limits {
+        max_members: 3,
+        ..Limits::default()
+    });
+    assert!(mounts.read_file(Path::new("pkg/x.txt")).unwrap().is_err());
+}
+
+#[test]
+fn tar_long_names_are_read_and_global_or_huge_headers_refused() {
+    let long = format!("{}/file.txt", "d".repeat(150));
+    let gnu = tar_of(|builder| {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(4);
+        header.set_mode(0o644);
+        builder
+            .append_data(&mut header, &long, &b"long"[..])
+            .unwrap();
+    });
+    let root = root_with(&[("pkg.tar", &gnu)]);
+    let mounts = Mounts::new(root.path());
+    let path = Path::new("pkg").join(&long);
+    assert_eq!(mounts.read_file(&path).unwrap().unwrap(), b"long");
+
+    let extension = |kind: tar::EntryType, body: Vec<u8>| {
+        tar_of(|builder| {
+            let mut header = tar::Header::new_ustar();
+            header.set_entry_type(kind);
+            header.set_size(body.len() as u64);
+            header.set_cksum();
+            builder.append(&header, body.as_slice()).unwrap();
+            tar_file(builder, "a.txt", b"a");
+        })
+    };
+    for (name, bytes) in [
+        (
+            "global",
+            extension(tar::EntryType::XGlobalHeader, b"6 a=b\n".to_vec()),
+        ),
+        (
+            "huge",
+            extension(tar::EntryType::XHeader, vec![b'0'; 128 * 1024]),
+        ),
+        (
+            "sparse",
+            extension(tar::EntryType::XHeader, b"22 GNU.sparse.major=1\n".to_vec()),
+        ),
+    ] {
+        let root = root_with(&[("pkg.tar", &bytes)]);
+        let mounts = Mounts::new(root.path());
+        assert!(
+            mounts.read_file(Path::new("pkg/a.txt")).unwrap().is_err(),
+            "{name}"
+        );
+        assert_eq!(
+            mounts.problems()[0].kind,
+            MountProblemKind::CorruptArchive,
+            "{name}"
+        );
+    }
+}
+
+/// More archives than stay open: evicted ones reopen, from many threads at once.
+#[test]
+fn reads_survive_eviction_of_open_archives() {
+    let zip = fixture("basic.zip");
+    let files: Vec<(String, &[u8])> = (0..80)
+        .map(|i| (format!("pkg{i:02}.zip"), zip.as_slice()))
+        .collect();
+    let files: Vec<(&str, &[u8])> = files.iter().map(|(n, b)| (n.as_str(), *b)).collect();
+    let root = root_with(&files);
+    let mounts = Arc::new(Mounts::new(root.path()));
+    let threads: Vec<_> = (0..8)
+        .map(|t| {
+            let mounts = mounts.clone();
+            std::thread::spawn(move || {
+                for round in 0..3 {
+                    for i in 0..80 {
+                        let i = (i + t * 10 + round) % 80;
+                        let path = format!("pkg{i:02}/sub/deep/c.txt");
+                        let bytes = mounts.read_file(Path::new(&path)).unwrap().unwrap();
+                        assert!(bytes.starts_with(b"third"));
+                    }
+                }
+            })
+        })
+        .collect();
+    for thread in threads {
+        thread.join().unwrap();
+    }
+    assert!(mounts.problems().is_empty());
+}
+
+/// An archive replaced after it was indexed fails its reads instead of serving the new bytes
+/// through the old index, once its file handle has been evicted.
+#[test]
+fn a_replaced_archive_is_detected_on_reopen() {
+    let zip = fixture("basic.zip");
+    let files: Vec<(String, &[u8])> = (0..70)
+        .map(|i| (format!("pkg{i:02}.zip"), zip.as_slice()))
+        .collect();
+    let files: Vec<(&str, &[u8])> = files.iter().map(|(n, b)| (n.as_str(), *b)).collect();
+    let root = root_with(&files);
+    let mounts = Mounts::new(root.path());
+    for i in 0..70 {
+        let path = format!("pkg{i:02}/a.txt");
+        assert!(mounts.read_file(Path::new(&path)).unwrap().is_ok());
+    }
+    // `pkg00` was evicted. Replace it with a different archive.
+    let replacement = root.path().join("replacement.zip");
+    std::fs::write(&replacement, zip_of(&[("a.txt", b"something else")])).unwrap();
+    std::fs::rename(&replacement, root.path().join("pkg00.zip")).unwrap();
+    let err = mounts
+        .read_file(Path::new("pkg00/a.txt"))
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::InvalidData, "{err}");
 }

@@ -3,7 +3,36 @@
 //! demand.
 
 use super::Limits;
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    io,
+};
+
+/// Why an archive could not be indexed.
+#[derive(Debug)]
+pub(crate) enum IndexError {
+    /// It holds something a mount must not serve, or is malformed.
+    Invalid(String),
+    /// Reading it failed.
+    Io(io::Error),
+}
+
+impl From<String> for IndexError {
+    fn from(message: String) -> Self {
+        Self::Invalid(message)
+    }
+}
+
+impl From<io::Error> for IndexError {
+    fn from(err: io::Error) -> Self {
+        match err.kind() {
+            io::ErrorKind::InvalidData | io::ErrorKind::UnexpectedEof => {
+                Self::Invalid(err.to_string())
+            }
+            _ => Self::Io(err),
+        }
+    }
+}
 
 /// The longest member path accepted, in bytes.
 const MAX_PATH_LEN: usize = 4096;
@@ -58,6 +87,8 @@ impl ArchiveIndex {
 /// Collects members while an archive is indexed, rejecting anything the mount must not serve.
 pub(crate) struct IndexBuilder<'a> {
     limits: &'a Limits,
+    /// Every record seen, directories and extension headers included.
+    records: usize,
     members: HashMap<Box<str>, Member>,
     explicit_dirs: HashSet<Box<str>>,
 }
@@ -66,14 +97,16 @@ impl<'a> IndexBuilder<'a> {
     pub(crate) fn new(limits: &'a Limits) -> Self {
         Self {
             limits,
+            records: 0,
             members: HashMap::new(),
             explicit_dirs: HashSet::new(),
         }
     }
 
-    /// Checked before anything is allocated per member.
-    pub(crate) fn check_count(&self, count: usize) -> Result<(), String> {
-        if count > self.limits.max_members {
+    /// Checked against the count an archive declares before anything is parsed, and again per
+    /// record.
+    pub(crate) fn check_count(&self, count: u64) -> Result<(), String> {
+        if count > self.limits.max_members as u64 {
             return Err(format!(
                 "{count} members, more than the limit of {}",
                 self.limits.max_members
@@ -92,7 +125,14 @@ impl<'a> IndexBuilder<'a> {
         Ok(())
     }
 
+    /// Counts one archive record against the member limit.
+    pub(crate) fn count_record(&mut self) -> Result<(), String> {
+        self.records += 1;
+        self.check_count(self.records as u64)
+    }
+
     pub(crate) fn add_dir(&mut self, raw: &str) -> Result<(), String> {
+        self.count_record()?;
         if let Some(path) = normalize(raw)? {
             self.explicit_dirs.insert(path.into());
         }
@@ -100,7 +140,7 @@ impl<'a> IndexBuilder<'a> {
     }
 
     pub(crate) fn add_file(&mut self, raw: &str, member: Member) -> Result<(), String> {
-        self.check_count(self.members.len() + 1)?;
+        self.count_record()?;
         self.check_size(raw, member.size)?;
         let Some(path) = normalize(raw)? else {
             return Ok(());

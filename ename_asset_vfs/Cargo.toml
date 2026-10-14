@@ -8,13 +8,13 @@ license.workspace = true
 
 [features]
 default = ["bevy"]
-# Bevy's `AssetReader` as a `Vfs`. With `zip` or `tar` also on, the archive asset source too.
-# Off for a command line tool, which reads through `StdVfs`.
+# Bevy's `AssetReader` as a `Vfs`, and the archive asset source with its write guard. Off for a
+# command line tool, which reads through `StdVfs`.
 bevy = ["dep:async-channel", "dep:bevy", "dep:blocking"]
 # `.zip` mounts. Stored and Deflate members only.
-zip = ["dep:zip", "dep:crc32fast", "dep:flate2", "dep:tracing"]
-# Plain `.tar` mounts.
-tar = ["dep:tar", "dep:tracing"]
+zip = ["dep:zip", "dep:crc32fast", "dep:flate2"]
+# Plain `.tar` mounts, parsed here: no dependency.
+tar = []
 
 [dependencies]
 # The watcher's inner channel; Bevy's `AssetSourceEvent` sender is this crate's type.
@@ -23,13 +23,14 @@ bevy = { workspace = true, optional = true }
 blocking = { workspace = true, optional = true }
 crc32fast = { workspace = true, optional = true }
 flate2 = { workspace = true, optional = true }
-tar = { workspace = true, optional = true }
 thiserror.workspace = true
-tracing = { workspace = true, optional = true }
+tracing.workspace = true
 zip = { workspace = true, optional = true }
 
 [dev-dependencies]
 futures-lite.workspace = true
+# Builds tar archives for the tests.
+tar.workspace = true
 tempfile.workspace = true
 
 [lints]

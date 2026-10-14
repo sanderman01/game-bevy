@@ -140,7 +140,17 @@ fn the_default_writer_refuses_paths_inside_a_mount() {
         .writer()
         .unwrap();
     block_on(async {
-        for path in ["pkg/a.txt", "pkg/new.txt", "pkg"] {
+        for path in [
+            "pkg/a.txt",
+            "pkg/new.txt",
+            "pkg",
+            "pkg/../pkg/new.txt",
+            "other/../pkg/new.txt",
+            "./pkg/new.txt",
+            "../escape.txt",
+            "/tmp/absolute.txt",
+            "pkg.zip",
+        ] {
             assert!(
                 writer.write_bytes(Path::new(path), b"x").await.is_err(),
                 "{path}"
@@ -164,12 +174,20 @@ fn the_default_writer_refuses_paths_inside_a_mount() {
                 .await
                 .is_err()
         );
+        assert!(writer.remove(Path::new("pkg.zip")).await.is_err());
+        assert!(
+            writer
+                .rename(Path::new("pkg.zip"), Path::new("moved.zip"))
+                .await
+                .is_err()
+        );
         writer
             .write_bytes(Path::new("new/loose.txt"), b"fine")
             .await
             .unwrap();
     });
     assert!(!root.path().join("pkg").exists());
+    assert!(root.path().join("pkg.zip").exists());
     assert_eq!(
         std::fs::read(root.path().join("new/loose.txt")).unwrap(),
         b"fine"
