@@ -122,6 +122,8 @@ A binary aunched straight from `target/` falls back to Bevy's executable-directo
 - The editor has no command layer, so every panel mutates the `World` directly. Undo later means
   touching every mutation site; there are five today, the four `bevy_inspector` calls in
   `panels.rs` and the transform gizmo drag.
+  The [commands](design/commands.md) in `ename_engine::command` are not that layer: they expose
+  functionality to the agent tools and a future console, and record nothing to undo.
 - `ename_engine::bigspace::grid` exposes `big_space::Grid` in its signatures, so every consumer is
   pinned to that git revision. Accepted deliberately; newtype it if the engine is ever consumed
   outside this workspace.
