@@ -10,22 +10,37 @@
 //!    remember to check.
 //! 5. A tool's name and one sentence are all the model gets. Write them that way.
 //!
-//! Names are prefixed by group (`world_`, `time_`, `log_`, `editor_`, `screenshot_`, `video_`) so a dispatching meta-tool could be
-//! added later without renaming anything. At this size the indirection would only cost a round
-//! trip.
+//! Static tool names are prefixed by group (`world_`, `time_`, `log_`, `command_`, `job_`). The
+//! game's commands are added at runtime as tools of their own, named after the command with the
+//! dot replaced (see [`catalog`]); a static name always wins over a command's.
+//!
+//! Every tool failure reaches the agent as a tool result marked `isError`, never as a JSON-RPC
+//! error: a client may show only an error's message and drop its data.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 
 use rmcp::{
-    ErrorData, Json, ServerHandler,
-    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{ServerCapabilities, ServerInfo},
-    schemars, tool, tool_handler, tool_router,
+    ErrorData, Json, RoleServer, ServerHandler,
+    handler::server::{router::tool::ToolRouter, tool::ToolCallContext, wrapper::Parameters},
+    model::{
+        CacheScope, CallToolRequestParams, CallToolResponse, CallToolResult, ContentBlock,
+        ListToolsResult, PaginatedRequestParams, ProtocolVersion, ResultType, ServerCapabilities,
+        ServerInfo, SubscriptionFilter, Tool,
+    },
+    schemars,
+    service::{NotificationContext, RequestContext, SubscriptionContext},
+    tool, tool_router,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+mod catalog;
+mod commands;
+#[cfg(test)]
+mod session_tests;
 mod video;
+
+use catalog::Catalog;
 
 use crate::{
     brp::{BrpClient, BrpError, METHOD_NOT_FOUND},
@@ -38,13 +53,27 @@ use crate::{
 pub struct GameServer {
     brp: BrpClient,
     tool_router: ToolRouter<Self>,
+    /// The game's commands as tools, and who to tell when they change.
+    catalog: Arc<Catalog>,
+    /// Sent with every command call: the agent's relative paths mean this directory.
+    cwd: Option<PathBuf>,
+    /// Room past a tool's own wait before it gives up on a game that stopped answering.
+    hard_margin: Duration,
 }
 
 impl GameServer {
     pub fn new(brp: BrpClient) -> Self {
+        let tool_router = Self::tool_router() + Self::video_router() + Self::commands_router();
+        let static_tools = tool_router
+            .list_all()
+            .into_iter()
+            .map(|tool| tool.name.into_owned());
         Self {
             brp,
-            tool_router: Self::tool_router() + Self::video_router(),
+            catalog: Arc::new(Catalog::new(static_tools)),
+            tool_router,
+            cwd: std::env::current_dir().ok(),
+            hard_margin: commands::HARD_MARGIN,
         }
     }
 
@@ -1268,7 +1297,6 @@ fn explain_inactive_camera(error: anyhow::Error, source: CaptureSource) -> anyho
     }
 }
 
-#[tool_handler(router = self.tool_router)]
 impl ServerHandler for GameServer {
     fn get_info(&self) -> ServerInfo {
         let mut info = ServerInfo::default();
@@ -1276,11 +1304,117 @@ impl ServerHandler for GameServer {
             "Query and edit a running Bevy game. Entities are addressed by `name` or by `entity` \
              id; ids change every time the game restarts, names do not. Positions are absolute \
              metres with Y up. If a call reports that the game is unreachable, the game is not \
-             running."
+             running. The game's own commands (screenshots, video, editor views) appear as tools \
+             while it runs; command_list and command_call reach them at any time."
                 .to_owned(),
         );
-        info.capabilities = ServerCapabilities::builder().enable_tools().build();
+        info.capabilities = ServerCapabilities::builder()
+            .enable_tools()
+            .enable_tool_list_changed()
+            .build();
         info
+    }
+
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        self.catalog.watch(&self.brp);
+        if !self.catalog.is_loaded() {
+            // One quick try, so a session that starts with the game running sees its commands
+            // in the first listing rather than two seconds later.
+            let _ =
+                tokio::time::timeout(Duration::from_millis(500), self.catalog.refresh(&self.brp))
+                    .await;
+        }
+        let mut tools = self.tool_router.list_all();
+        tools.extend(self.catalog.tools());
+        tools.sort_by(|a, b| a.name.cmp(&b.name));
+        // The cache hints `#[tool_handler]` emits, which only a 2026-07-28 peer understands.
+        let cache_hints = context
+            .protocol_version()
+            .is_some_and(|version| version >= ProtocolVersion::V_2026_07_28);
+        Ok(ListToolsResult {
+            result_type: Some(ResultType::COMPLETE),
+            tools,
+            meta: None,
+            next_cursor: None,
+            ttl_ms: cache_hints.then_some(0),
+            cache_scope: cache_hints.then_some(CacheScope::Public),
+        })
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        self.catalog.watch(&self.brp);
+        if self.tool_router.has_route(&request.name) {
+            let call = ToolCallContext::new(self, request, context);
+            return Ok(match self.tool_router.call(call).await {
+                Ok(response) => response,
+                Err(error) => {
+                    CallToolResult::error(vec![ContentBlock::text(error.message.into_owned())])
+                        .into()
+                }
+            });
+        }
+        let name = request.name.to_string();
+        let mut tool = self.catalog.get(&name);
+        if tool.is_none() {
+            self.catalog.refresh_and_notify(&self.brp).await;
+            tool = self.catalog.get(&name);
+        }
+        let Some(tool) = tool else {
+            return Err(ErrorData::invalid_params(
+                format!("no tool `{name}`; the game may not be running, or may not register it"),
+                None,
+            ));
+        };
+        let arguments = request.arguments.unwrap_or_default();
+        Ok(self
+            .call_command(&tool.command.name, arguments, self.catalog.run())
+            .await
+            .into())
+    }
+
+    fn get_tool(&self, name: &str) -> Option<Tool> {
+        self.tool_router
+            .get(name)
+            .cloned()
+            .or_else(|| self.catalog.get(name).map(|tool| tool.tool))
+    }
+
+    /// Only a legacy client sends `notifications/initialized`; it hears about tool changes
+    /// through its peer.
+    async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
+        self.catalog.set_legacy_peer(context.peer.clone());
+        self.catalog.watch(&self.brp);
+    }
+
+    /// A 2026-07-28 client asks for changes with `subscriptions/listen`. Only tool changes are
+    /// offered.
+    fn accepted_subscription_filter(
+        &self,
+        requested: &SubscriptionFilter,
+    ) -> Option<SubscriptionFilter> {
+        let accepted = if requested.tools_list_changed == Some(true) {
+            SubscriptionFilter::builder().tools_list_changed().build()
+        } else {
+            SubscriptionFilter::new()
+        };
+        Some(accepted)
+    }
+
+    async fn listen(&self, context: SubscriptionContext) -> Result<(), ErrorData> {
+        self.catalog.watch(&self.brp);
+        if context.accepted().tools_list_changed == Some(true) {
+            self.catalog.add_subscription(context.sink().clone());
+        }
+        context.cancelled().await;
+        Ok(())
     }
 }
 

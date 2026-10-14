@@ -122,9 +122,19 @@ impl std::fmt::Display for BrpError {
             method,
             code,
             message,
-            ..
+            data,
         } = self;
-        write!(f, "BRP `{method}` failed ({code}): {message}")
+        write!(f, "BRP `{method}` failed ({code}): {message}")?;
+        // The game's stable kind and its advice, which a caller formatting this would otherwise
+        // lose.
+        let field = |name: &str| data.as_ref()?.get(name)?.as_str();
+        if let Some(kind) = field("kind") {
+            write!(f, " ({kind})")?;
+        }
+        if let Some(hint) = field("hint") {
+            write!(f, ". {hint}")?;
+        }
+        Ok(())
     }
 }
 
