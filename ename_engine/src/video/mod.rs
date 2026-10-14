@@ -67,6 +67,7 @@ use bevy::{
     window::PrimaryWindow,
 };
 
+use crate::capture::CaptureError;
 pub use crate::readback::CaptureSource;
 use crate::readback::{ReadbackQueue, ReadbackSystems, SourceError, resolve_source};
 use capture::{CaptureJob, CaptureShared, PendingCaptures};
@@ -223,6 +224,38 @@ pub enum VideoError {
     Convert(String),
     #[error("could not write `{path}`: {message}")]
     Write { path: PathBuf, message: String },
+}
+
+impl CaptureError for VideoError {
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::UnsupportedContainer(_) => "unsupported_container",
+            Self::InvalidDuration(_) => "invalid_duration",
+            Self::InvalidFrameRate(_) => "invalid_frame_rate",
+            Self::NotACamera(_) => "not_a_camera",
+            Self::CameraInactive(_) => "camera_inactive",
+            Self::UnsupportedTarget(_) => "unsupported_target",
+            Self::NoWindow => "no_window",
+            Self::UnsupportedFormat(_) => "unsupported_format",
+            Self::UnreadableTarget(_) => "unreadable_target",
+            Self::EmptyCrop { .. } => "empty_crop",
+            Self::TooSmall { .. } => "too_small",
+            Self::TimedOut(_) => "timed_out",
+            Self::NoFrames(_) => "no_frames",
+            Self::FfmpegMissing => "ffmpeg_missing",
+            Self::NoEncoder { .. } => "no_encoder",
+            Self::Ffmpeg { .. } => "ffmpeg",
+            Self::Convert(_) => "convert",
+            Self::Write { .. } => "write",
+        }
+    }
+
+    fn is_invalid(&self) -> bool {
+        matches!(
+            self,
+            Self::UnsupportedContainer(_) | Self::InvalidDuration(_) | Self::InvalidFrameRate(_)
+        )
+    }
 }
 
 impl From<SourceError> for VideoError {

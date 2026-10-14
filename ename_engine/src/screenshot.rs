@@ -57,6 +57,8 @@ use bevy::{
 };
 use image::ImageFormat;
 
+use crate::capture::CaptureError;
+
 pub use crate::readback::CaptureSource;
 use crate::readback::{
     FrameReadBack, ReadbackQueue, ReadbackSystems, ReadbackTag, SourceError, add_readback_plugin,
@@ -113,6 +115,27 @@ pub enum ScreenshotError {
     Convert(String),
     #[error("could not write `{path}`: {message}")]
     Write { path: PathBuf, message: String },
+}
+
+impl CaptureError for ScreenshotError {
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::NotPng(_) => "not_png",
+            Self::NotACamera(_) => "not_a_camera",
+            Self::CameraInactive(_) => "camera_inactive",
+            Self::UnsupportedTarget(_) => "unsupported_target",
+            Self::NoWindow => "no_window",
+            Self::UnsupportedFormat(_) => "unsupported_format",
+            Self::EmptyCrop { .. } => "empty_crop",
+            Self::TimedOut(_) => "timed_out",
+            Self::Convert(_) => "convert",
+            Self::Write { .. } => "write",
+        }
+    }
+
+    fn is_invalid(&self) -> bool {
+        matches!(self, Self::NotPng(_))
+    }
 }
 
 /// Triggered once on the request entity when its capture finishes, either way.

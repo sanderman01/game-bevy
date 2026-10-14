@@ -9,6 +9,7 @@
 
 pub mod bigspace;
 pub mod camera;
+pub mod capture;
 pub mod command;
 pub mod debug_overlay;
 pub mod log;
@@ -136,6 +137,7 @@ impl PluginGroup for EnginePlugins {
             .add(physics::PhysicsIntegrationPlugin)
             .add(time::TimeControlPlugin)
             .add(command::CommandPlugin)
+            .add(capture::CapturePlugin)
             .add(screenshot::ScreenshotPlugin);
         #[cfg(feature = "video")]
         let group = group.add(video::VideoPlugin);
