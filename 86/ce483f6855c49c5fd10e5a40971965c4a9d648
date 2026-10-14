@@ -1,0 +1,24 @@
+docs/design/crate-layout.md
+  s_12bb6d3148530d::t_f178c933c2b8b0 30-31,33,35-36,39-40,47,54-60
+  s_12bb6d3148530d::t_330d19a59206d9 10-11
+docs/design.md
+  s_12bb6d3148530d::t_f178c933c2b8b0 16-17
+docs/assets-archives.md
+  s_12bb6d3148530d::t_35e6343d316ad9 1-124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "86ce483f6855c49c5fd10e5a40971965c4a9d648",
+  "prompts": {},
+  "sessions": {
+    "s_12bb6d3148530d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40e810f9-e7ef-41d6-a981-60e9ac69dd44",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
