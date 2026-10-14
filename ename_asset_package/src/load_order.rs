@@ -1,10 +1,9 @@
 //! The user's load order file: the one place a player, rather than an author, orders packages.
 //!
 //! It lives outside the asset tree, so it is read with `std::fs` through a path the target
-//! supplies rather than through the [`crate::Vfs`] the scan uses. Which directory that path comes
-//! from is platform policy and belongs to the binary: `example_game_editor_bin` computes it from
-//! `dirs::config_dir`,
-//! and a test passes a fixture path.
+//! supplies rather than through the [`Vfs`](ename_asset_vfs::Vfs) the scan uses. Which directory
+//! that path comes from is platform policy and belongs to the binary: `example_game_editor_bin`
+//! computes it from `dirs::config_dir`, and a test passes a fixture path.
 //!
 //! There is no sequence in here, deliberately. A total order over the installed set goes stale the
 //! moment a package is added or removed; a constraint keeps meaning what it said.

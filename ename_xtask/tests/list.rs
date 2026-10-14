@@ -1,7 +1,8 @@
 //! `ename_content_list` over real fixture trees.
 
-use ename_asset_alias::{IgnoredFiles, StdVfs};
+use ename_asset_alias::IgnoredFiles;
 use ename_asset_package::{LoadOrder, build_index, scan_packages};
+use ename_asset_vfs::StdVfs;
 use ename_xtask::list::list;
 use std::path::{Path, PathBuf};
 

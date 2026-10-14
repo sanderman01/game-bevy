@@ -29,4 +29,4 @@ pub use crate::resolve::{
 pub use crate::scan::{MANIFEST_FILE, Package, Scan, scan_packages};
 
 /// Re-exported so a caller reading a [`Scan`] or a [`Resolution`] needs only this crate.
-pub use ename_asset_alias::{DiscoveredAsset, Problem, ProblemKind, Vfs};
+pub use ename_asset_alias::{DiscoveredAsset, Problem, ProblemKind};

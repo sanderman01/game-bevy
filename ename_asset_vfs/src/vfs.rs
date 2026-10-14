@@ -59,7 +59,7 @@ pub trait Vfs: Send + Sync {
 }
 
 /// True for an entry a listing must hide: a `.meta` sidecar or a dot-file.
-pub(crate) fn is_hidden_from_listings(path: &Path) -> bool {
+pub fn is_hidden_from_listings(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return true;
     };

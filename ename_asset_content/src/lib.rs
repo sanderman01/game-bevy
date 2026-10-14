@@ -28,8 +28,9 @@ use bevy::{
     log::{info, warn},
     tasks::IoTaskPool,
 };
-use ename_asset_alias::{AliasSourcePlugin, AssetReaderVfs, ContentIndexCell, IgnoredFiles};
+use ename_asset_alias::{AliasSourcePlugin, ContentIndexCell, IgnoredFiles};
 use ename_asset_package::{build_index, scan_packages};
+use ename_asset_vfs::AssetReaderVfs;
 use std::{path::PathBuf, sync::Arc};
 
 /// The default asset root, matching `AssetPlugin::file_path`'s own default. Exported so a

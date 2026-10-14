@@ -1,8 +1,8 @@
 //! `ename_asset_alias` -- addressing an asset by a namespaced alias.
 //!
-//! A leaf of the layer graph with no first-party dependencies. It owns the alias itself: what one
-//! is, the `.alias` and `_alias_rules.toml` files that name one, the walk that finds them, and the
-//! `alias://` asset source that serves them. Adding [`AliasPlugins`] to an `App` is the whole
+//! Sits on `ename_asset_vfs`, which owns the filesystem seam, and names nothing else first-party.
+//! It owns the alias itself: what one is, the `.alias` and `_alias_rules.toml` files that name
+//! one, the walk that finds them, and the `alias://` asset source that serves them. Adding [`AliasPlugins`] to an `App` is the whole
 //! setup -- the tree under the asset root is scanned on startup and
 //! `asset_server.load("alias://core::airship")` works.
 //!
@@ -22,7 +22,6 @@ mod discovery;
 mod ignored;
 mod index;
 mod rules;
-mod vfs;
 
 #[cfg(feature = "bevy")]
 mod reader;
@@ -38,7 +37,6 @@ pub use crate::discovery::{AliasScan, DiscoveredAsset, Problem, ProblemKind, sca
 pub use crate::ignored::{DEFAULT_IGNORED_SIDECAR_EXTENSIONS, IgnoredFiles};
 pub use crate::index::{AliasError, ContentIndex, validate_alias};
 pub use crate::rules::{CompiledRules, RULES_FILE, Rules, RulesError, is_rules_file};
-pub use crate::vfs::{BoxedFuture, DirEntry, StdVfs, Vfs, VfsError};
 
 #[cfg(feature = "bevy")]
 pub use crate::reader::{ALIAS_SOURCE, AliasSourcePlugin, ContentIndexCell};
@@ -48,8 +46,6 @@ pub use crate::scan_plugin::AliasScanPlugin;
 pub use crate::shader::{
     AliasShaderLoader, AliasShaderLoaderError, AliasShaderSettings, SHADER_EXTENSIONS,
 };
-#[cfg(feature = "bevy")]
-pub use crate::vfs::AssetReaderVfs;
 
 #[cfg(feature = "bevy")]
 use bevy::app::{PluginGroup, PluginGroupBuilder};

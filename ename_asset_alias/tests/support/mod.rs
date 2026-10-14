@@ -5,7 +5,7 @@
 //! `ename_asset_package` both drive real trees, so `StdVfs` and `AssetReaderVfs` stay exercised
 //! too.
 
-use ename_asset_alias::{BoxedFuture, DirEntry, Vfs, VfsError};
+use ename_asset_vfs::{BoxedFuture, DirEntry, Vfs, VfsError};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},

@@ -1,0 +1,19 @@
+[package]
+name = "ename_asset_vfs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[features]
+default = ["bevy"]
+# Bevy's `AssetReader` as a `Vfs`. Off for a command line tool, which reads through `StdVfs`.
+bevy = ["dep:bevy"]
+
+[dependencies]
+bevy = { workspace = true, optional = true }
+thiserror.workspace = true
+
+[lints]
+workspace = true

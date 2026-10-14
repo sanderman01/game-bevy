@@ -42,6 +42,9 @@ ename_asset_content = { path = "ename_asset_content", version = "0.0.0" }
 # `default-features = false` here for the same reason as `ename_asset_alias` above:
 # `ename_xtask` needs it without Bevy. `ename_asset_content` asks for `features = ["bevy"]`.
 ename_asset_package = { path = "ename_asset_package", version = "0.0.0", default-features = false }
+# `default-features = false` for the same reason again, and so every consumer names the archive
+# formats it wants: `zip` and `tar` are off unless asked for.
+ename_asset_vfs = { path = "ename_asset_vfs", version = "0.0.0", default-features = false }
 ename_editor = { path = "ename_editor", version = "0.0.0" }
 ename_engine = { path = "ename_engine", version = "0.0.0" }
 ename_remote = { path = "ename_remote", version = "0.0.0" }

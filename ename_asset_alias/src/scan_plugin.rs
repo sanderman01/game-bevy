@@ -141,7 +141,7 @@ fn start_alias_scan(
         .spawn(async move {
             info!("Scanning {:?} for aliases", config.asset_root);
             let mut make_reader = AssetSource::get_default_reader(config.asset_root);
-            let vfs = crate::AssetReaderVfs::new(make_reader());
+            let vfs = ename_asset_vfs::AssetReaderVfs::new(make_reader());
             // No package id to fall back to here -- a bare, package-less scan keeps its old
             // rule: no `_alias_rules.toml` covering a file, no alias.
             let scan = scan_aliases(&vfs, Path::new(&config.root), &config.ignored, None).await;

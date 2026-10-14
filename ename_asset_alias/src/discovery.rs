@@ -11,9 +11,10 @@
 //! is the question this system exists to answer.
 
 use crate::{
-    AliasFile, AliasOrigin, CompiledRules, IgnoredFiles, RULES_FILE, Rules, Vfs, VfsError,
-    alias_sidecar_target, is_rules_file, validate_alias, vfs::BoxedFuture,
+    AliasFile, AliasOrigin, CompiledRules, IgnoredFiles, RULES_FILE, Rules, alias_sidecar_target,
+    is_rules_file, validate_alias,
 };
+use ename_asset_vfs::{BoxedFuture, DirEntry, Vfs, VfsError};
 use std::{
     collections::BTreeMap,
     fmt::Display,
@@ -411,7 +412,7 @@ impl<'a> Walk<'a> {
 /// [`RULES_FILE`] wins outright where a case-sensitive filesystem carries several spellings, so a
 /// directory holding both `_alias_rules.toml` and `_Alias_Rules.toml` behaves the way it does
 /// everywhere else.
-fn find_rules_file(entries: &[crate::DirEntry]) -> Option<&Path> {
+fn find_rules_file(entries: &[DirEntry]) -> Option<&Path> {
     let mut found: Option<&Path> = None;
     for entry in entries.iter().filter(|e| !e.is_dir) {
         let Some(name) = entry.path.file_name().and_then(|n| n.to_str()) else {

@@ -11,13 +11,14 @@ default = ["bevy"]
 # The `alias://` asset source, the scan plugin, and Bevy's `AssetReader` as a `Vfs`. Off for a
 # command line tool: `ename_xtask` reads the same `.alias` files and folder rules with `StdVfs`
 # and must not link a renderer to do it.
-bevy = ["dep:async-channel", "dep:bevy"]
+bevy = ["dep:async-channel", "dep:bevy", "ename_asset_vfs/bevy"]
 
 [dependencies]
 # The watcher's inner channel; Bevy's `AssetSourceEvent` sender is this crate's type.
 async-channel = { workspace = true, optional = true }
 async-lock.workspace = true
 bevy = { workspace = true, optional = true }
+ename_asset_vfs.workspace = true
 glob.workspace = true
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true

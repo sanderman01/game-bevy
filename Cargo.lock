@@ -2963,6 +2963,7 @@ dependencies = [
  "async-channel",
  "async-lock",
  "bevy",
+ "ename_asset_vfs",
  "futures-lite",
  "glob",
  "serde",
@@ -2980,6 +2981,7 @@ dependencies = [
  "bevy",
  "ename_asset_alias",
  "ename_asset_package",
+ "ename_asset_vfs",
  "tempfile",
 ]
 
@@ -2989,12 +2991,21 @@ version = "0.0.0"
 dependencies = [
  "bevy",
  "ename_asset_alias",
+ "ename_asset_vfs",
  "futures-lite",
  "semver",
  "serde",
  "thiserror 2.0.20",
  "toml",
  "tracing",
+]
+
+[[package]]
+name = "ename_asset_vfs"
+version = "0.0.0"
+dependencies = [
+ "bevy",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -3067,6 +3078,7 @@ dependencies = [
  "dirs",
  "ename_asset_alias",
  "ename_asset_package",
+ "ename_asset_vfs",
  "futures-lite",
  "tempfile",
  "toml",

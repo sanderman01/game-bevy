@@ -45,6 +45,13 @@ jobs:
       - name: Check the alias schema and walk without Bevy
         run: cargo check -p ename_asset_alias --no-default-features --all-targets
 
+      # Per package, in separate invocations: `ename_xtask` turns `zip` and `tar` on, so a
+      # workspace-wide build would unify them into every one of these.
+      - name: Check the filesystem seam in each feature combination
+        run: |
+          cargo check -p ename_asset_vfs --no-default-features --all-targets
+          cargo check -p ename_asset_vfs --no-default-features --features bevy --all-targets
+
       - name: Check the package scanner without Bevy
         run: cargo check -p ename_asset_package --no-default-features --all-targets
 

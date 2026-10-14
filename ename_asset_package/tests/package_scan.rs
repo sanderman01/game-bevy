@@ -4,8 +4,9 @@
 //! implementation a command line tool would use. `futures_lite::future::block_on` drives it,
 //! because `StdVfs`'s io is blocking and there is nothing to schedule.
 
-use ename_asset_alias::{AliasOrigin, IgnoredFiles, ProblemKind, StdVfs};
+use ename_asset_alias::{AliasOrigin, IgnoredFiles, ProblemKind};
 use ename_asset_package::{LoadOrder, Package, Scan, Version, scan_packages};
+use ename_asset_vfs::StdVfs;
 use futures_lite::future::block_on;
 
 /// Relative to this crate's manifest directory: Cargo runs a test binary with that as the

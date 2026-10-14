@@ -16,9 +16,8 @@
 //! directory name is only the baseline `resolve` sorts its constraints on top of.
 
 use crate::{Disabled, LoadOrder, Manifest, OrderEdges, resolve, validate_package_id};
-use ename_asset_alias::{
-    DiscoveredAsset, IgnoredFiles, Problem, ProblemKind, Vfs, VfsError, scan_aliases,
-};
+use ename_asset_alias::{DiscoveredAsset, IgnoredFiles, Problem, ProblemKind, scan_aliases};
+use ename_asset_vfs::{Vfs, VfsError};
 use std::{
     fmt::Display,
     path::{Path, PathBuf},

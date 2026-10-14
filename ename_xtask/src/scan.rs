@@ -1,8 +1,9 @@
 //! Running the same package scan `ename_asset_content` runs at startup, blocking, for a command
 //! line tool that has neither an `IoTaskPool` nor an `AssetReader`.
 
-use ename_asset_alias::{IgnoredFiles, StdVfs};
+use ename_asset_alias::IgnoredFiles;
 use ename_asset_package::{LoadOrder, Problem, ProblemKind, Scan, scan_packages};
+use ename_asset_vfs::StdVfs;
 use std::path::Path;
 
 /// Scans `asset_root` for packages under `search_paths`, resolved against the load order at

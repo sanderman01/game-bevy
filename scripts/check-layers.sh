@@ -28,9 +28,12 @@ check() {
 network='bevy_remote|reqwest|hyper|tokio|rmcp'
 # `ename_engine` may depend on the asset crates below it, and must not name anything above.
 check ename_engine "ename_editor|example_game_lib|$network"
-# The bottom of the asset stack. `ename_asset_alias` is the leaf: it owns the alias, the
-# `.alias` and `_alias_rules.toml` schema, and the walk over them, and names nothing first-party.
-check ename_asset_alias 'ename_.*'
+# The bottom of the asset stack. `ename_asset_vfs` is the leaf: the filesystem seam and the
+# archive mounts, naming nothing first-party.
+check ename_asset_vfs 'ename_.*'
+# `ename_asset_alias` owns the alias, the `.alias` and `_alias_rules.toml` schema, and the walk
+# over them. The filesystem seam below it is the only first-party crate it may name.
+check ename_asset_alias 'ename_asset_package|ename_asset_content|ename_engine|ename_editor|example_game_lib|ename_remote|ename_mcp|ename_xtask'
 # `ename_asset_package` owns packages, load order, and the fold that turns an ordered scan into
 # one index, all on top of that same walk, so the alias leaf is the only first-party crate it
 # may name.
