@@ -41,6 +41,8 @@
 //! of the two, and if it keeps the other, these requests time out.
 //!
 //! A request may be despawned at any point; it then simply never reports.
+//!
+//! The `screenshot.capture` command runs a request as a job (see `crate::command`).
 
 use std::{
     io::{BufWriter, Write as _},
@@ -58,6 +60,8 @@ use bevy::{
 use image::ImageFormat;
 
 use crate::capture::CaptureError;
+
+mod command;
 
 pub use crate::readback::CaptureSource;
 use crate::readback::{
@@ -149,7 +153,8 @@ pub struct ScreenshotFinished {
 #[derive(Component, Clone, Debug)]
 pub struct ScreenshotOutcome(pub Result<SavedScreenshot, ScreenshotError>);
 
-/// Captures [`ScreenshotRequest`]s and writes them to disk.
+/// Captures [`ScreenshotRequest`]s and writes them to disk, and registers the
+/// `screenshot.capture` command.
 pub struct ScreenshotPlugin;
 
 impl Plugin for ScreenshotPlugin {
@@ -160,6 +165,11 @@ impl Plugin for ScreenshotPlugin {
             // editor's, which are set in `PostUpdate`.
             .add_systems(Last, start_captures.in_set(ReadbackSystems::Request))
             .add_observer(deliver_capture);
+    }
+
+    /// `finish`, so every capture source a plugin added in `build` is in the command's schema.
+    fn finish(&self, app: &mut App) {
+        command::register(app);
     }
 }
 
