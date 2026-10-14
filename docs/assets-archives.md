@@ -168,8 +168,10 @@ Nothing writes into a mount.
   file lies anywhere under it; a symlinked directory there is a link to those operations and is
   not walked. Where a symlink on the way leads is checked too, the last component and a `.meta`
   included, so a link to `pkg.zip` can't be written through. The canonical file behind each
-  mounted archive is recorded too, so when `pkg.zip` is itself a symlink, its target can't be
-  written under its own name or through another link. That covers Bevy writing a default
+  mounted archive is recorded too, by path and on Unix by device and inode, so when `pkg.zip` is
+  itself a symlink its target can't be written under its own name, through another link, or
+  through a hard link, and the directory holding it can't be removed or moved. On Windows a hard
+  link to an archive is not caught; archives are immutable while the game runs. That covers Bevy writing a default
   `.meta`.
 - `ename_fix` skips archive-backed assets and counts them.
 - `ename_mv` refuses moves into or out of a mount under the project's asset root.

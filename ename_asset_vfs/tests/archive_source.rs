@@ -375,3 +375,48 @@ fn the_writer_refuses_the_file_behind_a_symlinked_archive() {
     });
     assert_eq!(std::fs::read(&store).unwrap(), before);
 }
+
+/// The directory holding a symlinked archive's backing file can't be removed or moved, and a hard
+/// link to that file can't be written through.
+#[cfg(unix)]
+#[test]
+fn the_backing_file_of_a_symlinked_archive_is_guarded_under_any_name() {
+    let root = root_with("basic.zip");
+    std::fs::create_dir_all(root.path().join("data")).unwrap();
+    let store = root.path().join("data/store.bin");
+    std::fs::rename(root.path().join("pkg.zip"), &store).unwrap();
+    std::os::unix::fs::symlink(&store, root.path().join("pkg.zip")).unwrap();
+    std::fs::hard_link(&store, root.path().join("hard.bin")).unwrap();
+    let before = std::fs::read(&store).unwrap();
+    let app = app_over(root.path());
+    let writer = default_writer(&app);
+    block_on(async {
+        // Lists the root, which mounts `pkg` and records its backing file.
+        assert!(
+            writer
+                .write_bytes(Path::new("pkg/x.txt"), b"x")
+                .await
+                .is_err()
+        );
+        assert!(writer.remove_directory(Path::new("data")).await.is_err());
+        assert!(
+            writer
+                .remove_assets_in_directory(Path::new("data"))
+                .await
+                .is_err()
+        );
+        assert!(
+            writer
+                .rename(Path::new("data"), Path::new("moved"))
+                .await
+                .is_err()
+        );
+        assert!(
+            writer
+                .write_bytes(Path::new("hard.bin"), b"x")
+                .await
+                .is_err()
+        );
+    });
+    assert_eq!(std::fs::read(&store).unwrap(), before);
+}

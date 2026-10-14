@@ -224,6 +224,9 @@ pub struct Mounts {
     /// The canonical file behind every mounted archive, so a write can't reach one through
     /// another name: the target of a symlinked `pkg.zip`, or a link to it.
     backing: RwLock<HashSet<PathBuf>>,
+    /// The same files by device and inode, which also catches a hard link to one.
+    #[cfg(unix)]
+    backing_inodes: RwLock<HashSet<(u64, u64)>>,
     #[cfg(test)]
     listings: std::sync::atomic::AtomicUsize,
     files: OpenFiles,
@@ -239,6 +242,8 @@ impl Mounts {
             dirs: RwLock::default(),
             listing: Mutex::default(),
             backing: RwLock::default(),
+            #[cfg(unix)]
+            backing_inodes: RwLock::default(),
             #[cfg(test)]
             listings: Default::default(),
             files: OpenFiles::default(),
@@ -288,6 +293,20 @@ impl Mounts {
     /// making it relative to the asset root with symlinks resolved. A path outside the root is
     /// loose: it is not part of the asset tree at all.
     pub fn origin_of_file(&self, path: &Path) -> io::Result<Origin> {
+        #[cfg(unix)]
+        if let Ok(metadata) = std::fs::metadata(path) {
+            use std::os::unix::fs::MetadataExt;
+            if self
+                .backing_inodes
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .contains(&(metadata.dev(), metadata.ino()))
+            {
+                return Ok(Origin::Archive {
+                    archive: path.to_path_buf(),
+                });
+            }
+        }
         if let Ok(canonical) = std::fs::canonicalize(path)
             && self
                 .backing
@@ -327,6 +346,17 @@ impl Mounts {
         };
         if !self.is_real_dir(&path)? {
             return Ok(false);
+        }
+        // The file behind a symlinked archive elsewhere may live under this directory.
+        if let Ok(dir) = std::fs::canonicalize(self.root.join(&path))
+            && self
+                .backing
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .iter()
+                .any(|backing| backing.starts_with(&dir))
+        {
+            return Ok(true);
         }
         let mut stack = vec![path.into_owned()];
         while let Some(dir) = stack.pop() {
@@ -703,6 +733,20 @@ impl Mounts {
                         .iter()
                         .filter_map(|p| std::fs::canonicalize(p).ok()),
                 );
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::MetadataExt;
+                    let mut inodes = self
+                        .backing_inodes
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner());
+                    inodes.extend(
+                        physicals
+                            .iter()
+                            .filter_map(|p| std::fs::metadata(p).ok())
+                            .map(|m| (m.dev(), m.ino())),
+                    );
+                }
             }
             for (name, _) in found {
                 info.archive_files.insert(name, mount.clone());
