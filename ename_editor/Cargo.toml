@@ -6,12 +6,8 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 
-[features]
-# `editor.video.record`, over `ename_engine`'s video recording.
-video = ["ename_engine/video"]
-
 [dependencies]
-bevy = { workspace = true, features = ["bevy_remote"] }
+bevy = { workspace = true }
 bevy-inspector-egui = { workspace = true }
 bevy_egui = { workspace = true }
 egui = { workspace = true }

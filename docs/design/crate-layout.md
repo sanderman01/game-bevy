@@ -26,7 +26,7 @@ example_game_editor_bin (bin) -> ename_engine, example_game_lib, ename_editor, e
 ename_remote                  -> ename_engine
 example_game_lib              -> ename_engine, ename_asset_alias
 ename_editor                  -> ename_engine
-ename_engine                  -> ename_asset_content, bevy, avian3d, big_space
+ename_engine                  -> ename_asset_content, bevy, avian3d, big_space, serde, schemars
 ename_asset_content           -> ename_asset_alias, ename_asset_package, async-lock, bevy
 ename_asset_package           -> ename_asset_alias, semver, serde, toml, thiserror, tracing
                                  + bevy, behind the default `bevy` feature
@@ -89,11 +89,12 @@ ordering structural rather than a rule in `main.rs` that every future target has
 check too. It also proves that the editor crate and `ename_remote` are absent from
 `example_game_bin`, the binary that stands in for a shipping build.
 
-Video recording is behind a `video` feature on `ename_engine`, forwarded by `ename_remote` and
-`ename_editor` and turned on by `example_game_editor_bin`'s defaults. It adds no dependency (it runs
-the system `ffmpeg`), so the feature only keeps the API and the external process out of the
-shipping binary. Cargo unifies features across one build, so a workspace-wide build turns it on for
-`example_game_bin` too; that is harmless.
+Video recording is behind a `video` feature on `ename_engine`, which `example_game_editor_bin`'s
+own `video` feature turns on by default. Nothing forwards it: `video.record` is a command the
+engine registers when the feature is on, so the side channel and the editor need no feature of
+their own. It adds no dependency (it runs the system `ffmpeg`), so the feature only keeps the API
+and the external process out of the shipping binary. Cargo unifies features across one build, so a
+workspace-wide build turns it on for `example_game_bin` too; that is harmless.
 
 An earlier `EditorCamera` was a historical example of the cost of getting a layer wrong. It lived
 in the engine because `engine` depended on `editor` and the editor could not name
@@ -131,12 +132,13 @@ A third-party type that crosses a boundary is re-exported by the crate that owns
 not avoid is that `bigspace::grid` exposes `big_space::Grid` in its signatures, so every consumer
 of `ename_engine` is pinned to that git revision. That is accepted deliberately for now.
 
-The editor's BRP methods do not cross the boundary at all. `editor.view.get` / `.set` read the
-dock, which is private to `ename_editor`, so the editor inserts them into Bevy's own
-`RemoteMethods` and never names `ename_remote`. It depends on `bevy_remote` for that, and the
-dependency is unconditional: the editor never ships, and `bevy_remote` binds no socket unless
-`RemotePlugin` is added. `scripts/check-layers.sh` rejects `ename_editor -> ename_remote` as well
-as the reverse.
+Functionality crosses to the side channel as commands, not as BRP methods. `editor.get_view` /
+`editor.set_view` read the dock, which is private to `ename_editor`, so the editor registers them
+in `ename_engine::command`, which sits below both. `ename_remote` lists and calls whatever is
+registered and never names the editor; the editor never names `ename_remote` or `bevy_remote`.
+`scripts/check-layers.sh` rejects `ename_editor -> ename_remote` as well as the reverse, and keeps
+network crates (`bevy_remote`, `reqwest`, `hyper`, `tokio`, `rmcp`) out of `ename_engine` and
+`ename_editor`.
 
 The captured log is a shared type that moved down. `ename_engine::log` owns the ring buffer and
 the `tracing` layer that fills it, and `EnginePlugins` installs both. Two crates above it read

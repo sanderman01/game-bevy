@@ -10,8 +10,8 @@ license.workspace = true
 default = ["dev", "video"]
 # Development-only Bevy features. Must be off for a shipping build.
 dev = ["bevy/dynamic_linking", "bevy/dev"]
-# Video recording over BRP. Needs `ffmpeg` on PATH at runtime.
-video = ["ename_editor/video", "ename_remote/video"]
+# Video recording, through the engine. Needs `ffmpeg` on PATH at runtime.
+video = ["ename_engine/video"]
 
 [dependencies]
 bevy = { workspace = true }

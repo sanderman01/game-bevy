@@ -15,7 +15,6 @@ mod game_view;
 mod gizmo;
 mod menu;
 mod panels;
-mod remote;
 mod selection;
 mod view_commands;
 mod viewport;
@@ -65,7 +64,6 @@ impl PluginGroup for EditorPlugins {
             })
             .add(game_view::GameViewPlugin)
             .add(gizmo::GizmoPlugin)
-            .add(remote::RemoteViewPlugin)
             .add(view_commands::ViewCommandsPlugin)
     }
 }

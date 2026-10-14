@@ -22,13 +22,11 @@
 //! | `game.pid.get` | Nothing in BRP says which run of the process answered, so a restart between two calls is invisible. |
 //! | `game.command.list` / `.call` | The commands any crate registered in `ename_engine::command`, listed with their schemas and called by name. This crate never learns what they are. |
 //! | `game.job.status` / `.list` / `.cancel` | The jobs those commands start. |
-//! | `game.screenshot.capture` / `.result` | Capture is a GPU readback that completes frames later, so it is a request plus a poll. |
-//! | `game.video.record` / `.status` / `.stop` | A recording runs for many frames, so it is a request, a poll and an optional stop. Only with the `video` feature. |
 //!
 //! It also replaces `world.mutate_components` with a guarded version. See [`mutate`].
 //!
-//! `editor.view.get` / `.set`, `editor.screenshot.capture` and `editor.video.record` are not here. They need the
-//! editor's dock and camera, which are private to it, so `ename_editor` registers them itself.
+//! Screenshots, video and the editor's views are not here. Their crates register them as commands,
+//! and they arrive through `game.command.*` like any other.
 
 mod command;
 mod entities;
@@ -36,18 +34,13 @@ mod logs;
 mod mutate;
 mod position;
 mod run_id;
-mod screenshot;
 mod time;
-#[cfg(feature = "video")]
-mod video;
 
 use bevy::{
     app::PluginGroupBuilder,
-    camera::RenderTarget,
     prelude::*,
-    remote::{BrpError, RemotePlugin, error_codes, http::RemoteHttpPlugin},
+    remote::{RemotePlugin, http::RemoteHttpPlugin},
 };
-use ename_engine::camera::MainCamera;
 
 /// Serializes a handler's response, turning a serialization failure into a BRP error.
 ///
@@ -59,30 +52,6 @@ pub(crate) fn to_value<T: serde::Serialize>(value: T) -> bevy::remote::BrpResult
         message: err.to_string(),
         data: None,
     })
-}
-
-/// The one camera the Game View would show. Same rule as the editor's `camera_available`.
-pub(crate) fn main_camera(world: &mut World) -> Result<Entity, BrpError> {
-    let cameras: Vec<Entity> = world
-        .query_filtered::<Entity, (With<MainCamera>, With<Camera>, With<RenderTarget>)>()
-        .iter(world)
-        .collect();
-    match cameras[..] {
-        [camera] => Ok(camera),
-        [] => Err(internal("the loaded stage has no MainCamera".to_owned())),
-        _ => Err(internal(format!(
-            "there are {} MainCameras, so which one is the game camera is ambiguous",
-            cameras.len()
-        ))),
-    }
-}
-
-fn internal(message: String) -> BrpError {
-    BrpError {
-        code: error_codes::INTERNAL_ERROR,
-        message,
-        data: None,
-    }
 }
 
 /// The BRP server and its custom methods, as a target adds it.
@@ -107,14 +76,6 @@ impl PluginGroup for RemotePlugins {
             .with_method_main(command::JOB_STATUS_METHOD, command::job_status)
             .with_method_main(command::JOB_LIST_METHOD, command::job_list)
             .with_method_main(command::JOB_CANCEL_METHOD, command::job_cancel)
-            .with_method_main(screenshot::CAPTURE_METHOD, screenshot::capture)
-            .with_method_main(screenshot::RESULT_METHOD, screenshot::result);
-        #[cfg(feature = "video")]
-        let remote = remote
-            .with_method_main(video::RECORD_METHOD, video::record)
-            .with_method_main(video::STATUS_METHOD, video::status)
-            .with_method_main(video::STOP_METHOD, video::stop);
-        let remote = remote
             // Last, so it replaces the built-in of the same name.
             .with_method_main(mutate::METHOD, mutate::mutate_components);
 

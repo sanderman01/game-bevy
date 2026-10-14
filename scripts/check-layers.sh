@@ -23,8 +23,11 @@ check() {
     fi
 }
 
+# Network crates the engine and the editor could plausibly pick up. Neither may: the engine is in
+# every build, shipping included, and the editor reaches the side channel only through commands.
+network='bevy_remote|reqwest|hyper|tokio|rmcp'
 # `ename_engine` may depend on the asset crates below it, and must not name anything above.
-check ename_engine 'ename_editor|example_game_lib'
+check ename_engine "ename_editor|example_game_lib|$network"
 # The bottom of the asset stack. `ename_asset_alias` is the leaf: it owns the alias, the
 # `.alias` and `_alias_rules.toml` schema, and the walk over them, and names nothing first-party.
 check ename_asset_alias 'ename_.*'
@@ -34,7 +37,7 @@ check ename_asset_alias 'ename_.*'
 check ename_asset_package 'ename_asset_content|ename_engine|ename_editor|example_game_lib|ename_remote|ename_mcp'
 # The glue may name both asset crates and nothing above it.
 check ename_asset_content 'ename_engine|ename_editor|example_game_lib'
-check ename_editor 'example_game_lib|ename_remote'
+check ename_editor "example_game_lib|ename_remote|$network"
 check example_game_lib 'ename_editor'
 check ename_remote 'ename_editor|example_game_lib'
 # The sidecar is a separate process. A first-party dependency here would mean it had started
