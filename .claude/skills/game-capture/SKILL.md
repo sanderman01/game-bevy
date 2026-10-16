@@ -1,5 +1,5 @@
 ---
-name: screen-capture
+name: game-capture
 description: Take a screenshot or record a video of the running example game or editor, or screenshot any other window, then crop and zoom it for reading. Use when you need to see what the game actually rendered - verifying a UI or rendering change, reading on-screen text, or checking motion and animation over time. Capture through the game's MCP `screenshot_capture` and `video_record` tools; spectacle is the fallback for anything else.
 ---
 
@@ -21,6 +21,7 @@ The game renders captures itself, so focus, window stacking, desktop scaling and
 not matter, and nothing but the game is captured. None of the tools need window focus: never
 activate the game window just to capture it, because that steals the user's focus. Write output
 under `scratch/`, which git ignores.
+Never write captures to `/tmp` or the session scratchpad: both are a small shared tmpfs.
 
 ```
 screenshot_capture { "path": "scratch/shots/scene.png", "source": "editor_camera" }
