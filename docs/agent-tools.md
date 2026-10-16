@@ -57,7 +57,7 @@ The sidecar is not rebuilt by `game_start`. Whoever changes `ename_mcp` builds i
 | Tool | CLI | Does |
 | --- | --- | --- |
 | `game_start` | `cargo game start` | Build and start the editor, or report the one running, and wait until it answers. |
-| `game_restart` | `cargo game restart` | Build while the old game keeps running; on success stop it and start the new one. Params you leave out are the last launch's. |
+| `game_restart` | `cargo game restart` | Build while the old game keeps running; on success stop it and start the new one. On Windows the old game is stopped before the build, because Windows will not let the build replace a running executable, so a failed build leaves nothing running. Params you leave out are the last launch's. |
 | `game_stop` | `cargo game stop` | `game.exit` over BRP, then a kill after `grace_seconds` (default 5). |
 | `game_status` | `cargo game status` | Report the state; `wait_seconds` waits out a build or startup. |
 
@@ -70,8 +70,9 @@ form), `starting`, `ready`, `exited` (with `exit` and, for an error code or a cr
 the cause and the last lines of the log), `external` and `port_in_use` (with `holder`). `ready`
 means the game process is alive, `game.pid.get` answers on its port from that process, and the main
 schedule has run two frames. It does not mean a frame was presented. A launch that ends in
-`build_failed`, `port_in_use` or a crash is a tool error. A `restart` whose build fails leaves the
-old game running and says so under `pending`.
+`build_failed`, `port_in_use` or a crash is a tool error, and so is one whose supervisor died
+(`error` says why) and a stop that ran out of time. A `restart` whose build fails says so under
+`pending`; the old game is still running, except on Windows.
 
 **Ownership.** Every launch records who started it: the MCP session's client process, the
 `--owner` token or `ENAME_GAME_OWNER` on the CLI, or nobody, meaning the user. Only the owner may
@@ -83,9 +84,12 @@ and `game_status` reports the session's own as `caller`, to hand to a separate-p
 `yours`), unless you are leaving one running for the user to inspect; then say so.
 
 **Ports and instances.** The `default` instance uses 15702 and the render world's listener 15703.
-Another `instance` gets the first free pair from 15704. A started instance becomes the one this
-session's world tools talk to, and stays so across `/mcp reconnect`. Another owner's start never
-moves it. `game_start {instance}` on a running instance selects it.
+Another `instance` gets the first free pair from 15704, and gives up a recorded pair another
+running instance now uses. A started instance becomes the one this session's world tools talk to
+as soon as its run is created, even while it builds, and stays so across `/mcp reconnect`. When it
+stops, they fall back to 15702. Another owner's start never moves it. `game_start {instance}` on
+a running instance selects it. A game of another instance on the port is reported as that
+instance's and is never stopped as an external game.
 
 **Games the launcher did not start.** An editor started from a terminal still works with every
 world tool. `game_status` reports it as `external`, and `game_start` reports `port_in_use` with its
@@ -103,7 +107,12 @@ under `log`.
 
 **When `cargo game` itself does not build.** It builds into `target/ename-launch-bin`, so it
 answers while the editor builds. If an `ename_mcp` edit breaks it, the last good binary still works:
-`target/ename-launch-bin/debug/ename_mcp game stop`.
+`target/ename-launch-bin/debug/ename_mcp game stop`. Run `cargo game` from the repo root: the
+alias's paths are relative to the working directory.
+
+**A game in a worktree without assets.** A linked worktree lacks the main checkout's gitignored
+assets. If the game starts with missing assets there, run the repo's worktree asset setup
+(airshipgame: `scripts/worktree-assets.sh <worktree>`) and restart it.
 
 CLI exit codes: 0 ready or stopped, 1 build failed or crashed, 2 still building or starting, 3
 port in use or external game, 4 refused or invalid.

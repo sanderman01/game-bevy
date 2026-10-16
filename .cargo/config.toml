@@ -28,5 +28,6 @@ xtask = "run -p ename_xtask --"
 # The editor launcher (`cargo game start|stop|restart|status`). Its own target dir, so it never
 # waits on cargo's lock of `target/` while the launcher builds the editor there. If an
 # `ename_mcp` edit breaks this alias, `target/ename-launch-bin/debug/ename_mcp game stop` still
-# works.
-game = "run -q --target-dir target/ename-launch-bin -p ename_mcp -- game"
+# works. Run it from the repo root: cargo resolves `--target-dir` against the working directory,
+# and an alias cannot name the config file's own directory.
+game ="run -q --target-dir target/ename-launch-bin -p ename_mcp -- game"

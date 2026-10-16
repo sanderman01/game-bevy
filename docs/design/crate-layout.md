@@ -36,7 +36,8 @@ ename_asset_vfs               -> thiserror, tracing   (no first-party deps)
                                  + bevy, and crc32fast + flate2 for zip, behind features;
                                  both archive formats are parsed in the crate
 
-ename_mcp (bin)               -> rmcp, reqwest, tokio, serde_json, sysinfo, process-wrap
+ename_mcp (bin)               -> rmcp, reqwest, tokio, serde_json, sysinfo, process-wrap,
+                                 windows (Windows only)
                                  (no first-party deps, no bevy)
 ename_xtask (bin)             -> ename_asset_alias, ename_asset_package, ename_asset_vfs (zip, tar),
                                  dirs, futures-lite, toml, uuid
