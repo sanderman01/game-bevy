@@ -44,8 +44,9 @@ To test at runtime, start the editor with `game_start` (MCP) or `cargo game star
 it with `game_restart` / `cargo game restart`; never `pkill`. They run `example_game_editor_bin`,
 the only target that links `ename_remote`, so the only one the MCP tools in
 [docs/agent-tools.md](docs/agent-tools.md) can reach. On the CLI, pass `--owner` (from
-`cargo game owner --new`). Stop or restart only games you or your parent agent started, and stop
-yours before you finish.
+`cargo game owner --new`). Stop or restart only games you or your parent agent started; stop
+others only when the user asks. Stop yours before you finish, unless you leave one running for
+the user to inspect; then say so.
 Read [docs/agent-environment.md](docs/agent-environment.md) before running processes, tests or
 git commands that discard changes. Find a dependency's source with
 `cargo xtask ename_dep_src <crate>`, never by globbing `~/.cargo` or `find /`.

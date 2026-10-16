@@ -2,13 +2,15 @@
 
 Facts about this machine and these repos that no tool reports. They apply to `game` and
 `airshipgame`; `airshipgame` links here. The MCP tools are in [agent-tools.md](agent-tools.md).
+Shell, Disk and the build times below describe the main Linux dev machine; elsewhere, check
+before relying on them.
 
 ## Shell
 
 - The shell is zsh. Quote every glob-shaped argument: `rg -n 'Foo' -g '*.rs'`,
   `grep -rn --include='*.rs' Foo .`. Unquoted, zsh fails with `no matches found`.
 - No bare word starting with `=`: zsh expands `=cmd` to a path, so `echo =====` fails. Quote it.
-- `rg` and the shell's `grep` (a ugrep function under Claude Code) skip gitignored files, such as
+- `rg`, and `grep` under Claude Code (a ugrep shell function), skip gitignored files, such as
   airshipgame's ignored binaries and tiles under `assets/`. Use `command grep -r` or
   `rg --no-ignore` when a search must cover them. The asset submodules are tracked and searched.
 - Put `set -o pipefail;` in front of a pipe whose exit code matters, or drop the pipe:
@@ -18,23 +20,19 @@ Facts about this machine and these repos that no tool reports. They apply to `ga
 
 - Never `pkill -f <pattern>` or `killall`: the pattern also matches the shell running the
   command, which kills it (exit 144).
-- Start, stop and restart the editor with `game_start` / `game_stop` / `game_restart`, or
-  `cargo game` from a shell ([agent-tools.md](agent-tools.md#lifecycle)).
-- To find another process: `pgrep -af '[e]xample_game_editor_bin'`, then `kill <pid>`. The
-  brackets keep the pattern from matching itself. `pgrep -x` cannot match names over 15
-  characters; the kernel truncates them.
+- Never kill the editor by pid: use `game_stop` (`take_over` / `--take-over` only when the user
+  asks). Start and restart it with `game_start` / `game_restart` or `cargo game`.
+- Another process you started: `pgrep -af '[m]y_tool'`, then `kill <pid>`. The brackets keep
+  the pattern from matching itself. `pgrep -x` cannot match names over 15 characters; the kernel
+  truncates them.
 
 ## Game ownership
 
-- Stop or restart only games you or your parent agent started. Anything else only when the user
-  asks (`take_over`).
+- Stop or restart only games you or your parent agent started; stop others only when the user
+  asks (`take_over` / `--take-over`).
 - When your tasks are done, stop the games you started, unless you leave one running for the user
   to inspect; then say so.
-- Over MCP, ownership is automatic. On the CLI, pass `--owner <token>` or set `ENAME_GAME_OWNER`
-  on every `cargo game` call. A top-level CLI agent gets a token from `cargo game owner --new`. A
-  parent handing game work to a separate-process agent puts its own token (`cargo game owner`,
-  or `caller` in `game_status`) in the brief as `ENAME_GAME_OWNER`.
-- Never run `cargo game` without a token: no token means the user's game.
+- Tokens on the CLI and handing a game to another agent: [agent-tools.md](agent-tools.md#lifecycle).
 
 ## Disk
 
@@ -43,7 +41,7 @@ Facts about this machine and these repos that no tool reports. They apply to `ga
 - Raw video, traces (`--features trace` wrote 19 GB in 60 s), benchmark data, screenshots and run
   logs go to `scratch/` in the repo. Git ignores it; it is on the big disk and survives
   `cargo clean`.
-- Check `df -h /tmp` before writing anything over 100 MB there.
+- Large output never goes to `/tmp`; `df -h /tmp` shows how full it is.
 
 ## Git
 
@@ -73,38 +71,42 @@ Facts about this machine and these repos that no tool reports. They apply to `ga
 
 - Use the `cargo dev-*` aliases. A plain `cargo test -p <crate>` resolves Bevy without the
   aliases' features (`dynamic_linking`) and rebuilds all of it.
-- Run one cargo command at a time per repo; a second one waits on `Blocking waiting for file lock`.
+- One cargo command per target directory at a time; a second one waits on `Blocking waiting for
+  file lock`. airshipgame's `cargo build --manifest-path ../game/Cargo.toml -p ename_mcp` uses
+  `../game/target`. `cargo game` and `cargo xtask` have their own target dirs in each repo.
 - `cargo dev-test --no-fail-fast` runs every test binary; without it the first failing binary
   hides the rest.
 - Leave a crate out with `cargo dev-test --exclude <crate>`; skip one known failure with
   `cargo dev-test -- --skip <test name>`.
 - A test that fails before your change too is not yours to fix; report it with the results.
+- Read-only reviewers do not run tests. The implementer runs `cargo dev-test --no-fail-fast` after
+  its last change and puts the pass/fail counts and the failures' output in the reviewer's brief.
 
 ## Logs
 
 - A game started by the launcher logs plain text to `game.log`; every lifecycle result names it
   under `log`.
 - While the game runs, prefer `log_get_entries`.
-- For other output, `NO_COLOR=1` turns off the engine's terminal colours, so no `sed` to strip
-  escape codes: `NO_COLOR=1 cargo dev-run > scratch/run.log 2>&1` (humans' route; agents use the
-  launcher).
+- Anything run with `NO_COLOR` set prints no colour codes, so there is no need to strip them with
+  `sed`.
 
 ## Dependency source
 
 - `cargo xtask ename_dep_src <crate>` prints the directory cargo compiles for each locked version:
-  `big_space 0.13.0 git 5f25522 /home/sander/.cargo/git/checkouts/...`. It works in both repos and
-  answers for the repo you run it in.
-- Never glob the registry for a version and never `find /`. Bevy is 0.19.1; the registry also
-  holds 0.20.0 and older. `big_space` is a git checkout, not the registry copy.
+  `big_space 0.13.0 git 5f25522 ~/.cargo/git/checkouts/big_space-.../5f25522`. It works in both
+  repos and answers for the repo you run it in.
+- Never glob the registry for a version and never `find /`: the registry holds several versions of
+  most crates. `big_space` is a git checkout, not the registry copy.
 - Without a build (a read-only sandbox), see below; `Cargo.lock` also gives the version and the
   git rev.
 
 ## Read-only review sandbox (Codex)
 
-- Cargo cannot take its build lock, so no builds, no `cargo xtask` and no test runs. The brief
-  carries the implementer's `cargo dev-test --no-fail-fast` result; ask the parent for another run.
-- `cargo metadata` needs no lock and works. Dependency source there:
-  `cargo metadata --format-version 1 --locked --offline | python3 -c 'import json,sys; [print(p["version"], p["manifest_path"]) for p in json.load(sys.stdin)["packages"] if p["name"] == "big_space"]'`
+- Cargo cannot take its build lock, so no builds, no `cargo xtask` and no test runs. Ask the
+  parent for a test run.
+- `cargo metadata` needs no lock and works. Dependency source there (`py` instead of `python3` on
+  Windows):
+  `cargo metadata --format-version 1 --locked --offline --all-features | python3 -c 'import json,sys; [print(p["version"], p["manifest_path"]) for p in json.load(sys.stdin)["packages"] if p["name"] == "big_space"]'`
 - Heredocs fail (`can't create temp file`): use `python3 -c '...'` or plain commands.
 - Read pinned revisions with `git show <sha>:<path>`. Read files in ranges (`sed -n 1,200p`,
   `rg -n`): output over about 10k tokens is truncated.
@@ -114,8 +116,8 @@ Facts about this machine and these repos that no tool reports. They apply to `ga
 
 ## Worktrees
 
-- A new worktree builds cold (8 to 10 min). `CARGO_TARGET_DIR=<main>/target` reuses the main
-  build, but then shares its lock.
+- A new worktree builds cold (8 to 10 min on the dev machine). `CARGO_TARGET_DIR=<main>/target`
+  reuses the main build, but then shares its lock.
 - Codex in a linked worktree cannot write the main repo's `.git` (`index.lock: Read-only file
   system`). The parent commits.
 
