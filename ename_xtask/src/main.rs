@@ -77,10 +77,21 @@ fn main() -> ExitCode {
 fn dep_src(name: &str) -> ExitCode {
     // `cargo run` sets `CARGO` to the cargo that launched us.
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let output = match Command::new(&cargo)
-        .args(["metadata", "--format-version", "1", "--locked", "--offline"])
-        .output()
-    {
+    let metadata = |all_features: bool| {
+        let mut command = Command::new(&cargo);
+        command.args(["metadata", "--format-version", "1", "--locked", "--offline"]);
+        if all_features {
+            command.arg("--all-features");
+        }
+        command.output()
+    };
+    // `--all-features` reaches lock entries only optional features pull in. Offline it fails if
+    // such a crate was never downloaded, so fall back to the default features.
+    let output = match metadata(true) {
+        Ok(output) if output.status.success() => Ok(output),
+        _ => metadata(false),
+    };
+    let output = match output {
         Ok(output) => output,
         Err(err) => {
             eprintln!("ename_dep_src: could not run cargo metadata: {err}");
@@ -112,7 +123,7 @@ fn dep_src(name: &str) -> ExitCode {
     }
     if let [first, .., last] = found.as_slice() {
         eprintln!(
-            "{} versions; cargo tree -i {}@{} shows who pulls each in",
+            "{} versions; cargo tree --target all --all-features -i {}@{} shows who pulls each in",
             found.len(),
             first.name,
             last.version

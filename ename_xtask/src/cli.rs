@@ -64,7 +64,10 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Command, CliError
             })
         }
         "ename_dep_src" => {
-            let name = args.next().ok_or(CliError::DepSrcNeedsName)?;
+            let name = args
+                .next()
+                .filter(|name| !name.is_empty())
+                .ok_or(CliError::DepSrcNeedsName)?;
             Ok(Command::DepSrc { name })
         }
         other => Err(CliError::Unknown(other.to_owned())),
@@ -124,6 +127,10 @@ mod tests {
         );
         assert_eq!(
             parse(args(&["ename_dep_src"])),
+            Err(CliError::DepSrcNeedsName)
+        );
+        assert_eq!(
+            parse(args(&["ename_dep_src", ""])),
             Err(CliError::DepSrcNeedsName)
         );
     }

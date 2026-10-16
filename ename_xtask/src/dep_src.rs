@@ -5,7 +5,7 @@
 
 use serde::Deserialize;
 use std::cmp::Ordering;
-use std::fmt::Display;
+use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 
 /// The part of `cargo metadata --format-version 1` this subcommand reads.
@@ -64,7 +64,7 @@ impl SourceKind {
 }
 
 impl Display for DepSource {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} {} ", self.name, self.version)?;
         match &self.kind {
             SourceKind::Registry => write!(f, "registry")?,
@@ -117,18 +117,22 @@ pub fn near_misses(metadata: &Metadata, name: &str, limit: usize) -> Vec<String>
     names
 }
 
-/// Numeric comparison of the `major.minor.patch` core, then the full string.
+/// Numeric comparison of the `major.minor.patch` core, a pre-release before its release, then
+/// the full string.
 fn compare_versions(a: &str, b: &str) -> Ordering {
-    fn core(version: &str) -> Vec<u64> {
-        version
-            .split(['-', '+'])
-            .next()
-            .unwrap_or_default()
+    fn key(version: &str) -> (Vec<u64>, bool) {
+        let without_build = version.split('+').next().unwrap_or_default();
+        let (core, pre) = match without_build.split_once('-') {
+            Some((core, pre)) => (core, Some(pre)),
+            None => (without_build, None),
+        };
+        let core = core
             .split('.')
             .map(|part| part.parse().unwrap_or(0))
-            .collect()
+            .collect();
+        (core, pre.is_none())
     }
-    core(a).cmp(&core(b)).then_with(|| a.cmp(b))
+    key(a).cmp(&key(b)).then_with(|| a.cmp(b))
 }
 
 #[cfg(test)]
@@ -142,12 +146,24 @@ mod tests {
         {"name": "bevy_ecs", "version": "0.19.1",
          "source": "registry+https://github.com/rust-lang/crates.io-index",
          "manifest_path": "/reg/bevy_ecs-0.19.1/Cargo.toml"},
-        {"name": "bitflags", "version": "2.10.0",
+        {"name": "bitflags", "version": "0.10.0",
          "source": "registry+https://github.com/rust-lang/crates.io-index",
-         "manifest_path": "/reg/bitflags-2.10.0/Cargo.toml"},
-        {"name": "bitflags", "version": "1.3.2",
+         "manifest_path": "/reg/bitflags-0.10.0/Cargo.toml"},
+        {"name": "bitflags", "version": "0.10.0-rc.1",
          "source": "registry+https://github.com/rust-lang/crates.io-index",
-         "manifest_path": "/reg/bitflags-1.3.2/Cargo.toml"},
+         "manifest_path": "/reg/bitflags-0.10.0-rc.1/Cargo.toml"},
+        {"name": "bitflags", "version": "0.9.0",
+         "source": "registry+https://github.com/rust-lang/crates.io-index",
+         "manifest_path": "/reg/bitflags-0.9.0/Cargo.toml"},
+        {"name": "sparse_dep", "version": "1.0.0",
+         "source": "sparse+https://index.crates.io/",
+         "manifest_path": "/reg/sparse_dep-1.0.0/Cargo.toml"},
+        {"name": "twice", "version": "1.0.0",
+         "source": "registry+https://github.com/rust-lang/crates.io-index",
+         "manifest_path": "/reg/twice-1.0.0/Cargo.toml"},
+        {"name": "twice", "version": "1.0.0",
+         "source": "git+https://example.com/twice?rev=1234567#1234567890abcdef",
+         "manifest_path": "/git/twice/1234567/Cargo.toml"},
         {"name": "ename-local", "version": "0.0.0", "source": null,
          "manifest_path": "/ws/ename-local/Cargo.toml"},
         {"name": "on_branch", "version": "0.1.0",
@@ -202,12 +218,41 @@ mod tests {
     }
 
     #[test]
-    fn several_versions_sort_oldest_first() {
+    fn registry_and_sparse_sources_print_as_registry() {
+        assert_eq!(
+            find(&metadata(), "bevy_ecs")[0].to_string(),
+            "bevy_ecs 0.19.1 registry /reg/bevy_ecs-0.19.1"
+        );
+        assert_eq!(
+            find(&metadata(), "sparse_dep")[0].kind,
+            SourceKind::Registry
+        );
+    }
+
+    #[test]
+    fn several_versions_sort_numerically_with_pre_releases_first() {
         let versions: Vec<String> = find(&metadata(), "bitflags")
             .into_iter()
             .map(|d| d.version)
             .collect();
-        assert_eq!(versions, ["1.3.2", "2.10.0"]);
+        assert_eq!(versions, ["0.9.0", "0.10.0-rc.1", "0.10.0"]);
+    }
+
+    #[test]
+    fn one_name_from_two_source_kinds_lists_both() {
+        let kinds: Vec<SourceKind> = find(&metadata(), "twice")
+            .into_iter()
+            .map(|d| d.kind)
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                SourceKind::Registry,
+                SourceKind::Git {
+                    rev: "1234567".into()
+                }
+            ]
+        );
     }
 
     #[test]
@@ -219,5 +264,6 @@ mod tests {
             near_misses(&metadata(), "bi", 10),
             ["big_space", "bitflags"]
         );
+        assert_eq!(near_misses(&metadata(), "twi", 10), ["twice"]);
     }
 }

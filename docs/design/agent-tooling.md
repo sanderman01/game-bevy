@@ -121,7 +121,9 @@ older registry version, or the registry `big_space` instead of the git checkout.
 --locked --offline` already names each resolved package's `manifest_path`, registry and git alike,
 so `cargo xtask ename_dep_src <crate>` prints that directory. Parsing `Cargo.lock` would mean
 reimplementing cargo's checkout path hashing. It is parsed with `serde_json` into three-field
-structs; the `cargo_metadata` crate would add dependencies for no gain.
+structs; the `cargo_metadata` crate would add dependencies for no gain. It passes
+`--all-features`, because without it metadata leaves out lock entries that only optional
+features reach, and retries without it if an offline run fails on a crate never downloaded.
 
 **Read-only reviewers do not run tests.** Cargo cannot take its build lock in a read-only
 sandbox. Running the implementer's prebuilt test binaries instead was rejected: they are only as
