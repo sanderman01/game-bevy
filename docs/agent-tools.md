@@ -110,6 +110,10 @@ answers while the editor builds. If an `ename_mcp` edit breaks it, the last good
 `target/ename-launch-bin/debug/ename_mcp game stop`. Run `cargo game` from the repo root: the
 alias's paths are relative to the working directory.
 
+**Windows under the Bash tool.** There cargo's job object may forbid the supervisor to break away,
+so force-killing `cargo game start --wait N` (or `taskkill /T` on it) can end the launch. Start
+with `--wait 0` and follow with `cargo game status --wait N`.
+
 **A game in a worktree without assets.** A linked worktree lacks the main checkout's gitignored
 assets. If the game starts with missing assets there, run the repo's worktree asset setup
 (airshipgame: `scripts/worktree-assets.sh <worktree>`) and restart it.
