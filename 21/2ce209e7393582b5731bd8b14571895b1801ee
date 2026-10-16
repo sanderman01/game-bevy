@@ -1,0 +1,42 @@
+ename_mcp/src/launch/cli.rs
+  s_b915bd5f72c4be::t_8d981bfd6a3445 1-96,98-233,235-349
+  s_b915bd5f72c4be::t_42d193b9462cd7 97
+  s_b915bd5f72c4be::t_f9f8e00833e706 234
+ename_mcp/src/main.rs
+  s_b915bd5f72c4be::t_ae04af8e01e864 23-24
+  s_b915bd5f72c4be::t_4a38f068f92113 14
+  s_b915bd5f72c4be::t_46261dc54407f5 33,35,37-39,42,45,50,52,54-63
+.cargo/config.toml
+  s_b915bd5f72c4be::t_6ed62ad433e5cf 28-32
+ename_mcp/src/launch/control.rs
+  s_51349e13722b35::t_40306482956fc3 793-805
+  s_51349e13722b35::t_e5c01a47c6faed 857
+  s_51349e13722b35::t_88a087d78d330e 865-866
+ename_mcp/src/launch/mod.rs
+  s_b915bd5f72c4be::t_31e50de3f985bb 13
+  s_51349e13722b35::t_b9622ab7b63ac0 502-511
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "212ce209e7393582b5731bd8b14571895b1801ee",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_b915bd5f72c4be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6f5d82ea-08e1-42ee-9c8c-6ab3babe4de5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
