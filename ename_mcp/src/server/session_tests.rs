@@ -180,3 +180,52 @@ async fn a_failing_static_tool_is_a_tool_error_the_agent_can_read() {
         .collect();
     assert!(text.contains("game.time.get"), "{text}");
 }
+
+/// A launcher over an empty temporary workspace: no state directory, no game.
+fn empty_lifecycle(root: &std::path::Path) -> super::Lifecycle {
+    let project = crate::launch::Project {
+        workspace_root: root.to_path_buf(),
+        target_directory: root.join("target"),
+        config: crate::launch::LaunchConfig {
+            package: "editor".to_owned(),
+            features: Vec::new(),
+            binary: "editor".to_owned(),
+        },
+    };
+    super::Lifecycle::new(crate::launch::Launcher::new(project), Some("test".into()))
+}
+
+#[tokio::test]
+async fn the_lifecycle_tools_are_listed_with_the_game_down() {
+    let root = tempfile::tempdir().unwrap();
+    let up = Arc::new(AtomicBool::new(false));
+    let endpoint = crate::brp::Endpoint::fixed(BrpClient::new(game(up).await));
+    let server = GameServer::with_endpoint(endpoint, Some(empty_lifecycle(root.path())));
+    let (server_io, client_io) = tokio::io::duplex(64 * 1024);
+    tokio::spawn(async move {
+        server.serve(server_io).await?.waiting().await?;
+        anyhow::Ok(())
+    });
+    let client = ().serve(client_io).await.unwrap();
+    for name in ["game_start", "game_stop", "game_restart", "game_status"] {
+        assert!(has_tool(client.peer(), name).await, "{name} is not listed");
+    }
+
+    // An instance other than `default` has no port to probe, so this does not depend on
+    // whether a real game runs on this machine.
+    let result = client
+        .call_tool(
+            CallToolRequestParams::new("game_status")
+                .with_arguments(json!({ "instance": "test" }).as_object().unwrap().clone()),
+        )
+        .await
+        .unwrap();
+    assert_ne!(result.is_error, Some(true));
+    let status = result.structured_content.unwrap();
+    assert_eq!(status["state"], "stopped", "{status}");
+    assert_eq!(status["yours"], json!([]), "{status}");
+    assert!(
+        !root.path().join("target").exists(),
+        "status must not create state"
+    );
+}

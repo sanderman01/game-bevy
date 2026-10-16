@@ -17,8 +17,7 @@ mod brp;
 mod entity;
 #[allow(
     dead_code,
-    unused_imports,
-    reason = "the MCP tools and the CLI that use it land in the next commits"
+    reason = "the CLI that uses the rest lands in the next commit"
 )]
 mod launch;
 mod server;
@@ -33,9 +32,12 @@ const URL_VAR: &str = "ENAME_BRP_URL";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // stderr, never stdout: stdout is the MCP transport and one stray line corrupts it.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    // stderr, never stdout: stdout is the MCP transport and one stray line corrupts it. The
+    // supervisor's stderr is a log file, so no colour codes there.
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
+        .with_ansi(args.first().is_none_or(|role| role != "supervise"))
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
@@ -43,7 +45,6 @@ async fn main() -> anyhow::Result<()> {
         .init();
     launch::record_exe();
 
-    let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         None => serve().await,
         Some("supervise") => launch::supervise::run(&args[1..]).await,
@@ -67,8 +68,11 @@ async fn serve() -> anyhow::Result<()> {
     let owner = launch::mcp_owner();
     tracing::info!(?pinned, ?owner, "forwarding to the game's remote server");
 
+    let lifecycle = project
+        .clone()
+        .map(|project| server::Lifecycle::new(launch::Launcher::new(project), owner.clone()));
     let endpoint = brp::Endpoint::new(pinned, project, owner);
-    let service = server::GameServer::with_endpoint(endpoint)
+    let service = server::GameServer::with_endpoint(endpoint, lifecycle)
         .serve(stdio())
         .await
         .context("failed to start the MCP server on stdio")?;

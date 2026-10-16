@@ -174,6 +174,11 @@ impl Supervisor {
             .stdout(std::fs::File::create(self.path(BUILD_JSON))?)
             .stderr(std::fs::File::create(self.path(BUILD_LOG))?);
         let mut child = spawn::grouped(command).context("cannot start cargo build")?;
+        tracing::info!(
+            "run {}: building {}",
+            self.generation,
+            self.project.config.package
+        );
         loop {
             if let Some(status) = child.try_wait()? {
                 return Ok(if status.success() {
@@ -294,6 +299,12 @@ impl Supervisor {
         let child_pid = child
             .id()
             .context("the game exited before its pid was read")?;
+        tracing::info!(
+            child_pid,
+            port = self.port,
+            "run {}: game spawned",
+            self.generation
+        );
         self.edit_run(|run| run.spawned_at = Some(now_f64()))?;
 
         let mut watch = Watch::default();
@@ -381,6 +392,11 @@ impl Supervisor {
         };
         if time.frame >= 2 {
             watch.ready = true;
+            tracing::info!(
+                os_pid = watch.game.map(|game| game.pid),
+                "run {}: ready",
+                self.generation
+            );
             self.edit_run(|run| {
                 run.phase = Phase::Ready;
                 run.ready_at = Some(now_f64());

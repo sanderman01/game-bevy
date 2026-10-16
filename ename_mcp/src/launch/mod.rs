@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 pub use control::{Caller, LaunchRequest, Launcher};
 pub use port::url as port_url;
 pub use state::{Stamp, read_selected, selected_path};
+pub use supervise::DEFAULT_GRACE;
 
 /// The port of the `default` instance, matching the game's and the sidecar's default.
 pub const DEFAULT_PORT: u16 = 15702;
@@ -365,6 +366,9 @@ pub struct Status {
     /// Something about the sidecar itself that needs acting on.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub warning: Option<String>,
+    /// The game is gone but its exit is not recorded yet: worth waiting on.
+    #[serde(skip)]
+    pub recording_exit: bool,
 }
 
 impl Status {

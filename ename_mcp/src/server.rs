@@ -36,10 +36,12 @@ use serde_json::{Value, json};
 
 mod catalog;
 mod commands;
+mod lifecycle;
 #[cfg(test)]
 mod session_tests;
 
 use catalog::Catalog;
+pub use lifecycle::Lifecycle;
 
 use crate::{
     brp::{BrpClient, Endpoint},
@@ -54,6 +56,9 @@ pub struct GameServer {
     endpoint: Arc<Endpoint>,
     /// This call's snapshot of `endpoint`: every request of one tool call goes to one game.
     brp: BrpClient,
+    /// The game launcher, when the sidecar's working directory is a workspace that names its
+    /// editor.
+    lifecycle: Option<Arc<Lifecycle>>,
     tool_router: ToolRouter<Self>,
     /// The game's commands as tools, and who to tell when they change.
     catalog: Arc<Catalog>,
@@ -67,11 +72,11 @@ impl GameServer {
     /// A server that always talks to `brp`.
     #[cfg(test)]
     pub fn new(brp: BrpClient) -> Self {
-        Self::with_endpoint(Endpoint::fixed(brp))
+        Self::with_endpoint(Endpoint::fixed(brp), None)
     }
 
-    pub fn with_endpoint(endpoint: Endpoint) -> Self {
-        let tool_router = Self::tool_router() + Self::commands_router();
+    pub fn with_endpoint(endpoint: Endpoint, lifecycle: Option<Lifecycle>) -> Self {
+        let tool_router = Self::tool_router() + Self::commands_router() + Self::lifecycle_router();
         let static_tools = tool_router
             .list_all()
             .into_iter()
@@ -80,6 +85,7 @@ impl GameServer {
         Self {
             brp: endpoint.snapshot(),
             endpoint,
+            lifecycle: lifecycle.map(Arc::new),
             catalog: Arc::new(Catalog::new(static_tools)),
             tool_router,
             cwd: std::env::current_dir().ok(),
@@ -1034,7 +1040,11 @@ impl ServerHandler for GameServer {
             "Query and edit a running Bevy game. Entities are addressed by `name` or by `entity` \
              id; ids change every time the game restarts, names do not. Positions are absolute \
              metres with Y up. If a call reports that the game is unreachable, the game is not \
-             running. The game's own commands (screenshots, video, editor views) appear as tools \
+             running: game_status says why, game_start builds and starts it, game_restart \
+             rebuilds it after a code change. Never start or kill the game by hand. Before you \
+             finish, stop the games you started (game_status lists them under `yours`), unless \
+             you are leaving one running for the user to inspect; then say so in your final \
+             message. The game's own commands (screenshots, video, editor views) appear as tools \
              while it runs; command_list and command_call reach them at any time."
                 .to_owned(),
         );

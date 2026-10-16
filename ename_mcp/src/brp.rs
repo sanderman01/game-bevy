@@ -200,6 +200,11 @@ impl Endpoint {
         }
     }
 
+    /// The URL `ENAME_BRP_URL` pins, if any.
+    pub fn pinned(&self) -> Option<&str> {
+        self.pinned.as_deref()
+    }
+
     /// The client for one tool call, re-reading the selection when its file changed.
     pub fn snapshot(&self) -> BrpClient {
         let mut current = self.current.lock().unwrap();

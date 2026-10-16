@@ -268,7 +268,8 @@ impl Launcher {
                 .as_ref()
                 .and_then(|state| state.current.as_ref())
                 .is_some_and(|run| run.generation == generation);
-            let settled = pending_done && (!promoted || !status.state.is_transient());
+            let settled = pending_done
+                && (!promoted || !(status.state.is_transient() || status.recording_exit));
             if settled || Instant::now() >= deadline {
                 break status;
             }
@@ -562,6 +563,7 @@ impl Launcher {
         let mut status = loop {
             let status = self.snapshot(instance, caller).await?;
             let busy = status.state.is_transient()
+                || status.recording_exit
                 || status
                     .pending
                     .as_ref()
@@ -680,6 +682,12 @@ impl Launcher {
             os_pid: u32,
         }
         let Some(game) = game else {
+            if run.game.is_some() {
+                // It answered once and is gone; the supervisor is about to record how.
+                status.recording_exit = true;
+                status.add_note("the game exited; its supervisor is recording how.");
+                return GameState::Exited;
+            }
             if let Some(spawned) = run.spawned_at
                 && now_f64() - spawned > SLOW_START
             {

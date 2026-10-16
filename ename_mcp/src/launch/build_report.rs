@@ -103,9 +103,10 @@ pub fn tail(path: &Path, lines: usize) -> Vec<String> {
 mod tests {
     use super::BuildReport;
 
-    /// Recorded from `cargo build --message-format=json-diagnostic-short` with an undefined name.
+    /// The error line is recorded from `cargo build --message-format=json-diagnostic-short` with
+    /// an undefined name (its `explanation` text cut); the rest is shaped like it.
     const FAILED: &str = r#"{"reason":"compiler-artifact","package_id":"path+file:///w/a#0.0.0","target":{"name":"a"},"fresh":true}
-{"reason":"compiler-message","package_id":"path+file:///w/ed#0.0.0","manifest_path":"/w/ed/Cargo.toml","target":{"kind":["bin"],"crate_types":["bin"],"name":"ed","src_path":"/w/ed/src/main.rs","edition":"2024","doc":true,"doctest":false,"test":true},"message":{"rendered":"ed/src/main.rs:7:5: error[E0425]: cannot find value `nope` in this scope\n","$message_type":"diagnostic","children":[],"code":{"code":"E0425","explanation":null},"level":"error","message":"cannot find value `nope` in this scope","spans":[]}}
+{"reason":"compiler-message","package_id":"path+file:///home/sander/dev/game/example_game_editor_bin#0.0.0","manifest_path":"/home/sander/dev/game/example_game_editor_bin/Cargo.toml","target":{"kind":["bin"],"crate_types":["bin"],"name":"example_game_editor_bin","src_path":"/home/sander/dev/game/example_game_editor_bin/src/main.rs","edition":"2024","doc":true,"doctest":false,"test":true},"message":{"rendered":"example_game_editor_bin/src/main.rs:11:24: error[E0425]: cannot find value `not_defined_anywhere` in this scope: not found in this scope\n","$message_type":"diagnostic","children":[],"level":"error","message":"cannot find value `not_defined_anywhere` in this scope","spans":[{"byte_end":494,"byte_start":474,"column_end":44,"column_start":24,"expansion":null,"file_name":"example_game_editor_bin/src/main.rs","is_primary":true,"label":"not found in this scope","line_end":11,"line_start":11,"suggested_replacement":null,"suggestion_applicability":null,"text":[{"highlight_end":44,"highlight_start":24,"text":"    let _broken: u32 = not_defined_anywhere;"}]}],"code":{"code":"E0425","explanation":"An unresolved name was used.\n"}}}
 {"reason":"compiler-message","package_id":"path+file:///w/ed#0.0.0","manifest_path":"/w/ed/Cargo.toml","target":{"kind":["bin"],"crate_types":["bin"],"name":"ed","src_path":"/w/ed/src/main.rs","edition":"2024","doc":true,"doctest":false,"test":true},"message":{"rendered":"ed/src/main.rs:3:9: warning: unused variable: `x`\n","$message_type":"diagnostic","children":[],"code":{"code":"unused_variables","explanation":null},"level":"warning","message":"unused variable: `x`","spans":[]}}
 {"reason":"compiler-message","package_id":"path+file:///w/ed#0.0.0","manifest_path":"/w/ed/Cargo.toml","target":{"kind":["bin"],"crate_types":["bin"],"name":"ed","src_path":"/w/ed/src/main.rs","edition":"2024","doc":true,"doctest":false,"test":true},"message":{"rendered":"error: aborting due to 1 previous error; 1 warning emitted\n","$message_type":"diagnostic","children":[],"code":null,"level":"error","message":"aborting due to 1 previous error; 1 warning emitted","spans":[]}}
 {"reason":"build-finished","success":false}
@@ -116,7 +117,10 @@ mod tests {
         let report = BuildReport::parse(FAILED);
         assert_eq!(
             report.errors,
-            ["ed/src/main.rs:7:5: error[E0425]: cannot find value `nope` in this scope"]
+            [
+                "example_game_editor_bin/src/main.rs:11:24: error[E0425]: cannot find value \
+                 `not_defined_anywhere` in this scope: not found in this scope"
+            ]
         );
         assert_eq!(report.error_count, 1);
         assert_eq!(report.warning_count, 1);
