@@ -27,6 +27,18 @@ impl BrpClient {
         }
     }
 
+    /// A client whose every request gives up after `timeout`, for probes.
+    pub fn with_timeout(url: impl Into<String>, timeout: std::time::Duration) -> Self {
+        Self {
+            http: reqwest::Client::builder()
+                .timeout(timeout)
+                .build()
+                .unwrap_or_default(),
+            url: url.into(),
+            next_id: std::sync::Arc::default(),
+        }
+    }
+
     /// Calls `method` and deserializes the `result` field.
     pub async fn call<T: DeserializeOwned>(
         &self,
@@ -56,9 +68,9 @@ impl BrpClient {
             .await
             .with_context(|| {
                 format!(
-                    "cannot reach the game's remote server at {}. Is the game running? The \
-                     `agent` feature is on by default, so a build with `--no-default-features` \
-                     is the other way to have no server.",
+                    "cannot reach the game's remote server at {}. The game is not running, or \
+                     runs on another port: game_status says which, and game_start (or `cargo \
+                     game start`) starts it.",
                     self.url
                 )
             })?;
@@ -139,3 +151,75 @@ impl std::fmt::Display for BrpError {
 }
 
 impl std::error::Error for BrpError {}
+
+/// The game this MCP session talks to: `ENAME_BRP_URL` when set, else the instance its owner
+/// selected last (`selected/<owner>`, written by a successful start or restart), else 15702.
+///
+/// Each tool call takes one [`snapshot`](Self::snapshot) and uses it for every request it
+/// makes, so a call never spans two games. A selection change applies to later calls only.
+pub struct Endpoint {
+    pinned: Option<String>,
+    selection: Option<(crate::launch::Project, Option<String>)>,
+    current: std::sync::Mutex<Selected>,
+}
+
+struct Selected {
+    /// The selection file's stamp when it was last read; `None` before the first read.
+    stamp: Option<Option<crate::launch::Stamp>>,
+    client: BrpClient,
+}
+
+impl Endpoint {
+    /// Always `client`.
+    #[cfg(test)]
+    pub fn fixed(client: BrpClient) -> Self {
+        Self {
+            pinned: Some(client.url.clone()),
+            selection: None,
+            current: std::sync::Mutex::new(Selected {
+                stamp: None,
+                client,
+            }),
+        }
+    }
+
+    /// `pinned` is `ENAME_BRP_URL`; `project` and `owner` locate the selection file.
+    pub fn new(
+        pinned: Option<String>,
+        project: Option<crate::launch::Project>,
+        owner: Option<String>,
+    ) -> Self {
+        let url = pinned.clone().unwrap_or_else(|| DEFAULT_URL.to_owned());
+        Self {
+            pinned,
+            selection: project.map(|project| (project, owner)),
+            current: std::sync::Mutex::new(Selected {
+                stamp: None,
+                client: BrpClient::new(url),
+            }),
+        }
+    }
+
+    /// The client for one tool call, re-reading the selection when its file changed.
+    pub fn snapshot(&self) -> BrpClient {
+        let mut current = self.current.lock().unwrap();
+        if self.pinned.is_none()
+            && let Some((project, owner)) = &self.selection
+        {
+            let path = crate::launch::selected_path(project, owner.as_deref());
+            let stamp = crate::launch::Stamp::read(&path);
+            if current.stamp != Some(stamp) {
+                current.stamp = Some(stamp);
+                let url = crate::launch::read_selected(project, owner.as_deref()).map_or_else(
+                    || DEFAULT_URL.to_owned(),
+                    |(_, port)| crate::launch::port_url(port),
+                );
+                if url != current.client.url {
+                    tracing::info!(%url, "following the selected game instance");
+                    current.client = BrpClient::new(url);
+                }
+            }
+        }
+        current.client.clone()
+    }
+}

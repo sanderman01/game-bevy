@@ -66,6 +66,8 @@ glob = "0.3.4"
 # The version `bevy_image` already uses, so `Image::try_into_dynamic` hands back this crate's type.
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 libc = "0.2.189"
+# Detached supervisors and process groups (Unix) or job objects (Windows) for the launcher.
+process-wrap = { version = "10.0.1", default-features = false }
 reqwest = { version = "0.12.24", default-features = false, features = ["json", "rustls-tls"] }
 rfd = "0.17.2"
 rmcp = { version = "3.2.0", default-features = false }
@@ -74,6 +76,8 @@ schemars = "1.0.4"
 semver = { version = "1.0.28", features = ["serde"] }
 serde = "1.0.228"
 serde_json = "1.0.145"
+# Process facts on every platform. Same version as Bevy's `bevy_diagnostic`.
+sysinfo = { version = "0.38.4", default-features = false }
 # `default-features = false` drops `xattr`, which only matters for unpacking.
 tar = { version = "0.4.46", default-features = false }
 tempfile = "3.27.0"
@@ -83,6 +87,8 @@ toml = "1.1.2"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
 uuid = { version = "1.26.0", features = ["serde"] }
+# Process creation flags for the launcher on Windows. The version `process-wrap` uses.
+windows = { version = "0.62.2", default-features = false }
 # Tests and tooling build archives with it; `ename_asset_vfs` reads them with its own parser.
 zip = { version = "9.0.3", default-features = false }
 

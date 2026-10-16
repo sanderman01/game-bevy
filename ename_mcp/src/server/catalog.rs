@@ -29,7 +29,7 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::brp::BrpClient;
+use crate::brp::{BrpClient, Endpoint};
 
 /// How often the watcher re-lists the game's commands.
 pub const WATCH_INTERVAL: Duration = Duration::from_secs(2);
@@ -261,15 +261,16 @@ impl Catalog {
 
     /// Starts the watcher the first time it is asked, whichever request comes first. Needs a
     /// Tokio runtime, which every request handler runs on.
-    pub fn watch(self: &Arc<Self>, brp: &BrpClient) {
+    /// Each tick lists the game the session currently selects.
+    pub fn watch(self: &Arc<Self>, endpoint: &Arc<Endpoint>) {
         if self.watching.set(()).is_err() {
             return;
         }
         let catalog = Arc::clone(self);
-        let brp = brp.clone();
+        let endpoint = Arc::clone(endpoint);
         tokio::spawn(async move {
             loop {
-                catalog.refresh_and_notify(&brp).await;
+                catalog.refresh_and_notify(&endpoint.snapshot()).await;
                 tokio::time::sleep(WATCH_INTERVAL).await;
             }
         });

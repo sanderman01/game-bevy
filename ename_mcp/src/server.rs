@@ -42,14 +42,17 @@ mod session_tests;
 use catalog::Catalog;
 
 use crate::{
-    brp::BrpClient,
+    brp::{BrpClient, Endpoint},
     entity::{self, EntitySelector, ResolvedEntity},
     staleness,
 };
 
-/// The MCP server. One instance per client connection, one BRP client behind it.
+/// The MCP server. One instance per client connection, one game endpoint behind it.
 #[derive(Clone)]
 pub struct GameServer {
+    /// The game this session talks to, followed between calls.
+    endpoint: Arc<Endpoint>,
+    /// This call's snapshot of `endpoint`: every request of one tool call goes to one game.
     brp: BrpClient,
     tool_router: ToolRouter<Self>,
     /// The game's commands as tools, and who to tell when they change.
@@ -61,18 +64,34 @@ pub struct GameServer {
 }
 
 impl GameServer {
+    /// A server that always talks to `brp`.
+    #[cfg(test)]
     pub fn new(brp: BrpClient) -> Self {
+        Self::with_endpoint(Endpoint::fixed(brp))
+    }
+
+    pub fn with_endpoint(endpoint: Endpoint) -> Self {
         let tool_router = Self::tool_router() + Self::commands_router();
         let static_tools = tool_router
             .list_all()
             .into_iter()
             .map(|tool| tool.name.into_owned());
+        let endpoint = Arc::new(endpoint);
         Self {
-            brp,
+            brp: endpoint.snapshot(),
+            endpoint,
             catalog: Arc::new(Catalog::new(static_tools)),
             tool_router,
             cwd: std::env::current_dir().ok(),
             hard_margin: commands::HARD_MARGIN,
+        }
+    }
+
+    /// This server with the endpoint snapshotted for one tool call.
+    fn for_call(&self) -> Self {
+        Self {
+            brp: self.endpoint.snapshot(),
+            ..self.clone()
         }
     }
 
@@ -1031,13 +1050,13 @@ impl ServerHandler for GameServer {
         _request: Option<PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        self.catalog.watch(&self.brp);
+        self.catalog.watch(&self.endpoint);
         if !self.catalog.is_loaded() {
             // One quick try, so a session that starts with the game running sees its commands
             // in the first listing rather than two seconds later.
+            let brp = self.endpoint.snapshot();
             let _ =
-                tokio::time::timeout(Duration::from_millis(500), self.catalog.refresh(&self.brp))
-                    .await;
+                tokio::time::timeout(Duration::from_millis(500), self.catalog.refresh(&brp)).await;
         }
         let mut tools = self.tool_router.list_all();
         tools.extend(self.catalog.tools());
@@ -1062,10 +1081,11 @@ impl ServerHandler for GameServer {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
-        self.catalog.watch(&self.brp);
-        if self.tool_router.has_route(&request.name) {
-            let call = ToolCallContext::new(self, request, context);
-            return Ok(match self.tool_router.call(call).await {
+        self.catalog.watch(&self.endpoint);
+        let server = self.for_call();
+        if server.tool_router.has_route(&request.name) {
+            let call = ToolCallContext::new(&server, request, context);
+            return Ok(match server.tool_router.call(call).await {
                 Ok(response) => response,
                 Err(error) => {
                     CallToolResult::error(vec![ContentBlock::text(error.message.into_owned())])
@@ -1074,10 +1094,10 @@ impl ServerHandler for GameServer {
             });
         }
         let name = request.name.to_string();
-        let mut found = self.catalog.lookup(&name);
+        let mut found = server.catalog.lookup(&name);
         if found.is_none() {
-            self.catalog.refresh_and_notify(&self.brp).await;
-            found = self.catalog.lookup(&name);
+            server.catalog.refresh_and_notify(&server.brp).await;
+            found = server.catalog.lookup(&name);
         }
         let Some((tool, run)) = found else {
             return Err(ErrorData::invalid_params(
@@ -1086,7 +1106,7 @@ impl ServerHandler for GameServer {
             ));
         };
         let arguments = request.arguments.unwrap_or_default();
-        Ok(self
+        Ok(server
             .call_command(&tool.command.name, arguments, Some(run))
             .await
             .into())
@@ -1103,7 +1123,7 @@ impl ServerHandler for GameServer {
     /// through its peer.
     async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
         self.catalog.set_legacy_peer(context.peer.clone());
-        self.catalog.watch(&self.brp);
+        self.catalog.watch(&self.endpoint);
     }
 
     /// A 2026-07-28 client asks for changes with `subscriptions/listen`. Only tool changes are
@@ -1121,7 +1141,7 @@ impl ServerHandler for GameServer {
     }
 
     async fn listen(&self, context: SubscriptionContext) -> Result<(), ErrorData> {
-        self.catalog.watch(&self.brp);
+        self.catalog.watch(&self.endpoint);
         if context.accepted().tools_list_changed != Some(true) {
             context.cancelled().await;
             return Ok(());

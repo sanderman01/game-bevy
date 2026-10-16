@@ -9,18 +9,24 @@ description = "MCP sidecar exposing the running game's world to a coding agent."
 
 [dependencies]
 anyhow = { workspace = true }
+process-wrap = { workspace = true, features = ["job-object", "creation-flags", "process-group", "process-session", "tokio1"] }
 reqwest = { workspace = true }
 rmcp = { workspace = true, features = ["server", "macros", "transport-io"] }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-tokio = { workspace = true, features = ["io-std", "macros", "rt-multi-thread", "sync", "time"] }
+sysinfo = { workspace = true, features = ["system"] }
+tokio = { workspace = true, features = ["fs", "io-std", "io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_System_Threading"] }
 
 [dev-dependencies]
 # An in-process MCP client, to test whole sessions in both lifecycles.
 rmcp = { workspace = true, features = ["client"] }
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "net"] }
 
 [lints]
