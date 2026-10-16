@@ -1,0 +1,28 @@
+docs/agent-tools.md
+  s_51349e13722b35::t_e447764d45f934 46-47,52-109
+  s_51349e13722b35::t_857e81f73adb6c 15-19,21-22,25-26
+  s_51349e13722b35::t_f11ff383b952ca 206-207
+  s_51349e13722b35::t_29ce27ca39b358 110
+docs/design/crate-layout.md
+  s_51349e13722b35::t_c48e30abf484c1 39-40
+AGENTS.md
+  s_51349e13722b35::t_5a7d0f4ef51344 42-46
+docs/design/agent-tooling.md
+  s_51349e13722b35::t_e44a9061185bc0 83-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f1ac90a4595b0f092a4e5106af8ce7228ff6d3d8",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
