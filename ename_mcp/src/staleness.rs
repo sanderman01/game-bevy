@@ -20,9 +20,9 @@
 //! Both use only what `std::fs::Metadata` reports on every platform: length and modification
 //! time. An inode would be the sharper signal, and `MetadataExt` is Unix-only.
 //!
-//! A source edited while cargo was building is missed: the executable ends up newer than the
-//! edit. Comparing against the build's start would need its fingerprint directory, whose name is
-//! a hash of features, profile and flags that only cargo knows.
+//! Sources are compared against when the build started, not when it finished, so an edit made
+//! while cargo was building still counts. The start is cargo's `invoked.timestamp` for the
+//! artifact the executable was linked from; without it, the executable's own time.
 //!
 //! The first result after a condition starts or changes carries the full text, and so does
 //! every failure, since a failure is where a stale sidecar does damage. Other results carry a
@@ -98,8 +98,15 @@ impl Launch {
     }
 
     fn assess(&self) -> Option<Staleness> {
-        let sources = self.rebuild.as_ref().and_then(Rebuild::newest_change);
-        assess(self.stamp, Stamp::read(&self.exe), sources)
+        let on_disk = Stamp::read(&self.exe);
+        let (started, sources) = match &self.rebuild {
+            Some(rebuild) => (
+                on_disk.and_then(|on_disk| rebuild.build_started(&self.exe, on_disk)),
+                rebuild.newest_change(),
+            ),
+            None => (None, None),
+        };
+        assess(self.stamp, on_disk, started, sources)
     }
 }
 
@@ -111,6 +118,8 @@ struct Rebuild {
     build: Build,
     /// The newest change, and when it was read.
     newest: Mutex<Option<(Instant, Option<Change>)>>,
+    /// When the build on disk started, for the build it was read for.
+    started: Mutex<Option<(Stamp, Option<SystemTime>)>>,
 }
 
 impl Rebuild {
@@ -130,14 +139,30 @@ impl Rebuild {
             &canonical(workspace),
             &canonical(&std::env::current_dir().ok()?),
             std::env::var_os("CARGO_TARGET_DIR").is_some(),
-            |dir| dir.join(".rustc_info.json").is_file() || dir.join("CACHEDIR.TAG").is_file(),
+            // A triple's directory inside a target dir has a `CACHEDIR.TAG` too, so only this
+            // tells them apart.
+            |dir| dir.join(".rustc_info.json").is_file(),
         )?;
         Some(Self {
             crate_dir: crate_dir.to_owned(),
             dep_info: exe.with_extension("d"),
             build,
             newest: Mutex::new(None),
+            started: Mutex::new(None),
         })
+    }
+
+    /// Scans `deps/` once per build, not once per result.
+    fn build_started(&self, exe: &Path, on_disk: Stamp) -> Option<SystemTime> {
+        let mut cache = self.started.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some((stamp, started)) = *cache
+            && stamp == on_disk
+        {
+            return started;
+        }
+        let started = build_started(exe, on_disk);
+        *cache = Some((on_disk, started));
+        started
     }
 
     fn newest_change(&self) -> Option<Change> {
@@ -148,11 +173,22 @@ impl Rebuild {
             return newest;
         }
         let newest = match std::fs::read_to_string(&self.dep_info) {
-            Ok(dep_info) => newest_listed(
-                dep_info_paths(&dep_info)
-                    .into_iter()
-                    .filter(|path| is_crate_source(path, &self.crate_dir)),
-            ),
+            Ok(dep_info) => {
+                let listed = dep_info_paths(&dep_info);
+                let sources: Vec<_> = listed
+                    .iter()
+                    .filter(|path| is_crate_source(path, &self.crate_dir))
+                    .cloned()
+                    .collect();
+                if sources.is_empty() && !listed.is_empty() {
+                    tracing::debug!(
+                        dep_info = %self.dep_info.display(),
+                        crate_dir = %self.crate_dir.display(),
+                        "dep-info lists no file of this crate; not checking the sources"
+                    );
+                }
+                newest_listed(sources)
+            }
             Err(_) => newest_source(&self.crate_dir.join("src")).map(Change::Modified),
         };
         *cache = Some((Instant::now(), newest));
@@ -297,7 +333,11 @@ impl Build {
             && let Some(root) = target_dir.parent()
             && is_target_root(root)
         {
-            triple = Some(target_dir.file_name()?.to_str()?);
+            let Some(name) = target_dir.file_name().and_then(|name| name.to_str()) else {
+                tracing::debug!(dir = %target_dir.display(), "target triple is not UTF-8");
+                return None;
+            };
+            triple = Some(name);
             target_dir = root;
         }
         let dir = if cwd.starts_with(workspace) {
@@ -366,12 +406,52 @@ struct Stamp {
 
 impl Stamp {
     fn read(path: &Path) -> Option<Self> {
-        let metadata = std::fs::metadata(path).ok()?;
+        Self::of(&std::fs::metadata(path).ok()?)
+    }
+
+    fn of(metadata: &std::fs::Metadata) -> Option<Self> {
         Some(Self {
             len: metadata.len(),
             modified: metadata.modified().ok()?,
         })
     }
+}
+
+/// When cargo started the build that produced `exe` (stamped `on_disk`), or `None` when it
+/// cannot be told.
+///
+/// The executable is a hard link to, or a copy of, `deps/ename_mcp-<hash>`, which shares its
+/// length and modification time, and cargo touches `.fingerprint/ename_mcp-<hash>/
+/// invoked.timestamp` as that build starts.
+fn build_started(exe: &Path, on_disk: Stamp) -> Option<SystemTime> {
+    const PREFIX: &str = "ename_mcp-";
+    let profile_dir = exe.parent()?;
+    for entry in std::fs::read_dir(profile_dir.join("deps")).ok()?.flatten() {
+        let name = entry.file_name();
+        let Some(hash) = name
+            .to_str()
+            .and_then(|name| name.strip_prefix(PREFIX))
+            .and_then(|rest| rest.strip_suffix(std::env::consts::EXE_SUFFIX))
+            .filter(|hash| !hash.contains('.'))
+        else {
+            continue;
+        };
+        if entry
+            .metadata()
+            .ok()
+            .and_then(|metadata| Stamp::of(&metadata))
+            != Some(on_disk)
+        {
+            continue;
+        }
+        let timestamp = profile_dir
+            .join(".fingerprint")
+            .join(format!("{PREFIX}{hash}"))
+            .join("invoked.timestamp");
+        let started = std::fs::metadata(timestamp).and_then(|metadata| metadata.modified());
+        return started.ok().map(|started| started.min(on_disk.modified));
+    }
+    None
 }
 
 /// The newest change to the sources.
@@ -390,9 +470,9 @@ enum Staleness {
         change: Change,
         on_disk: Option<Stamp>,
     },
-    /// The build on disk is not the one this process runs. Not necessarily newer: switching
-    /// between `cargo dev-build` and `cargo build -p ename_mcp` swaps in the other feature set's
-    /// earlier build, with its earlier time.
+    /// The build on disk is not the one this process runs. Not necessarily newer: two builds
+    /// with different features into one target dir swap each other's earlier artifact back in,
+    /// with its earlier time.
     OtherBuild { on_disk: Stamp },
 }
 
@@ -409,14 +489,15 @@ impl Staleness {
 
     fn text(self, form: Form, build: Option<&Build>, windows: bool, now: SystemTime) -> String {
         let build = build.map_or_else(|| "`cargo build -p ename_mcp`".to_owned(), Build::to_string);
-        let until = if windows {
-            "the user enables it again"
-        } else {
-            "the user reconnects"
+        // Only a rebuild on Windows goes through disabling the server; a build already on disk
+        // needs a plain reconnect there too.
+        let until = match self {
+            Self::Sources { .. } if windows => "the user enables it again",
+            _ => "the user reconnects",
         };
         let missing = format!(
-            "Until {until}, tools added or changed since this build are missing or behave \
-             differently."
+            "Until {until}, tools added or changed since the build this process runs are missing \
+             or behave differently."
         );
         match (self, form) {
             (Self::Sources { change, on_disk }, Form::Full) => {
@@ -436,7 +517,8 @@ impl Staleness {
                          the build fails while it is connected: ask the user to disable the \
                          `game` server in `/mcp` and wait for them to confirm, then run {build}, \
                          then ask them to enable it again (you cannot do either). If the build \
-                         fails, tell the user. {missing}"
+                         fails, tell the user; enabling the server again brings back the old \
+                         build. {missing}"
                     )
                 } else {
                     format!(
@@ -467,11 +549,19 @@ impl Staleness {
 }
 
 /// The two checks, sources first: building is the step that has to come before reconnecting.
-/// `sources` is `None` when they are not checked.
-fn assess(running: Stamp, on_disk: Option<Stamp>, sources: Option<Change>) -> Option<Staleness> {
+/// `started` is when the build on disk started, when known; an edit after it may have missed
+/// the build. `sources` is `None` when they are not checked.
+fn assess(
+    running: Stamp,
+    on_disk: Option<Stamp>,
+    started: Option<SystemTime>,
+    sources: Option<Change>,
+) -> Option<Staleness> {
     if let Some(change) = sources {
         let stale = match change {
-            Change::Modified(at) => on_disk.is_none_or(|on_disk| at > on_disk.modified),
+            Change::Modified(at) => {
+                on_disk.is_none_or(|on_disk| at > started.unwrap_or(on_disk.modified))
+            }
             Change::Removed => true,
         };
         if stale {
@@ -531,8 +621,8 @@ mod tests {
     };
 
     use super::{
-        Build, Change, Form, Staleness, Stamp, ago, assess, dep_info_paths, form, is_crate_source,
-        newest_listed, newest_source, relative, strip_verbatim,
+        Build, Change, Form, Staleness, Stamp, ago, assess, build_started, dep_info_paths, form,
+        is_crate_source, newest_listed, newest_source, relative, strip_verbatim,
     };
 
     fn at(seconds: u64) -> SystemTime {
@@ -569,14 +659,14 @@ mod tests {
     #[test]
     fn up_to_date_says_nothing() {
         let sources = Some(Change::Modified(at(5)));
-        assert_eq!(assess(stamp(10), Some(stamp(10)), sources), None);
+        assert_eq!(assess(stamp(10), Some(stamp(10)), None, sources), None);
     }
 
     #[test]
     fn sources_newer_than_the_build_on_disk() {
         let change = Change::Modified(at(20));
         assert_eq!(
-            assess(stamp(10), Some(stamp(10)), Some(change)),
+            assess(stamp(10), Some(stamp(10)), None, Some(change)),
             Some(Staleness::Sources {
                 change,
                 on_disk: Some(stamp(10)),
@@ -587,7 +677,7 @@ mod tests {
     #[test]
     fn a_removed_source_is_a_change() {
         assert_eq!(
-            assess(stamp(10), Some(stamp(10)), Some(Change::Removed)),
+            assess(stamp(10), Some(stamp(10)), None, Some(Change::Removed)),
             Some(Staleness::Sources {
                 change: Change::Removed,
                 on_disk: Some(stamp(10)),
@@ -599,7 +689,7 @@ mod tests {
     fn build_on_disk_differs_from_the_running_one() {
         let sources = Some(Change::Modified(at(5)));
         assert_eq!(
-            assess(stamp(10), Some(stamp(20)), sources),
+            assess(stamp(10), Some(stamp(20)), None, sources),
             Some(Staleness::OtherBuild { on_disk: stamp(20) })
         );
     }
@@ -609,7 +699,7 @@ mod tests {
     fn both_reports_the_sources() {
         let change = Change::Modified(at(30));
         assert_eq!(
-            assess(stamp(10), Some(stamp(20)), Some(change)),
+            assess(stamp(10), Some(stamp(20)), None, Some(change)),
             Some(Staleness::Sources {
                 change,
                 on_disk: Some(stamp(20)),
@@ -619,9 +709,9 @@ mod tests {
 
     #[test]
     fn without_sources_only_the_build_counts() {
-        assert_eq!(assess(stamp(10), Some(stamp(10)), None), None);
+        assert_eq!(assess(stamp(10), Some(stamp(10)), None, None), None);
         assert_eq!(
-            assess(stamp(10), Some(stamp(20)), None),
+            assess(stamp(10), Some(stamp(20)), None, None),
             Some(Staleness::OtherBuild { on_disk: stamp(20) })
         );
     }
@@ -630,13 +720,13 @@ mod tests {
     fn a_missing_build_needs_building() {
         let change = Change::Modified(at(5));
         assert_eq!(
-            assess(stamp(10), None, Some(change)),
+            assess(stamp(10), None, None, Some(change)),
             Some(Staleness::Sources {
                 change,
                 on_disk: None,
             })
         );
-        assert_eq!(assess(stamp(10), None, None), None);
+        assert_eq!(assess(stamp(10), None, None, None), None);
     }
 
     #[test]
@@ -700,8 +790,17 @@ mod tests {
             "ename_mcp is out of date: its sources changed less than a minute ago, and no build \
              is on disk. Run `cargo build -p ename_mcp` in `/w/game`, then ask the user to run \
              `/mcp reconnect` (you cannot). If the build fails, tell the user. Until the user \
-             reconnects, tools added or changed since this build are missing or behave \
-             differently."
+             reconnects, tools added or changed since the build this process runs are missing \
+             or behave differently."
+        );
+        let windows = sources.text(Form::Full, Some(&build), true, now);
+        assert!(
+            windows.ends_with(
+                "If the build fails, tell the user; enabling the server again brings back the \
+                 old build. Until the user enables it again, tools added or changed since the \
+                 build this process runs are missing or behave differently."
+            ),
+            "{windows}"
         );
         let windows = sources.text(Form::Short, Some(&build), true, now);
         assert_eq!(
@@ -717,8 +816,13 @@ mod tests {
             rebuilt.text(Form::Full, Some(&build), false, now),
             "ename_mcp is out of date: the build on disk (from 2 minutes ago) is not the one this \
              process started from. Ask the user to run `/mcp reconnect` (you cannot). Until the \
-             user reconnects, tools added or changed since this build are missing or behave \
-             differently."
+             user reconnects, tools added or changed since the build this process runs are \
+             missing or behave differently."
+        );
+        assert!(
+            rebuilt
+                .text(Form::Full, Some(&build), true, now)
+                .contains("Until the user reconnects")
         );
         assert_eq!(
             rebuilt.text(Form::Short, Some(&build), false, now),
@@ -726,14 +830,20 @@ mod tests {
         );
     }
 
-    /// A triple's directory is the only one here that is not a target root.
+    /// The directories that hold a `.rustc_info.json`: target dirs, not the triples' inside them.
     fn command(exe: &str, cwd: &str, target_dir_env: bool) -> Build {
+        let roots = [
+            "/w/game/target",
+            "/w/game/target/ename-launch-bin",
+            "/w/game/target/ename-mcp-bin",
+            "/w/other",
+        ];
         Build::new(
             Path::new(exe),
             Path::new("/w/game"),
             Path::new(cwd),
             target_dir_env,
-            |dir| !dir.ends_with("x86_64-pc-windows-msvc"),
+            |dir| roots.iter().any(|root| dir == Path::new(root)),
         )
         .unwrap()
     }
@@ -773,8 +883,18 @@ mod tests {
             "cargo build -p ename_mcp --release"
         );
         assert_eq!(
-            build("/w/game/target/ename-launch-bin/debug/ename_mcp", false),
-            "cargo build -p ename_mcp --target-dir target/ename-launch-bin"
+            build("/w/game/target/ename-mcp-bin/debug/ename_mcp", false),
+            "cargo build -p ename_mcp --target-dir target/ename-mcp-bin"
+        );
+        assert_eq!(
+            command(
+                "/w/game/target/ename-mcp-bin/debug/ename_mcp",
+                "/w/airshipgame",
+                false
+            )
+            .command,
+            "cargo build --manifest-path ../game/Cargo.toml -p ename_mcp --target-dir \
+             ../game/target/ename-mcp-bin"
         );
         assert_eq!(
             build("/w/game/target/debug/ename_mcp", true),
@@ -899,5 +1019,56 @@ mod tests {
         file_at(&dir.path().join(".hidden.rs"), 300);
         file_at(&dir.path().join("notes.txt"), 300);
         assert_eq!(newest_source(dir.path()), Some(at(200)));
+    }
+
+    /// An edit made while the build ran may have missed it.
+    #[test]
+    fn sources_count_from_the_build_start() {
+        let during = Change::Modified(at(9));
+        assert_eq!(
+            assess(stamp(10), Some(stamp(10)), Some(at(8)), Some(during)),
+            Some(Staleness::Sources {
+                change: during,
+                on_disk: Some(stamp(10)),
+            })
+        );
+        let before = Some(Change::Modified(at(7)));
+        assert_eq!(
+            assess(stamp(10), Some(stamp(10)), Some(at(8)), before),
+            None
+        );
+    }
+
+    #[test]
+    fn finds_the_build_start_of_the_linked_artifact() {
+        let profile = tempfile::tempdir().unwrap();
+        let path = |name: &str| profile.path().join(name);
+        let exe_name = |name: &str| format!("{name}{}", std::env::consts::EXE_SUFFIX);
+        std::fs::create_dir_all(path("deps")).unwrap();
+        std::fs::create_dir_all(path(".fingerprint/ename_mcp-aaaa")).unwrap();
+        std::fs::create_dir_all(path(".fingerprint/ename_mcp-bbbb")).unwrap();
+        let artifact = |name: &str, contents: &str, seconds| {
+            std::fs::write(path(name), contents).unwrap();
+            File::options()
+                .write(true)
+                .open(path(name))
+                .unwrap()
+                .set_modified(at(seconds))
+                .unwrap();
+        };
+        artifact(&exe_name("ename_mcp"), "built", 500);
+        artifact(&exe_name("deps/ename_mcp-aaaa"), "other", 500);
+        artifact(&exe_name("deps/ename_mcp-bbbb"), "built", 500);
+        artifact("deps/ename_mcp-bbbb.d", "built", 500);
+        file_at(&path(".fingerprint/ename_mcp-aaaa/invoked.timestamp"), 300);
+        file_at(&path(".fingerprint/ename_mcp-bbbb/invoked.timestamp"), 400);
+        let exe = path(&exe_name("ename_mcp"));
+        let stamp = Stamp::read(&exe).unwrap();
+        assert_eq!(build_started(&exe, stamp), Some(at(400)));
+        let unknown = Stamp {
+            len: 1,
+            modified: at(500),
+        };
+        assert_eq!(build_started(&exe, unknown), None);
     }
 }
