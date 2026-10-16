@@ -77,20 +77,10 @@ impl AtRest {
             name: condition.name.clone(),
         };
         let entity = target.resolve(world)?;
-        let body = world.get::<RigidBody>(entity).copied();
-        if body != Some(RigidBody::Dynamic) || world.get::<LinearVelocity>(entity).is_none() {
-            let what = match body {
-                Some(body) => format!("a {body:?} rigid body"),
-                None => "not a rigid body".into(),
-            };
-            return Err(CommandError::invalid(
-                "not_comparable",
-                format!("`at_rest` needs a dynamic rigid body with a velocity; this is {what}"),
-            )
-            .with_hint(
-                "Only `RigidBody::Dynamic` moves under physics. For a position threshold use the \
-                 `position` condition.",
-            ));
+        if let Some(message) = not_a_dynamic_body(world, entity) {
+            return Err(
+                CommandError::invalid("not_comparable", message).with_hint(NOT_DYNAMIC_HINT)
+            );
         }
         Ok(Self {
             target,
@@ -118,6 +108,10 @@ impl AtRest {
                 err
             }
         })?;
+        // A body made static or stripped of its velocities mid-wait would read as still.
+        if let Some(message) = not_a_dynamic_body(world, entity) {
+            return Err(CommandError::failed("not_comparable", message).with_hint(NOT_DYNAMIC_HINT));
+        }
         let linear = world
             .get::<LinearVelocity>(entity)
             .map_or(0.0, |velocity| f64::from(velocity.0.length()));
@@ -152,6 +146,26 @@ impl AtRest {
     }
 }
 
+/// Why `entity` is not a body `at_rest` can judge, if it is not.
+fn not_a_dynamic_body(world: &World, entity: Entity) -> Option<String> {
+    let body = world.get::<RigidBody>(entity).copied();
+    let moving = world.get::<LinearVelocity>(entity).is_some()
+        && world.get::<AngularVelocity>(entity).is_some();
+    if body == Some(RigidBody::Dynamic) && moving {
+        return None;
+    }
+    let what = match body {
+        Some(RigidBody::Dynamic) => "a dynamic body without its velocities".to_owned(),
+        Some(body) => format!("a {body:?} rigid body"),
+        None => "not a rigid body".to_owned(),
+    };
+    Some(format!(
+        "`at_rest` needs a dynamic rigid body with velocities; this is {what}"
+    ))
+}
+
+const NOT_DYNAMIC_HINT: &str = "Only `RigidBody::Dynamic` moves under physics. For a position \
+                                threshold use the `position` condition.";
 fn round(value: f64) -> f64 {
     (value * 1000.0).round() / 1000.0
 }
@@ -309,9 +323,37 @@ mod tests {
             &mut app,
             json!({ "condition": { "at_rest": { "name": "Crate" } }, "time": "run" }),
         );
+        // The premise: a frame with no physics step, while the stale `Sleeping` is still there.
+        let steps = app.world().resource::<PhysicsSteps>().0;
+        app.update();
+        assert_eq!(
+            app.world().resource::<PhysicsSteps>().0,
+            steps,
+            "a step ran"
+        );
+        assert!(app.world().get::<Sleeping>(entity).is_some());
+        assert_eq!(status(&app, &job).state, "running");
+
         let status = run_until_done(&mut app, &job);
         assert_eq!(status.state, "succeeded", "{status:?}");
         let y = crate_y(&mut app);
         assert!(y < 3.0, "reported at rest at {y}, before it fell");
+    }
+
+    #[test]
+    fn a_body_made_static_mid_wait_fails_instead_of_resting() {
+        let mut app = app(Duration::from_secs_f64(1.0 / 60.0));
+        let job = call(
+            &mut app,
+            json!({ "condition": { "at_rest": { "name": "Crate" } } }),
+        );
+        app.update();
+        let entity = EntityTarget::by_name("Crate")
+            .resolve(app.world_mut())
+            .unwrap();
+        app.world_mut().entity_mut(entity).insert(RigidBody::Static);
+        app.update();
+        app.update();
+        assert_eq!(status(&app, &job).error.unwrap().kind, "not_comparable");
     }
 }
