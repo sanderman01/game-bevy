@@ -7,6 +7,8 @@
 //!
 //! No network code: `ename_remote` exposes the commands like any other.
 
+mod assets;
+mod pipelines;
 mod probe;
 
 use bevy::prelude::*;
@@ -26,7 +28,7 @@ pub enum WaitSystems {
 
 /// The settle probe registry, its sampling, and the wait commands.
 ///
-/// Registers [`SettleSample`] and orders [`WaitSystems`] after
+/// Registers [`SettleSample`], the `assets` and `pipelines` probes, and orders [`WaitSystems`] after
 /// [`TimeControlSystems::Countdown`], so a stepped frame is judged with its step already counted.
 pub struct WaitPlugin;
 
@@ -46,5 +48,7 @@ impl Plugin for WaitPlugin {
                     .in_set(WaitSystems::Sample)
                     .run_if(any_with_component::<SettleWaiter>),
             );
+        app.register_settle_probe("assets", assets::assets_probe);
+        pipelines::register(app);
     }
 }

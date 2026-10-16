@@ -14,7 +14,7 @@
 use bevy::{platform::collections::HashMap, prelude::*};
 use ename_asset_alias::{ALIAS_SOURCE, ContentIndex};
 
-use super::{AssetRoot, SourcePath, StageFormats, StageId, StageMember, StageSource};
+use super::{AssetRoot, SourcePath, StageFormats, StageId, StageLoading, StageMember, StageSource};
 
 /// Starts loading `path` (a plain asset path, or an `alias://`-prefixed URL) and spawns its
 /// container entity. Returns the container immediately -- loading is async, so the content is not
@@ -109,6 +109,7 @@ pub(super) fn tag_stage_membership_on_ready(
     }
 
     let stage_id = if let Ok(SourcePath(path)) = source_paths.get(container) {
+        commands.entity(container).remove::<StageLoading>();
         // Case 1: this container is a stage we opened ourselves. Its file's data is exactly one
         // top-level entity (the stage root), carrying the file's own StageId.
         let Ok(children) = children_of.get(container) else {

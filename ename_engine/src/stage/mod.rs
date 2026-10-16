@@ -11,15 +11,18 @@ mod commands;
 mod dynamic_world_format;
 mod format;
 mod identity;
+mod loading;
 mod workflow;
 
 pub use commands::{SaveStageError, write_stage_file};
 pub use dynamic_world_format::DynamicWorldFormat;
 pub use format::{StageAppExt, StageFormat, StageFormatError, StageFormats};
-pub use identity::{AssetRoot, SourcePath, StageId, StageMember, StageSource};
+pub use identity::{AssetRoot, SourcePath, StageId, StageLoading, StageMember, StageSource};
 pub use workflow::{new_stage, open_stage, open_stage_additive, save_stage, stage_of};
 
 use bevy::prelude::*;
+
+use crate::wait::SettleAppExt;
 
 /// Registers stage identity types for reflection, inserts a production-default `AssetRoot`,
 /// tags loaded stage content with its identity, and registers [`DynamicWorldFormat`].
@@ -37,6 +40,7 @@ impl Plugin for StagePlugin {
             .register_type_data::<std::ops::Range<f32>, bevy::reflect::ReflectDeserialize>()
             .add_observer(commands::tag_stage_membership_on_ready)
             .add_observer(commands::relink_loaded_children)
-            .register_stage_format(DynamicWorldFormat);
+            .register_stage_format(DynamicWorldFormat)
+            .register_settle_probe("stage", loading::stage_probe);
     }
 }

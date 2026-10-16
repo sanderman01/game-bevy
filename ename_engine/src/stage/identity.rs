@@ -25,7 +25,13 @@ pub struct StageMember(pub StageId);
 /// the stage's content has finished spawning. Describes the container, not stage content, so it
 /// is never `Reflect` and never saved.
 #[derive(Component, Clone, Debug)]
+#[require(StageLoading)]
 pub struct SourcePath(pub String);
+
+/// On a stage load container until its content has spawned (`WorldInstanceReady`), so the `stage`
+/// settle probe can count loads in flight. The container itself stays after loading.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct StageLoading;
 
 /// Where a stage root was last loaded from or saved to, as an asset-relative path (relative to
 /// whatever [`AssetRoot`] resolves to) -- never an `alias://` URL, even if that's how the stage
