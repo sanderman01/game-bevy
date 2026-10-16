@@ -11,6 +11,7 @@ mod assets;
 mod pipelines;
 mod probe;
 mod settled;
+mod until;
 
 use bevy::prelude::*;
 
@@ -31,7 +32,7 @@ pub enum WaitSystems {
 /// The settle probe registry, its sampling, and the wait commands.
 ///
 /// Registers [`SettleSample`], the `assets` and `pipelines` probes, `wait.settled` and
-/// `wait.activity`, and orders [`WaitSystems`] after
+/// `wait.activity` and `wait.until`, and orders [`WaitSystems`] after
 /// [`TimeControlSystems::Countdown`], so a stepped frame is judged with its step already counted.
 pub struct WaitPlugin;
 
@@ -54,11 +55,18 @@ impl Plugin for WaitPlugin {
         app.register_settle_probe("assets", assets::assets_probe);
         pipelines::register(app);
         settled::register(app);
+        until::register(app);
         app.add_systems(
             Last,
             settled::resolve_gates
                 .in_set(WaitSystems::Resolve)
                 .run_if(any_with_component::<SettleGate>),
+        );
+        app.add_systems(
+            Last,
+            until::resolve_untils
+                .in_set(WaitSystems::Resolve)
+                .run_if(any_with_component::<until::UntilWait>),
         );
     }
 }

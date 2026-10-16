@@ -186,7 +186,7 @@ impl LogBuffer {
         self.0.started
     }
 
-    fn push(&self, timestamp: f64, level: Level, target: &str, message: String) {
+    pub(crate) fn push(&self, timestamp: f64, level: Level, target: &str, message: String) {
         // Never waits. A reader holds this lock while it works, and a reader that logs -- egui
         // does, through the `log` crate -- would otherwise deadlock its own thread against a
         // `Mutex` it already holds. Dropping the line is the recoverable half of that trade.
@@ -450,10 +450,75 @@ impl Plugin for LogBufferPlugin {
     }
 }
 
+/// A level name a reader gave that is not one.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("`{0}` is not a level. Use TRACE, DEBUG, INFO, WARN or ERROR.")]
+pub struct UnknownLevel(pub String);
+
+/// Parses a level name, case-insensitively.
+pub fn level_of_name(name: &str) -> Result<Level, UnknownLevel> {
+    match name.to_ascii_uppercase().as_str() {
+        "TRACE" => Ok(Level::TRACE),
+        "DEBUG" => Ok(Level::DEBUG),
+        "INFO" => Ok(Level::INFO),
+        "WARN" => Ok(Level::WARN),
+        "ERROR" => Ok(Level::ERROR),
+        _ => Err(UnknownLevel(name.to_owned())),
+    }
+}
+
+/// Which entries a reader wants. One definition, so `game.logs.get` and a wait on a log line
+/// cannot drift apart.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LogFilter {
+    /// The least severe level wanted.
+    pub min_level: Option<Level>,
+    /// Lowercase substring of the target.
+    target_contains: Option<String>,
+    /// Lowercase substring of the message.
+    message_contains: Option<String>,
+    /// Only entries with a sequence number above this.
+    pub after_sequence: Option<u64>,
+}
+
+impl LogFilter {
+    /// Substrings match case-insensitively.
+    pub fn new(
+        min_level: Option<&str>,
+        target_contains: Option<&str>,
+        message_contains: Option<&str>,
+        after_sequence: Option<u64>,
+    ) -> Result<Self, UnknownLevel> {
+        Ok(Self {
+            min_level: min_level.map(level_of_name).transpose()?,
+            target_contains: target_contains.map(str::to_lowercase),
+            message_contains: message_contains.map(str::to_lowercase),
+            after_sequence,
+        })
+    }
+
+    pub fn matches(&self, entry: &LogEntryRef<'_>) -> bool {
+        // `tracing` orders levels by verbosity, so a more severe level compares as less.
+        self.min_level.is_none_or(|min| entry.level <= min)
+            && self
+                .after_sequence
+                .is_none_or(|after| entry.sequence > after)
+            && self
+                .target_contains
+                .as_ref()
+                .is_none_or(|needle| entry.target_name.to_lowercase().contains(needle))
+            && self
+                .message_contains
+                .as_ref()
+                .is_none_or(|needle| entry.message.to_lowercase().contains(needle))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        CaptureLevel, DEFAULT_CAPACITY, DEFAULT_LEVEL, LogBuffer, MAX_LEVEL, capture_layer,
+        CaptureLevel, DEFAULT_CAPACITY, DEFAULT_LEVEL, LogBuffer, LogFilter, MAX_LEVEL,
+        capture_layer, level_of_name,
     };
     use bevy::{
         app::App,
@@ -570,5 +635,51 @@ mod tests {
         fill(&buffer, 1);
 
         buffer.read(|view| assert_eq!(view.sequence_range(), Some((5, 5))));
+    }
+
+    #[test]
+    fn min_level_filters_on_a_reversed_ordering() {
+        // `tracing::Level` orders by verbosity, not severity, and `min_level` filters with `<=`
+        // because of it. Getting this backwards silently returns the levels nobody asked for.
+        assert!(Level::ERROR < Level::WARN);
+        assert!(Level::WARN < Level::INFO);
+        assert!(Level::INFO < Level::DEBUG);
+        assert!(Level::DEBUG < Level::TRACE);
+    }
+
+    #[test]
+    fn level_names_are_case_insensitive_and_checked() {
+        assert_eq!(level_of_name("warn").unwrap(), Level::WARN);
+        assert_eq!(level_of_name("WARN").unwrap(), Level::WARN);
+        assert!(level_of_name("LOUD").is_err());
+    }
+
+    #[test]
+    fn a_filter_matches_level_sequence_and_substrings_case_insensitively() {
+        let buffer = LogBuffer::default();
+        buffer.push(
+            0.,
+            Level::INFO,
+            "landscape::bake",
+            "Impostors BAKED".to_owned(),
+        );
+        buffer.push(
+            1.,
+            Level::DEBUG,
+            "landscape::bake",
+            "impostors baked".to_owned(),
+        );
+        buffer.push(2., Level::WARN, "other", "impostors baked".to_owned());
+        let filter = LogFilter::new(Some("info"), Some("LANDSCAPE"), Some("baked"), None).unwrap();
+        let matched: Vec<u64> = buffer.read(|view| {
+            view.iter()
+                .filter(|entry| filter.matches(entry))
+                .map(|entry| entry.sequence)
+                .collect()
+        });
+        assert_eq!(matched, [0]);
+        let after = LogFilter::new(None, None, Some("baked"), Some(0)).unwrap();
+        let matched = buffer.read(|view| view.iter().filter(|e| after.matches(e)).count());
+        assert_eq!(matched, 2);
     }
 }

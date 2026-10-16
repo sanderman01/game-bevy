@@ -6,11 +6,10 @@
 //! The buffer itself is `ename_engine::log`, because the editor's console reads it too.
 
 use bevy::{
-    log::Level,
     prelude::*,
     remote::{BrpResult, builtin_methods::parse},
 };
-use ename_engine::log::LogBuffer;
+use ename_engine::log::{LogBuffer, LogFilter};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -58,9 +57,17 @@ pub(crate) struct GetResponse {
 pub(crate) fn get(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
     let params: GetParams = params.map(parse).transpose()?.unwrap_or_default();
     let limit = params.limit.unwrap_or(DEFAULT_LIMIT);
-    let min_level = params.min_level.as_deref().map(level_of_name).transpose()?;
-    let target_needle = params.target_contains.map(|t| t.to_lowercase());
-    let message_needle = params.message_contains.map(|m| m.to_lowercase());
+    let filter = LogFilter::new(
+        params.min_level.as_deref(),
+        params.target_contains.as_deref(),
+        params.message_contains.as_deref(),
+        params.after_sequence,
+    )
+    .map_err(|err| bevy::remote::BrpError {
+        code: bevy::remote::error_codes::INVALID_PARAMS,
+        message: err.to_string(),
+        data: None,
+    })?;
 
     let Some(buffer) = world.get_resource::<LogBuffer>() else {
         return crate::to_value(GetResponse {
@@ -71,19 +78,7 @@ pub(crate) fn get(In(params): In<Option<Value>>, world: &mut World) -> BrpResult
 
     let matches: Vec<Entry> = buffer.read(|view| {
         view.iter()
-            // `tracing` orders levels by verbosity, so a more severe level compares as less.
-            .filter(|entry| min_level.is_none_or(|min| entry.level <= min))
-            .filter(|entry| params.after_sequence.is_none_or(|s| entry.sequence > s))
-            .filter(|entry| {
-                target_needle
-                    .as_ref()
-                    .is_none_or(|n| entry.target_name.to_lowercase().contains(n))
-            })
-            .filter(|entry| {
-                message_needle
-                    .as_ref()
-                    .is_none_or(|n| entry.message.to_lowercase().contains(n))
-            })
+            .filter(|entry| filter.matches(entry))
             .map(|entry| Entry {
                 sequence: entry.sequence,
                 timestamp: entry.timestamp,
@@ -99,42 +94,4 @@ pub(crate) fn get(In(params): In<Option<Value>>, world: &mut World) -> BrpResult
         entries: matches.into_iter().skip(older_matches).collect(),
         older_matches,
     })
-}
-
-fn level_of_name(name: &str) -> Result<Level, bevy::remote::BrpError> {
-    match name.to_ascii_uppercase().as_str() {
-        "TRACE" => Ok(Level::TRACE),
-        "DEBUG" => Ok(Level::DEBUG),
-        "INFO" => Ok(Level::INFO),
-        "WARN" => Ok(Level::WARN),
-        "ERROR" => Ok(Level::ERROR),
-        other => Err(bevy::remote::BrpError {
-            code: bevy::remote::error_codes::INVALID_PARAMS,
-            message: format!("`{other}` is not a level. Use TRACE, DEBUG, INFO, WARN or ERROR."),
-            data: None,
-        }),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::level_of_name;
-    use bevy::log::Level;
-
-    #[test]
-    fn min_level_filters_on_a_reversed_ordering() {
-        // `tracing::Level` orders by verbosity, not severity, and `min_level` filters with `<=`
-        // because of it. Getting this backwards silently returns the levels nobody asked for.
-        assert!(Level::ERROR < Level::WARN);
-        assert!(Level::WARN < Level::INFO);
-        assert!(Level::INFO < Level::DEBUG);
-        assert!(Level::DEBUG < Level::TRACE);
-    }
-
-    #[test]
-    fn level_names_are_case_insensitive_and_checked() {
-        assert_eq!(level_of_name("warn").unwrap(), Level::WARN);
-        assert_eq!(level_of_name("WARN").unwrap(), Level::WARN);
-        assert!(level_of_name("LOUD").is_err());
-    }
 }
