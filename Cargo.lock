@@ -3098,6 +3098,8 @@ dependencies = [
  "ename_asset_package",
  "ename_asset_vfs",
  "futures-lite",
+ "serde",
+ "serde_json",
  "tempfile",
  "toml",
  "uuid",

@@ -1,4 +1,5 @@
-//! `ename_xtask` -- the command line tool for this workspace's content pipeline.
+//! `ename_xtask` -- the command line tool for this workspace's content pipeline, plus workspace
+//! helpers such as `ename_dep_src`.
 //!
 //! Depends on `ename_asset_alias` and `ename_asset_package` with `default-features = false`, so it
 //! never links Bevy, and reads the same tree the running game does through `StdVfs` instead of an
@@ -12,6 +13,7 @@
 pub mod check;
 pub mod cli;
 pub mod content_build;
+pub mod dep_src;
 pub mod fix;
 pub mod list;
 pub mod mv;

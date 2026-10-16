@@ -1,6 +1,6 @@
 //! Argument parsing for the `ename_xtask` binary.
 //!
-//! No argument-parsing crate: five flat subcommands and at most two positional arguments do not
+//! No argument-parsing crate: a few flat subcommands and at most two positional arguments do not
 //! need one, and a hand-rolled parser takes a plain iterator of `String`, which a test can build
 //! without touching `std::env`.
 
@@ -20,6 +20,8 @@ pub enum Command {
     List,
     /// `ename_mv <from> <to>` -- moves an asset and its `.meta`, `.alias` and `.license` sidecars.
     Mv { from: PathBuf, to: PathBuf },
+    /// `ename_dep_src <crate>` -- prints the source directory of each locked version of a crate.
+    DepSrc { name: String },
 }
 
 /// Why the command line could not be read.
@@ -28,6 +30,7 @@ pub enum CliError {
     NoCommand,
     Unknown(String),
     MvNeedsTwoPaths,
+    DepSrcNeedsName,
 }
 
 impl Display for CliError {
@@ -35,10 +38,11 @@ impl Display for CliError {
         match self {
             Self::NoCommand => write!(
                 f,
-                "usage: cargo xtask <ename_check|ename_fix|ename_content_build|ename_content_list|ename_mv <from> <to>>"
+                "usage: cargo xtask <ename_check|ename_fix|ename_content_build|ename_content_list|ename_mv <from> <to>|ename_dep_src <crate>>"
             ),
             Self::Unknown(name) => write!(f, "unknown subcommand `{name}`"),
             Self::MvNeedsTwoPaths => write!(f, "ename_mv needs a <from> and a <to> path"),
+            Self::DepSrcNeedsName => write!(f, "ename_dep_src needs a <crate> name"),
         }
     }
 }
@@ -58,6 +62,10 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Command, CliError
                 from: from.into(),
                 to: to.into(),
             })
+        }
+        "ename_dep_src" => {
+            let name = args.next().ok_or(CliError::DepSrcNeedsName)?;
+            Ok(Command::DepSrc { name })
         }
         other => Err(CliError::Unknown(other.to_owned())),
     }
@@ -104,6 +112,20 @@ mod tests {
             Err(CliError::MvNeedsTwoPaths)
         );
         assert_eq!(parse(args(&["ename_mv"])), Err(CliError::MvNeedsTwoPaths));
+    }
+
+    #[test]
+    fn dep_src_takes_one_crate_name() {
+        assert_eq!(
+            parse(args(&["ename_dep_src", "big_space"])),
+            Ok(Command::DepSrc {
+                name: "big_space".into()
+            })
+        );
+        assert_eq!(
+            parse(args(&["ename_dep_src"])),
+            Err(CliError::DepSrcNeedsName)
+        );
     }
 
     #[test]

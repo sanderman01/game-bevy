@@ -1,9 +1,10 @@
-//! `ename_xtask` -- the command line tool for this workspace's content pipeline.
+//! `ename_xtask` -- the command line tool for this workspace's content pipeline and helpers.
 //! Run through the `xtask` cargo alias: `cargo xtask <subcommand>` (see `.cargo/config.toml`).
 
-use ename_xtask::{check, cli, content_build, fix, list, mv, policy};
+use ename_xtask::{check, cli, content_build, dep_src, fix, list, mv, policy};
+use std::io::Write;
 use std::path::Path;
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 
 fn main() -> ExitCode {
     let command = match cli::parse(std::env::args().skip(1)) {
@@ -68,5 +69,54 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        cli::Command::DepSrc { name } => dep_src(&name),
     }
+}
+
+/// Runs `cargo metadata` in the current directory, so it answers for the caller's workspace.
+fn dep_src(name: &str) -> ExitCode {
+    // `cargo run` sets `CARGO` to the cargo that launched us.
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let output = match Command::new(&cargo)
+        .args(["metadata", "--format-version", "1", "--locked", "--offline"])
+        .output()
+    {
+        Ok(output) => output,
+        Err(err) => {
+            eprintln!("ename_dep_src: could not run cargo metadata: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if !output.status.success() {
+        let _ = std::io::stderr().write_all(&output.stderr);
+        return ExitCode::FAILURE;
+    }
+    let metadata = match dep_src::Metadata::from_json(&output.stdout) {
+        Ok(metadata) => metadata,
+        Err(err) => {
+            eprintln!("ename_dep_src: could not read cargo metadata output: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let found = dep_src::find(&metadata, name);
+    if found.is_empty() {
+        eprintln!("{name} is not in this workspace's Cargo.lock");
+        for near in dep_src::near_misses(&metadata, name, 10) {
+            eprintln!("  {near}");
+        }
+        return ExitCode::FAILURE;
+    }
+    for source in &found {
+        println!("{source}");
+    }
+    if let [first, .., last] = found.as_slice() {
+        eprintln!(
+            "{} versions; cargo tree -i {}@{} shows who pulls each in",
+            found.len(),
+            first.name,
+            last.version
+        );
+    }
+    ExitCode::SUCCESS
 }
