@@ -7,9 +7,9 @@ description: Take a screenshot or record a video of the running example game or 
 
 ## The game: use MCP
 
-Run the editor, `cargo run -p example_game_editor_bin`. It is the only binary with the BRP server
-the `game` MCP server talks to; `example_game_bin` has none. `docs/agent-tools.md` has the full
-reference.
+Start the editor with `game_start` (`cargo game start` from a shell). It is the only binary with
+the BRP server the `game` MCP server talks to; `example_game_bin` has none.
+`docs/agent-tools.md` has the full reference.
 
 `screenshot_capture`, `video_record` and `editor_set_view` are commands the game registers, so
 those tools appear once the game is running (the server re-lists every two seconds). If they are
