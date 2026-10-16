@@ -337,8 +337,12 @@ impl Build {
                 tracing::debug!(dir = %target_dir.display(), "target triple is not UTF-8");
                 return None;
             };
-            triple = Some(name);
-            target_dir = root;
+            // With `CARGO_CACHE_RUSTC_INFO=0` no target dir has `.rustc_info.json`, and a nested
+            // one such as `target/ename-mcp-bin` would pass for a triple.
+            if is_triple(name) {
+                triple = Some(name);
+                target_dir = root;
+            }
         }
         let dir = if cwd.starts_with(workspace) {
             workspace
@@ -367,6 +371,32 @@ impl Build {
             dir: shown(dir),
         })
     }
+}
+
+/// Whether a directory name reads as a rustc target triple: a known architecture, then more
+/// `-` parts (`wasm32-wasip1` has only one). A dash count alone would take `ename-mcp-bin` too.
+fn is_triple(name: &str) -> bool {
+    const ARCHES: [&str; 14] = [
+        "aarch64",
+        "arm",
+        "i586",
+        "i686",
+        "loongarch",
+        "mips",
+        "powerpc",
+        "riscv",
+        "s390x",
+        "sparc",
+        "thumb",
+        "wasm",
+        "x86_64",
+        "nvptx",
+    ];
+    name.contains('-')
+        && name
+            .split('-')
+            .next()
+            .is_some_and(|arch| ARCHES.iter().any(|known| arch.starts_with(known)))
 }
 
 impl std::fmt::Display for Build {
@@ -420,13 +450,39 @@ impl Stamp {
 /// When cargo started the build that produced `exe` (stamped `on_disk`), or `None` when it
 /// cannot be told.
 ///
-/// The executable is a hard link to, or a copy of, `deps/ename_mcp-<hash>`, which shares its
-/// length and modification time, and cargo touches `.fingerprint/ename_mcp-<hash>/
-/// invoked.timestamp` as that build starts.
+/// Cargo hard links the executable to `deps/ename_mcp-<hash>` (a copy where it cannot, which on
+/// Linux gets a new modification time and so is not found), and touches
+/// `.fingerprint/ename_mcp-<hash>/invoked.timestamp` as that build starts. The artifact with the
+/// executable's length and modification time names the hash.
+///
+/// MSVC targets leave the hash out of the artifact's name (`deps/ename_mcp.exe`). There the
+/// start is the newest binary fingerprint's that is not after the executable, which is right as
+/// long as only one feature set builds into this target dir: `cargo mcp-build` gives it its own.
 fn build_started(exe: &Path, on_disk: Stamp) -> Option<SystemTime> {
     const PREFIX: &str = "ename_mcp-";
     let profile_dir = exe.parent()?;
-    for entry in std::fs::read_dir(profile_dir.join("deps")).ok()?.flatten() {
+    let deps = profile_dir.join("deps");
+    let started = |hash: &str| {
+        let timestamp = profile_dir
+            .join(".fingerprint")
+            .join(format!("{PREFIX}{hash}"))
+            .join("invoked.timestamp");
+        std::fs::metadata(timestamp)
+            .and_then(|metadata| metadata.modified())
+            .ok()
+    };
+    if Stamp::read(&deps.join(format!("ename_mcp{}", std::env::consts::EXE_SUFFIX)))
+        == Some(on_disk)
+    {
+        let fingerprints = std::fs::read_dir(profile_dir.join(".fingerprint")).ok()?;
+        return fingerprints
+            .flatten()
+            .filter(|entry| entry.path().join("bin-ename_mcp").is_file())
+            .filter_map(|entry| started(entry.file_name().to_str()?.strip_prefix(PREFIX)?))
+            .filter(|started| *started <= on_disk.modified)
+            .max();
+    }
+    for entry in std::fs::read_dir(deps).ok()?.flatten() {
         let name = entry.file_name();
         let Some(hash) = name
             .to_str()
@@ -444,12 +500,7 @@ fn build_started(exe: &Path, on_disk: Stamp) -> Option<SystemTime> {
         {
             continue;
         }
-        let timestamp = profile_dir
-            .join(".fingerprint")
-            .join(format!("{PREFIX}{hash}"))
-            .join("invoked.timestamp");
-        let started = std::fs::metadata(timestamp).and_then(|metadata| metadata.modified());
-        return started.ok().map(|started| started.min(on_disk.modified));
+        return started(hash).map(|started| started.min(on_disk.modified));
     }
     None
 }
@@ -622,7 +673,7 @@ mod tests {
 
     use super::{
         Build, Change, Form, Staleness, Stamp, ago, assess, build_started, dep_info_paths, form,
-        is_crate_source, newest_listed, newest_source, relative, strip_verbatim,
+        is_crate_source, is_triple, newest_listed, newest_source, relative, strip_verbatim,
     };
 
     fn at(seconds: u64) -> SystemTime {
@@ -1070,5 +1121,76 @@ mod tests {
             modified: at(500),
         };
         assert_eq!(build_started(&exe, unknown), None);
+    }
+
+    /// MSVC: `deps/ename_mcp.exe`, no hash in the name.
+    #[test]
+    fn finds_the_build_start_without_a_hash_in_the_name() {
+        let profile = tempfile::tempdir().unwrap();
+        let path = |name: &str| profile.path().join(name);
+        let exe_name = |name: &str| format!("{name}{}", std::env::consts::EXE_SUFFIX);
+        std::fs::create_dir_all(path("deps")).unwrap();
+        for (hash, bin, started) in [
+            ("aaaa", true, 300),
+            ("bbbb", true, 400),
+            ("cccc", true, 600),
+        ]
+        .into_iter()
+        .chain([("dddd", false, 450)])
+        {
+            let dir = format!(".fingerprint/ename_mcp-{hash}");
+            std::fs::create_dir_all(path(&dir)).unwrap();
+            let marker = if bin {
+                "bin-ename_mcp"
+            } else {
+                "test-bin-ename_mcp"
+            };
+            file_at(&path(&format!("{dir}/{marker}")), started);
+            file_at(&path(&format!("{dir}/invoked.timestamp")), started);
+        }
+        for name in [exe_name("ename_mcp"), exe_name("deps/ename_mcp")] {
+            std::fs::write(path(&name), "built").unwrap();
+            File::options()
+                .write(true)
+                .open(path(&name))
+                .unwrap()
+                .set_modified(at(500))
+                .unwrap();
+        }
+        let exe = path(&exe_name("ename_mcp"));
+        let stamp = Stamp::read(&exe).unwrap();
+        assert_eq!(build_started(&exe, stamp), Some(at(400)));
+    }
+
+    #[test]
+    fn tells_triples_from_target_dirs() {
+        for triple in [
+            "x86_64-pc-windows-msvc",
+            "aarch64-apple-darwin",
+            "wasm32-wasip1",
+            "armv7-unknown-linux-gnueabihf",
+        ] {
+            assert!(is_triple(triple), "{triple}");
+        }
+        for dir in ["ename-mcp-bin", "ename-launch-bin", "debug", "x86_64"] {
+            assert!(!is_triple(dir), "{dir}");
+        }
+    }
+
+    /// `CARGO_CACHE_RUSTC_INFO=0`: no target dir has `.rustc_info.json`.
+    #[test]
+    fn a_nested_target_dir_is_not_a_triple() {
+        let build = Build::new(
+            Path::new("/w/game/target/ename-mcp-bin/debug/ename_mcp"),
+            Path::new("/w/game"),
+            Path::new("/w/game"),
+            false,
+            |dir| dir == Path::new("/w/game/target"),
+        )
+        .unwrap();
+        assert_eq!(
+            build.command,
+            "cargo build -p ename_mcp --target-dir target/ename-mcp-bin"
+        );
     }
 }

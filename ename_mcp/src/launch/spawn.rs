@@ -50,7 +50,7 @@ pub const TEMP_PREFIX: &str = "supervise-tmp-";
 /// process group and, where allowed, outside the caller's job on Windows. That cuts it from the
 /// caller's terminal, process group and lifetime. Returns its pid.
 ///
-/// Running from a copy is what keeps `cargo build -p ename_mcp` working while a game runs:
+/// Running from a copy is what keeps `cargo mcp-build` working while a game runs:
 /// Windows will not replace a running `.exe`, and the supervisor lives as long as the game.
 pub fn supervisor(dir: &Path, copy: &Path, generation: u64) -> anyhow::Result<u32> {
     let exe = dir.join(format!(
