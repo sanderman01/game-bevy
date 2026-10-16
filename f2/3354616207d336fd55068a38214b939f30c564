@@ -1,0 +1,28 @@
+ename_mcp/src/launch/spawn.rs
+  s_51349e13722b35::t_d286ac815b979f 53
+ename_mcp/src/staleness.rs
+  s_51349e13722b35::t_e19f32bfd9fe45 380-393,676,1133-1139,1143-1147
+  s_51349e13722b35::t_f5ba3de5760b9f 376-377
+  s_51349e13722b35::t_40ea522c2c8f1a 503
+  s_51349e13722b35::t_b92cb183096126 395
+  s_51349e13722b35::t_ab1bf37a5410b4 378-379,394,396-401
+  s_51349e13722b35::t_9eb0d56b39c118 340-345
+  s_51349e13722b35::t_2d2b594c04b7f1 1125-1132,1140-1142,1148-1195
+  s_51349e13722b35::t_d5ea6221d8048e 453-460,464-485
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f23354616207d336fd55068a38214b939f30c564",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
