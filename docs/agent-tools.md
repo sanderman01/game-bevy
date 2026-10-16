@@ -314,12 +314,15 @@ the reload line usually arrives before the next call does.
 `op` is `eq`, `ne` (JSON equality, numbers within 1e-6), `lt`, `le`, `gt`, `ge`, `length_lt`,
 `length_gt` (an array such as a `Vec3`), `changed` (differs from the value at the start, no
 `value`), `exists` or `absent` (no `path`, no `value`). `position` takes the four comparisons.
-Types are full paths or a unique short name. `Transform.translation` and `CellCoord` are refused,
-as `world_mutate_component` refuses them; use `position`. `hold_frames` makes a predicate hold
-for that many frames. The result carries what met it under `met`, plus `frames`, `seconds`,
-`virtual_seconds`, `frame` and `paused`. Failures name their kind: `timed_out` (with the last
-value), `entity_gone`, `component_absent`, `not_registered`, `bad_path`, `not_comparable`,
-`world_paused`.
+Types are full paths or a unique short name. `Transform.translation` (also as `#0`), a whole
+`Transform` compared by value, and `CellCoord` are refused, as `world_mutate_component` refuses
+them; use `position`. A whole `Transform` may still be watched with `exists`, `absent` or
+`changed`. `value: null` is a value, matching an `Option` field that is `None`. `hold_frames`
+makes a predicate hold for that many frames. The result carries what met it under `met`, plus
+`frames`, `seconds`, `virtual_seconds`, `frame` and `paused`. Failures name their kind:
+`timed_out` (with the last value), `entity_not_found`, `entity_gone`, `ambiguous_entity`,
+`component_absent`, `not_registered`, `bad_path`, `not_comparable`, `not_on_grid`,
+`level_not_captured`, `invalid_params`, `world_paused`.
 
 **The paused world.** Frames keep running while time is paused, so `frames`, `log` and
 `wait_settled` progress in a paused world. A condition that needs virtual time fails
