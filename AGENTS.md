@@ -14,6 +14,7 @@ Where the two overlap, this file wins.
 | [docs/conventions.md](docs/conventions.md) | Things like coordinate system axes handedness, units, socket names, exact import/export settings. |
 | [docs/agent-tools.md](docs/agent-tools.md) | How to drive the running game from a coding agent: the MCP tools, what they can see, and how to run them. |
 | [docs/code-style.md](docs/code-style.md) | How the Rust code is written: modern Rust, lifetime rules, crates, dependencies, and API hygiene. Read it before writing or reviewing code. |
+| [docs/agent-environment.md](docs/agent-environment.md) | This machine and repo for agents: shell quoting, processes, disk, git commands that lose work, tests, logs, dependency source, review sandboxes, subagent reports. |
 
 ## What this project is
 
@@ -43,7 +44,10 @@ To test at runtime, start the editor with `game_start` (MCP) or `cargo game star
 it with `game_restart` / `cargo game restart`; never `pkill`. They run `example_game_editor_bin`,
 the only target that links `ename_remote`, so the only one the MCP tools in
 [docs/agent-tools.md](docs/agent-tools.md) can reach. On the CLI, pass `--owner` (from
-`cargo game owner --new`). Stop the games you started before you finish.
+`cargo game owner --new`). Stop or restart only games you or your parent agent started, and stop
+yours before you finish.
+Read [docs/agent-environment.md](docs/agent-environment.md) before running processes, tests or
+git commands that discard changes.
 
 ## Code style
 

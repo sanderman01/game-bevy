@@ -8,7 +8,8 @@ agent  --stdio MCP-->  ename_mcp  --HTTP JSON-RPC-->  game  (bevy_remote + custo
 
 Why the design is shaped this way is in
 [design/agent-tooling.md](design/agent-tooling.md); the plan it came from is
-`scratch/mcp-server-plan.md`.
+`scratch/mcp-server-plan.md`. Shell, process, disk, git and test rules for agents on this machine
+are in [agent-environment.md](agent-environment.md).
 
 ## Running it
 

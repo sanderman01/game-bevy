@@ -116,6 +116,19 @@ only after its start time, executable and working directory were checked again.
 command call, and the game resolves relative paths against it. The game's own working directory
 is wherever it was launched from, which under airshipgame is not the directory the agent works in.
 
+**`ename_dep_src` reads `cargo metadata`.** Agents kept reading the wrong copy of a dependency: an
+older registry version, or the registry `big_space` instead of the git checkout. `cargo metadata
+--locked --offline` already names each resolved package's `manifest_path`, registry and git alike,
+so `cargo xtask ename_dep_src <crate>` prints that directory. Parsing `Cargo.lock` would mean
+reimplementing cargo's checkout path hashing. It is parsed with `serde_json` into three-field
+structs; the `cargo_metadata` crate would add dependencies for no gain.
+
+**Read-only reviewers do not run tests.** Cargo cannot take its build lock in a read-only
+sandbox. Running the implementer's prebuilt test binaries instead was rejected: they are only as
+fresh as the last build, so a reviewer could test old code without knowing it. The implementer
+runs `cargo dev-test --no-fail-fast` after its last change and puts the result in the reviewer's
+brief; a reviewer that needs another run asks the parent.
+
 ## What the agent can actually see
 
 Type registration is a correctness requirement for MCP, not a convenience for the inspector. An

@@ -40,7 +40,7 @@ ename_mcp (bin)               -> rmcp, reqwest, tokio, serde_json, sysinfo, proc
                                  windows (Windows only)
                                  (no first-party deps, no bevy)
 ename_xtask (bin)             -> ename_asset_alias, ename_asset_package, ename_asset_vfs (zip, tar),
-                                 dirs, futures-lite, toml, uuid
+                                 dirs, futures-lite, serde, serde_json, toml, uuid
                                  (no bevy; no other first-party crate)
 ```
 
