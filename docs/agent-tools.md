@@ -285,19 +285,21 @@ without waiting.
 
 Settling covers loading, not motion: a flying airship never stops, so moving bodies are not a
 probe. And it sees only work the game already knows about: the asset watcher reports an edit
-300 to 400 ms late, as the log line `Reloaded <path>`, and a settle before that has nothing to
-wait for. So for a file edit:
+300 to 400 ms late, as the log line `Reloaded <asset path>`, and a settle before that has
+nothing to wait for. So for a file edit:
 
 1. Before the edit, read the newest log `sequence`: `log_get_entries` with `limit: 1`.
 2. Edit the file.
 3. Wait for its reload line after that sequence, then settle:
 
 ```json
-{"condition": {"log": {"message_contains": "Reloaded shaders/sky.wgsl", "after_sequence": 9120}}}
+{"condition": {"log": {"message_contains": "Reloaded alias://examples::backdrop", "after_sequence": 9120}}}
 ```
 
-The `after_sequence` matters: by default the wait only looks at lines logged after it starts, and
-the reload line usually arrives before the next call does.
+The asset path is the one the game loaded it by: an aliased file such as
+`examples-stage/backdrop.sky.ron` reloads as `alias://examples::backdrop`. When unsure, match
+`"Reloaded"` alone. The `after_sequence` matters: by default the wait only looks at lines logged
+after it starts, and the reload line often arrives before the next call does.
 
 **`wait_until` asks "has this happened yet?".** `condition` has exactly one key:
 
