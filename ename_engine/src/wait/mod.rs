@@ -11,6 +11,7 @@ mod assets;
 mod pipelines;
 mod predicate;
 mod probe;
+mod rest;
 mod settled;
 mod until;
 
@@ -68,6 +69,11 @@ impl Plugin for WaitPlugin {
             until::resolve_untils
                 .in_set(WaitSystems::Resolve)
                 .run_if(any_with_component::<until::UntilWait>),
+        )
+        .init_resource::<rest::PhysicsSteps>()
+        .add_systems(
+            FixedPostUpdate,
+            rest::count_physics_steps.run_if(any_with_component::<until::UntilWait>),
         );
     }
 }

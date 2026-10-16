@@ -19,6 +19,7 @@ use serde_json::{Value, json};
 use super::predicate::{
     ComponentCondition, PositionCheck, PositionCondition, Predicate, ResourceCondition,
 };
+use super::rest::{AtRest, AtRestCondition};
 use crate::{
     command::{Call, CommandAppExt, CommandError, CommandSpec, JobHandle, Jobs, OnCancel},
     log::{CaptureLevel, LogBuffer, LogFilter},
@@ -76,6 +77,9 @@ enum Condition {
     /// An entity's absolute position along one axis, metres, Y up:
     /// {"name": "Crate", "axis": "y", "op": "lt", "value": 2.0}.
     Position(PositionCondition),
+    /// A dynamic rigid body that stays still for `hold_seconds` of virtual time, or sleeps:
+    /// {"name": "Crate", "speed_below": 0.05, "hold_seconds": 0.25}. Needs the world running.
+    AtRest(AtRestCondition),
 }
 
 #[derive(Deserialize, JsonSchema, Clone, Debug)]
@@ -102,11 +106,12 @@ enum Evaluation {
     Log(LogFilter),
     Predicate(Predicate),
     Position(PositionCheck),
+    AtRest(AtRest),
 }
 
 impl Evaluation {
     fn needs_virtual_time(&self) -> bool {
-        matches!(self, Self::VirtualSeconds { .. })
+        matches!(self, Self::VirtualSeconds { .. } | Self::AtRest(_))
     }
 
     fn holds(&self) -> bool {
@@ -239,6 +244,7 @@ fn evaluation(condition: &Condition, world: &mut World) -> Result<Evaluation, Co
             Evaluation::Predicate(Predicate::resource(resource, world)?)
         }
         Condition::Position(position) => Evaluation::Position(PositionCheck::new(position, world)?),
+        Condition::AtRest(rest) => Evaluation::AtRest(AtRest::new(rest, world)?),
         Condition::VirtualSeconds(seconds) if seconds.is_finite() && *seconds >= 0.0 => {
             Evaluation::VirtualSeconds { seconds: *seconds }
         }
@@ -300,7 +306,7 @@ pub(super) fn resolve_untils(world: &mut World) {
             wait.frames += 1;
             (wait.frames, wait.virtual_start)
         };
-        let check = check(&mut evaluation, world, frames, virtual_now - virtual_start);
+        let check = check(&mut evaluation, world, frames, virtual_now, virtual_start);
         let frozen = frozen(world);
         let paused_now = world_is_paused(world);
         let Some(mut wait) = world.get_mut::<UntilWait>(entity) else {
@@ -374,8 +380,10 @@ fn check(
     evaluation: &mut Evaluation,
     world: &mut World,
     frames: u32,
-    virtual_seconds: f64,
+    virtual_now: f64,
+    virtual_start: f64,
 ) -> Result<Check, CommandError> {
+    let virtual_seconds = virtual_now - virtual_start;
     Ok(match evaluation {
         Evaluation::Frames(target) => Check {
             met: (frames >= *target).then(|| json!({ "frames": frames })),
@@ -388,6 +396,7 @@ fn check(
         },
         Evaluation::Predicate(predicate) => predicate.check(world)?,
         Evaluation::Position(position) => position.check(world)?,
+        Evaluation::AtRest(rest) => rest.check(world, virtual_now)?,
         Evaluation::Log(filter) => {
             let Some(buffer) = world.get_resource::<LogBuffer>() else {
                 return Ok(Check {
