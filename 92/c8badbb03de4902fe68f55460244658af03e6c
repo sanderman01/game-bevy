@@ -1,0 +1,47 @@
+ename_mcp/src/launch/build_report.rs
+  s_b915bd5f72c4be::t_980f440b8538d4 106-107,109
+  s_b915bd5f72c4be::t_37962b0315588e 120-123
+ename_mcp/src/launch/mod.rs
+  s_b915bd5f72c4be::t_9303bf8ebfa948 369-371
+  s_b915bd5f72c4be::t_8335f233508573 34
+ename_mcp/src/launch/control.rs
+  s_b915bd5f72c4be::t_b347f7e63673de 685-690
+  s_b915bd5f72c4be::t_65d5abc9067714 566
+  s_b915bd5f72c4be::t_558c1cf6b56d30 271-272
+ename_mcp/src/server.rs
+  s_b915bd5f72c4be::t_488e5538e43eb9 39,44
+  s_b915bd5f72c4be::t_c4806124ea5734 59-61
+  s_b915bd5f72c4be::t_f022e2acdd31d6 88
+  s_b915bd5f72c4be::t_2c4a62285e2519 75,78-79
+  s_b915bd5f72c4be::t_bf0988429adf63 1043-1047
+ename_mcp/src/launch/supervise.rs
+  s_b915bd5f72c4be::t_568c8cf41494d0 177
+  s_b915bd5f72c4be::t_75d7883a044d79 178-181,302-307,395-399
+ename_mcp/src/brp.rs
+  s_b915bd5f72c4be::t_21fd9e11d0adeb 203-207
+ename_mcp/src/main.rs
+  s_b915bd5f72c4be::t_d6a6a31eaacc01 71-73,75
+  s_b915bd5f72c4be::t_a5038d5be1eb24 20
+  s_b915bd5f72c4be::t_fde382f3ce71f2 35-37,40
+ename_mcp/src/server/lifecycle.rs
+  s_b915bd5f72c4be::t_bd19f85b2af798 1-249
+ename_mcp/src/server/session_tests.rs
+  s_b915bd5f72c4be::t_40e126d2278061 183-228
+  s_b915bd5f72c4be::t_6d627bd9441376 229-231
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "92c8badbb03de4902fe68f55460244658af03e6c",
+  "prompts": {},
+  "sessions": {
+    "s_b915bd5f72c4be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6f5d82ea-08e1-42ee-9c8c-6ab3babe4de5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
