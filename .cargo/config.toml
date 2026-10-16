@@ -23,8 +23,9 @@ dev-clippy = "clippy --workspace --all-targets --features example_game_editor_bi
 dev-test = "test --workspace --features example_game_editor_bin/dev"
 
 # `ename_xtask` links no Bevy, so this does not need the shared `dev`-feature build the aliases
-# above do.
-xtask = "run -p ename_xtask --"
+# above do. Its own target dir keeps it off `target/`'s lock, and keeps `dev-build`'s
+# feature-unified (Bevy-linked) build of it from replacing this one. Run it from the repo root.
+xtask = "run -q --target-dir target/ename-xtask-bin -p ename_xtask --"
 # The editor launcher (`cargo game start|stop|restart|status`). Its own target dir, so it never
 # waits on cargo's lock of `target/` while the launcher builds the editor there. If an
 # `ename_mcp` edit breaks this alias, `target/ename-launch-bin/debug/ename_mcp game stop` still
