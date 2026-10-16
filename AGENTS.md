@@ -47,7 +47,8 @@ the only target that links `ename_remote`, so the only one the MCP tools in
 `cargo game owner --new`). Stop or restart only games you or your parent agent started, and stop
 yours before you finish.
 Read [docs/agent-environment.md](docs/agent-environment.md) before running processes, tests or
-git commands that discard changes.
+git commands that discard changes. Find a dependency's source with
+`cargo xtask ename_dep_src <crate>`, never by globbing `~/.cargo` or `find /`.
 
 ## Code style
 
