@@ -454,13 +454,9 @@ fn success(value: Value, run: &str) -> CallToolResult {
     CallToolResult::structured(tagged(value, run))
 }
 
-/// A tool failure the agent sees whole, with the staleness warning when there is one.
+/// A tool failure the agent sees whole. `GameServer::call_tool` adds the staleness warning.
 pub(super) fn failure(message: String) -> CallToolResult {
-    let text = match staleness::warning() {
-        Some(warning) => format!("{message}\n\n{warning}"),
-        None => message,
-    };
-    CallToolResult::error(vec![ContentBlock::text(text)])
+    CallToolResult::error(vec![ContentBlock::text(message)])
 }
 
 #[cfg(test)]

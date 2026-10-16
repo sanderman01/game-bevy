@@ -139,12 +139,11 @@ impl GameServer {
             )
             .await
             .map_err(fail)?;
-        let status = with_warning(status);
         // Only the stop itself failing counts: an earlier crash it reports is not this call's.
         if status.error.is_some() {
             return Err(failure(&status));
         }
-        Ok(Json(status))
+        Ok(Json(with_warning(status)))
     }
 
     #[tool(
@@ -211,11 +210,10 @@ impl GameServer {
                 .refresh_and_notify(&self.endpoint.snapshot())
                 .await;
         }
-        let status = with_warning(status);
         if status.is_failure() {
             return Err(failure(&status));
         }
-        Ok(Json(status))
+        Ok(Json(with_warning(status)))
     }
 }
 
@@ -241,6 +239,8 @@ fn wait_for(seconds: Option<f64>, default: Duration) -> Duration {
     }
 }
 
+/// A successful result's staleness warning. A failure gets the full text from
+/// `GameServer::call_tool`, after its summary.
 fn with_warning(mut status: Status) -> Status {
     status.warning = staleness::warning();
     status

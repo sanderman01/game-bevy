@@ -125,16 +125,22 @@ impl GameServer {
 }
 
 /// Tool failures reach the agent as failures, with the sentence that explains them.
-///
-/// A stale build is appended here as well as carried on success, because that is the path it
-/// actually shows up on: an old image talking to a newer game fails to parse the answer long
-/// before it returns one.
+/// [`warn_on_failure`] adds the staleness warning.
 fn fail(error: anyhow::Error) -> ErrorData {
-    let message = match staleness::warning() {
-        Some(warning) => format!("{error:#}\n\n{warning}"),
-        None => format!("{error:#}"),
-    };
-    ErrorData::internal_error(message, None)
+    ErrorData::internal_error(format!("{error:#}"), None)
+}
+
+/// Adds the full staleness warning to a failed result. Every tool failure passes here, rmcp's
+/// own argument errors included, because that is where a stale build shows up: as a schema the
+/// running code predates, or an answer it cannot parse.
+fn warn_on_failure(mut response: CallToolResponse) -> CallToolResponse {
+    if let CallToolResponse::Complete(result) = &mut response
+        && result.is_error == Some(true)
+        && let Some(warning) = staleness::failure_warning()
+    {
+        result.content.push(ContentBlock::text(warning));
+    }
+    response
 }
 
 type ToolResult<T> = Result<Json<Tagged<T>>, ErrorData>;
@@ -1095,13 +1101,14 @@ impl ServerHandler for GameServer {
         let server = self.for_call();
         if server.tool_router.has_route(&request.name) {
             let call = ToolCallContext::new(&server, request, context);
-            return Ok(match server.tool_router.call(call).await {
+            let response = match server.tool_router.call(call).await {
                 Ok(response) => response,
                 Err(error) => {
                     CallToolResult::error(vec![ContentBlock::text(error.message.into_owned())])
                         .into()
                 }
-            });
+            };
+            return Ok(warn_on_failure(response));
         }
         let name = request.name.to_string();
         let mut found = server.catalog.lookup(&name);
@@ -1110,16 +1117,20 @@ impl ServerHandler for GameServer {
             found = server.catalog.lookup(&name);
         }
         let Some((tool, run)) = found else {
-            return Err(ErrorData::invalid_params(
-                format!("no tool `{name}`; the game may not be running, or may not register it"),
-                None,
-            ));
+            let mut message =
+                format!("no tool `{name}`; the game may not be running, or may not register it");
+            if let Some(warning) = staleness::failure_warning() {
+                message += &format!("\n\n{warning}");
+            }
+            return Err(ErrorData::invalid_params(message, None));
         };
         let arguments = request.arguments.unwrap_or_default();
-        Ok(server
-            .call_command(&tool.command.name, arguments, Some(run))
-            .await
-            .into())
+        Ok(warn_on_failure(
+            server
+                .call_command(&tool.command.name, arguments, Some(run))
+                .await
+                .into(),
+        ))
     }
 
     fn get_tool(&self, name: &str) -> Option<Tool> {
