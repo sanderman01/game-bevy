@@ -274,12 +274,17 @@ pub fn write_json<T: Serialize>(path: &Path, value: &T) -> anyhow::Result<()> {
     file.sync_all()?;
     drop(file);
     // Windows refuses to replace a file another process has open for a moment, such as a reader
-    // in `read_json`.
+    // in `read_json`: access denied, or a sharing violation (32). About a second of retries.
+    const SHARING_VIOLATION: i32 = 32;
     let mut attempts = 0;
     loop {
         match std::fs::rename(&temp, path) {
             Ok(()) => return Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied && attempts < 10 => {
+            Err(error)
+                if (error.kind() == std::io::ErrorKind::PermissionDenied
+                    || (cfg!(windows) && error.raw_os_error() == Some(SHARING_VIOLATION)))
+                    && attempts < 50 =>
+            {
                 attempts += 1;
                 std::thread::sleep(Duration::from_millis(20));
             }

@@ -460,23 +460,24 @@ impl Supervisor {
             let Some(game) = ProcessRef::of(answer.os_pid) else {
                 return Ok(());
             };
-            watch.game = Some(game);
+            // Only once it is recorded, so a failed write is tried again on the next poll.
             self.edit_run(|run| run.game = Some(game))?;
+            watch.game = Some(game);
         }
         let Ok(time) = client.call::<Time>("game.time.get", json!({})).await else {
             return Ok(());
         };
         if time.frame >= 2 {
+            self.edit_run(|run| {
+                run.phase = Phase::Ready;
+                run.ready_at = Some(now_f64());
+            })?;
             watch.ready = true;
             tracing::info!(
                 os_pid = watch.game.map(|game| game.pid),
                 "run {}: ready",
                 self.generation
             );
-            self.edit_run(|run| {
-                run.phase = Phase::Ready;
-                run.ready_at = Some(now_f64());
-            })?;
         }
         Ok(())
     }

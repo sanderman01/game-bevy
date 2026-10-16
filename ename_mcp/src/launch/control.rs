@@ -21,7 +21,7 @@ use super::{
     spawn,
     state::{
         BUILD_JSON, BUILD_LOG, EXIT_FILE, GAME_LOG, Instance, Phase, Run, State, StopRequest,
-        read_json, selected_path, write_selected,
+        read_json, read_selected, selected_path, write_selected,
     },
     supervise::DEFAULT_GRACE,
 };
@@ -155,12 +155,26 @@ impl Launcher {
         if let Some(status) = self.port_conflict(instance, port).await {
             return Ok(status);
         }
+        let previous_selection = read_selected(&self.project, caller.owner.as_deref())
+            .map(|(name, _)| name)
+            .filter(|name| *name != instance.name);
         let joined = self.create_run(instance, port, launch, caller).await?;
         // From now on this session's world tools talk to this instance, even while it builds.
         self.select(instance, caller);
         let mut status = self.wait_settled_until(instance, caller, deadline).await?;
         if joined {
             status.add_note("joined a launch that started at the same time.");
+        }
+        // A launch that failed gives the session back the live instance it was on.
+        if status.is_failure()
+            && let Some(previous) = previous_selection
+            && let Ok(previous) = self.instance(&previous)
+        {
+            self.select(&previous, caller);
+            status.add_note(format!(
+                "world tools still talk to instance `{}`.",
+                previous.name
+            ));
         }
         self.finish_launch(request, &mut status);
         Ok(status)
@@ -270,6 +284,7 @@ impl Launcher {
         let update = request.update.clone();
         let owner = caller.owner.clone();
         let locked = instance.clone();
+        let temp = copy.clone();
         let generation = tokio::task::spawn_blocking(move || {
             locked.update(|state| {
                 let state = state.as_mut().context("state.json disappeared")?;
@@ -283,7 +298,7 @@ impl Launcher {
                 state.last_generation += 1;
                 let generation = state.last_generation;
                 let mut run = Run::new(generation, base.merged(update));
-                let pid = spawn::supervisor(&locked.dir, &copy, generation)?;
+                let pid = spawn::supervisor(&locked.dir, &temp, generation)?;
                 run.supervisor = ProcessRef::of(pid);
                 state.pending = Some(run);
                 state.owner = owner;
@@ -291,7 +306,11 @@ impl Launcher {
             })
         })
         .await
-        .context("the launch task failed")??;
+        .context("the launch task failed")?;
+        // A spawned supervisor renamed the copy; any other outcome leaves it behind.
+        let generation = generation.inspect_err(|_| {
+            let _ = std::fs::remove_file(&copy);
+        })?;
         self.select(&instance, caller);
 
         let mut status = loop {
@@ -361,12 +380,12 @@ impl Launcher {
                         .await
                 }
                 Probe::Other => {
-                    let mut status = self.snapshot(&instance, caller).await?;
+                    let mut status = self.stop_report(&instance, caller).await?;
                     status.add_note("a process without BRP holds the port; not stopping it.");
                     Ok(status)
                 }
                 Probe::Free => {
-                    let mut status = self.snapshot(&instance, caller).await?;
+                    let mut status = self.stop_report(&instance, caller).await?;
                     status.add_note("nothing was running.");
                     Ok(status)
                 }
@@ -424,11 +443,10 @@ impl Launcher {
             tokio::time::sleep(POLL).await;
         }
         self.clear_selection(&instance, caller);
-        let mut status = self.snapshot(&instance, caller).await?;
+        let mut status = self.stop_report(&instance, caller).await?;
         if stopped_orphan && stopped {
             // The dead supervisor left no exit record; the stop itself worked.
             status.state = GameState::Stopped;
-            status.error = None;
             status.graceful = orphan_graceful;
         }
         if stopped_orphan {
@@ -442,6 +460,16 @@ impl Launcher {
                  is",
                 STOP_MARGIN.as_secs()
             ));
+        }
+        Ok(status)
+    }
+
+    /// The instance as a stop reports it. An earlier run's failure is not the stop's, so it
+    /// becomes a note; `error` is left for the stop's own failures.
+    async fn stop_report(&self, instance: &Instance, caller: &Caller) -> anyhow::Result<Status> {
+        let mut status = self.snapshot(instance, caller).await?;
+        if let Some(error) = status.error.take() {
+            status.add_note(format!("the last run failed: {error}."));
         }
         Ok(status)
     }
@@ -873,7 +901,12 @@ impl Launcher {
         };
         status.graceful = exit.graceful;
         if exit.is_failure() {
-            status.crash = Some(Crash::new(&exit, &instance.path(GAME_LOG)));
+            let mut crash = Crash::new(&exit, &instance.path(GAME_LOG));
+            // A supervisor that killed the game says why; "killed by SIGKILL" would not.
+            if let Some(error) = &run.error {
+                crash.cause.clone_from(error);
+            }
+            status.crash = Some(crash);
         }
         status.exit = Some(exit);
     }
