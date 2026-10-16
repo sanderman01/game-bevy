@@ -6,7 +6,7 @@
 //! world is paused.
 
 use bevy::{
-    asset::{LoadState, RecursiveDependencyLoadState, UntypedAssetId},
+    asset::{LoadState, RecursiveDependencyLoadState, UntypedAssetId, VisitAssetDependencies},
     platform::collections::HashSet,
     prelude::*,
     world_serialization::{DynamicWorldRoot, WorldAssetRoot, WorldInstance, WorldInstanceSpawner},
@@ -18,6 +18,7 @@ pub(super) fn assets_probe(
     server: Res<AssetServer>,
     meshes: Query<&Mesh3d>,
     materials: Query<&MeshMaterial3d<StandardMaterial>>,
+    material_assets: Option<Res<Assets<StandardMaterial>>>,
     world_roots: Query<(
         Option<&WorldAssetRoot>,
         Option<&DynamicWorldRoot>,
@@ -45,6 +46,16 @@ pub(super) fn assets_probe(
                     server.get_recursive_dependency_load_state(id),
                     Some(RecursiveDependencyLoadState::Loading)
                 )
+                || material_assets
+                    .as_ref()
+                    .and_then(|assets| assets.get(id))
+                    .is_some_and(|material| {
+                        // A material made in code has no load state of its own, so its
+                        // textures are checked one by one.
+                        let mut any = false;
+                        material.visit_dependencies(&mut |dependency| any |= loading(dependency));
+                        any
+                    })
         })
         .count();
     // `world_instance_spawner` inserts `WorldInstance` when it queues the spawn, not when the
@@ -141,6 +152,31 @@ mod tests {
         }
     }
 
+    #[derive(TypePath)]
+    struct GatedImageLoader(Arc<AtomicBool>);
+
+    impl AssetLoader for GatedImageLoader {
+        type Asset = Image;
+        type Settings = ();
+        type Error = std::io::Error;
+
+        async fn load(
+            &self,
+            _: &mut dyn Reader,
+            _: &(),
+            _: &mut LoadContext<'_>,
+        ) -> Result<Image, Self::Error> {
+            while !self.0.load(Ordering::Acquire) {
+                yield_now().await;
+            }
+            Ok(Image::default())
+        }
+
+        fn extensions(&self) -> &[&str] {
+            &["gatedimage"]
+        }
+    }
+
     struct Fixture {
         app: App,
         gate: Arc<AtomicBool>,
@@ -149,7 +185,7 @@ mod tests {
 
     fn fixture() -> Fixture {
         let dir = tempfile::tempdir().unwrap();
-        for file in ["a.gatedmesh", "b.gatedworld"] {
+        for file in ["a.gatedmesh", "b.gatedworld", "c.gatedimage"] {
             std::fs::write(dir.path().join(file), b"x").unwrap();
         }
         let gate = Arc::new(AtomicBool::new(false));
@@ -166,7 +202,9 @@ mod tests {
         .init_asset::<Mesh>()
         .init_asset::<StandardMaterial>()
         .register_asset_loader(GatedMeshLoader(gate.clone()))
-        .register_asset_loader(GatedWorldLoader(gate.clone()));
+        .register_asset_loader(GatedWorldLoader(gate.clone()))
+        .init_asset::<Image>()
+        .register_asset_loader(GatedImageLoader(gate.clone()));
         app.world_mut().spawn(SettleWaiter);
         Fixture {
             app,
@@ -241,5 +279,28 @@ mod tests {
 
         gate.store(true, Ordering::Release);
         update_until(&mut app, |app| counter(app, "world_roots_loading") == 0);
+    }
+
+    #[test]
+    fn a_code_made_material_counts_while_its_texture_loads() {
+        let Fixture {
+            mut app,
+            gate,
+            _dir,
+        } = fixture();
+        let texture: Handle<Image> = app.world().resource::<AssetServer>().load("c.gatedimage");
+        let material = app
+            .world_mut()
+            .resource_mut::<Assets<StandardMaterial>>()
+            .add(StandardMaterial {
+                base_color_texture: Some(texture),
+                ..default()
+            });
+        app.world_mut().spawn(MeshMaterial3d(material));
+        app.update();
+        assert_eq!(counter(&app, "materials_loading"), 1);
+
+        gate.store(true, Ordering::Release);
+        update_until(&mut app, |app| counter(app, "materials_loading") == 0);
     }
 }
