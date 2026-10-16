@@ -24,6 +24,12 @@ use crate::{
     command::{CommandError, EntityTarget},
 };
 
+/// Reads a field that is present, `null` included, as `Some`; `#[serde(default)]` leaves a
+/// missing one `None`. Plain `Option` would read `null` as missing too.
+fn present<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(deserializer).map(Some)
+}
+
 /// How to compare.
 #[derive(Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -46,6 +52,25 @@ pub(super) enum Op {
     Absent,
 }
 
+impl Op {
+    /// As the caller wrote it.
+    fn name(self) -> &'static str {
+        match self {
+            Self::Eq => "eq",
+            Self::Ne => "ne",
+            Self::Lt => "lt",
+            Self::Le => "le",
+            Self::Gt => "gt",
+            Self::Ge => "ge",
+            Self::LengthLt => "length_lt",
+            Self::LengthGt => "length_gt",
+            Self::Changed => "changed",
+            Self::Exists => "exists",
+            Self::Absent => "absent",
+        }
+    }
+}
+
 /// `{"component": {...}}`.
 #[derive(Deserialize, JsonSchema, Clone, Debug)]
 #[serde(deny_unknown_fields)]
@@ -63,8 +88,9 @@ pub(super) struct ComponentCondition {
     #[serde(default)]
     path: Option<String>,
     op: Op,
-    /// What to compare with, shaped as `world_get_components` returns it.
-    #[serde(default)]
+    /// What to compare with, shaped as `world_get_components` returns it. `null` is a value: an
+    /// `Option` field that is `None` reads as `null`.
+    #[serde(default, deserialize_with = "present")]
     value: Option<Value>,
 }
 
@@ -78,7 +104,7 @@ pub(super) struct ResourceCondition {
     #[serde(default)]
     path: Option<String>,
     op: Op,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "present")]
     value: Option<Value>,
 }
 
@@ -180,8 +206,19 @@ impl Predicate {
             ));
         }
         let path = path.filter(|path| !path.is_empty());
+        // Field 0 of `Transform` is `translation`, so `#0` names it too.
+        let first = path.map(|path| {
+            path.trim_start_matches('.')
+                .split(['.', '['])
+                .next()
+                .unwrap_or_default()
+        });
         let touches_translation = type_path.ends_with("::Transform")
-            && path.is_none_or(|path| path.trim_start_matches('.').starts_with("translation"));
+            && match first {
+                Some(first) => first == "translation" || first == "#0",
+                // The whole value includes the translation; presence and change do not compare it.
+                None => !matches!(op, Op::Exists | Op::Absent | Op::Changed),
+            };
         if touches_translation || type_path.ends_with("::CellCoord") {
             return Err(CommandError::invalid(
                 "invalid_params",
@@ -207,7 +244,7 @@ impl Predicate {
             (_, _, None) => {
                 return Err(CommandError::invalid(
                     "invalid_params",
-                    format!("`{op:?}` needs a `value`").to_lowercase(),
+                    format!("`{}` needs a `value`", op.name()),
                 ));
             }
             _ => {}
@@ -362,10 +399,10 @@ impl Predicate {
         CommandError::invalid(
             "not_comparable",
             format!(
-                "`{:?}` needs {needs}; `{}` is {current}",
-                self.op, self.type_path
-            )
-            .to_lowercase(),
+                "`{}` needs {needs}; `{}` is {current}",
+                self.op.name(),
+                self.type_path
+            ),
         )
     }
 }
@@ -512,6 +549,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::bigspace::{CellCoord, Grid};
     use crate::{
         command::{
             Caller, CommandPlugin, CommandScope, CommandWorldExt, JobId, JobStatus, Jobs, Reply,
@@ -525,6 +563,7 @@ mod tests {
     struct Speed {
         value: f32,
         direction: Vec3,
+        limit: Option<f32>,
     }
 
     #[derive(Resource, Reflect, Default)]
@@ -537,12 +576,14 @@ mod tests {
             .register_type::<Speed>()
             .register_type::<Mode>()
             .register_type::<Transform>()
+            .register_type::<CellCoord>()
             .init_resource::<Mode>();
         app.world_mut().spawn((
             Name::new("Crate"),
             Speed {
                 value: 1.0,
                 direction: Vec3::new(3.0, 4.0, 0.0),
+                limit: None,
             },
         ));
         app
@@ -613,9 +654,11 @@ mod tests {
             (
                 "",
                 "eq",
-                json!({ "value": 1.0, "direction": [3.0, 4.0, 0.0] }),
+                json!({ "value": 1.0, "direction": [3.0, 4.0, 0.0], "limit": null }),
                 true,
             ),
+            ("limit", "eq", Value::Null, true),
+            ("limit", "ne", Value::Null, false),
         ] {
             assert_eq!(
                 holds(&mut app, component(path, op, value.clone())),
@@ -684,19 +727,137 @@ mod tests {
             "not_comparable"
         );
         assert_eq!(
-            refused(&mut app, component("value", "eq", Value::Null)),
-            "invalid_params"
-        );
-        assert_eq!(
             refused(
                 &mut app,
-                json!({ "component": {
-                    "name": "Crate", "component": "bevy_transform::components::transform::Transform",
-                    "path": "translation.y", "op": "lt", "value": 0
-                } })
+                json!({ "component": { "name": "Crate", "component": "Speed", "op": "eq" } })
             ),
-            "invalid_params"
+            "invalid_params",
+            "a missing value"
         );
+        let transform = |path: &str, op: &str| {
+            json!({ "component": {
+                "name": "Crate", "component": "bevy_transform::components::transform::Transform",
+                "path": path, "op": op, "value": 0
+            } })
+        };
+        for path in ["translation.y", ".translation", "#0", ".#0.y", ""] {
+            assert_eq!(
+                refused(&mut app, transform(path, "lt")),
+                "invalid_params",
+                "{path}"
+            );
+        }
+        let err = call(
+            &mut app,
+            json!({ "component": { "name": "Crate", "component": "CellCoord", "op": "exists" } }),
+        )
+        .unwrap_err();
+        assert_eq!(err.kind, "invalid_params");
+        assert!(err.hint.unwrap().contains("position"));
+    }
+
+    #[test]
+    fn a_whole_transform_may_be_watched_for_presence_and_change() {
+        let mut app = app();
+        let entity = EntityTarget::by_name("Crate")
+            .resolve(app.world_mut())
+            .unwrap();
+        app.world_mut()
+            .entity_mut(entity)
+            .insert(Transform::default());
+        assert!(holds(
+            &mut app,
+            json!({ "component": { "name": "Crate", "component": "Transform", "op": "exists" } })
+        ));
+        let job = call(
+            &mut app,
+            json!({ "component": { "name": "Crate", "component": "Transform", "op": "changed" } }),
+        )
+        .unwrap();
+        app.update();
+        app.world_mut()
+            .get_mut::<Transform>(entity)
+            .unwrap()
+            .scale
+            .x = 2.0;
+        app.update();
+        assert_eq!(status(&app, &job).state, "succeeded");
+    }
+
+    mod first {
+        use bevy::prelude::*;
+
+        #[derive(Component, Reflect, Default)]
+        #[reflect(Component)]
+        pub struct Twin;
+    }
+
+    mod second {
+        use bevy::prelude::*;
+
+        #[derive(Component, Reflect, Default)]
+        #[reflect(Component)]
+        pub struct Twin;
+    }
+
+    #[test]
+    fn an_ambiguous_short_name_asks_for_the_full_path() {
+        let mut app = app();
+        app.register_type::<first::Twin>()
+            .register_type::<second::Twin>();
+        let err = call(
+            &mut app,
+            json!({ "component": { "name": "Crate", "component": "Twin", "op": "exists" } }),
+        )
+        .unwrap_err();
+        assert_eq!(err.kind, "not_registered");
+        assert!(err.message.contains("several types"), "{err}");
+        let full = std::any::type_name::<first::Twin>();
+        assert!(holds(
+            &mut app,
+            json!({ "component": { "name": "Crate", "component": full, "op": "absent" } })
+        ));
+    }
+
+    #[test]
+    fn a_position_condition_compares_absolute_metres() {
+        let mut app = app();
+        let grid = app.world_mut().spawn(Grid::new(100.0, 0.0)).id();
+        let body = app
+            .world_mut()
+            .spawn((
+                Name::new("Body"),
+                ChildOf(grid),
+                CellCoord::new(0, 2, 0),
+                Transform::from_xyz(0.0, 5.0, 0.0),
+            ))
+            .id();
+        let below = |value: f64| json!({ "position": { "name": "Body", "axis": "y", "op": "lt", "value": value } });
+        // Cell 2 of 100 m plus 5 m: 205 m, not the 5 m the transform alone says.
+        assert!(!holds(&mut app, below(200.0)));
+        let job = call(&mut app, below(200.0)).unwrap();
+        app.update();
+        app.world_mut()
+            .entity_mut(body)
+            .insert(CellCoord::new(0, 1, 0));
+        app.update();
+        let status = status(&app, &job);
+        assert_eq!(
+            status.result.unwrap()["met"]["position"],
+            json!([0.0, 105.0, 0.0])
+        );
+        let err = call(
+            &mut app,
+            json!({ "position": { "name": "Body", "axis": "y", "op": "eq", "value": 1.0 } }),
+        )
+        .unwrap_err();
+        assert_eq!(err.kind, "invalid_params");
+        let err = call(
+            &mut app,
+            json!({ "position": { "name": "Crate", "axis": "y", "op": "lt", "value": 1.0 } }),
+        )
+        .unwrap_err();
+        assert_eq!(err.kind, "not_on_grid");
     }
 
     #[test]
