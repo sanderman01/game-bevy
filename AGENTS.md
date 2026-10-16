@@ -46,7 +46,8 @@ the only target that links `ename_remote`, so the only one the MCP tools in
 [docs/agent-tools.md](docs/agent-tools.md) can reach. On the CLI, pass `--owner` (from
 `cargo game owner --new`). Stop or restart only games you or your parent agent started; stop
 others only when the user asks. Stop yours before you finish, unless you leave one running for
-the user to inspect; then say so.
+the user to inspect; then say so. When `ename_mcp` changed, build the sidecar with
+`cargo mcp-build`, then ask the user for `/mcp reconnect` (you cannot).
 Read [docs/agent-environment.md](docs/agent-environment.md) before running processes, tests or
 git commands that discard changes. Find a dependency's source with
 `cargo xtask ename_dep_src <crate>`, never by globbing `~/.cargo` or `find /`.

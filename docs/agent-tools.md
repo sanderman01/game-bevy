@@ -26,19 +26,22 @@ Expect a long first build: the editor pulls in egui and the dev-only Bevy featur
 workspace optimizes dependencies. `game_start` returns `building` after 50 seconds;
 `game_status` with `wait_seconds: 50` follows it.
 
-Build the sidecar once:
+Build the sidecar once, and again after pulling a change to its path or its sources, before
+`/mcp reconnect`:
 
 ```sh
-cargo build -p ename_mcp
+cargo mcp-build
 ```
 
-Register it with the client. For Claude Code, in `.mcp.json` at the repo root:
+The alias builds into its own target dir, `target/ename-mcp-bin`, so `cargo dev-build` and
+`cargo game` never replace the binary a session runs. airshipgame's `cargo mcp-build` builds the
+same binary. Register it with the client. For Claude Code, in `.mcp.json` at the repo root:
 
 ```json
 {
   "mcpServers": {
     "game": {
-      "command": "./target/debug/ename_mcp"
+      "command": "./target/ename-mcp-bin/debug/ename_mcp"
     }
   }
 }
@@ -62,7 +65,7 @@ message on a failure:
 
 | Warning | Means | Do |
 | --- | --- | --- |
-| "its sources changed ..., after the last build" | A source file of `target/debug/ename_mcp`, as cargo's `ename_mcp.d` lists them, is newer than it or gone. | Run the build command the warning names (`cargo build -p ename_mcp` here), then ask the user for `/mcp reconnect`. |
+| "its sources changed ..., after the last build" or "a source file the last build used is gone" | A source file of the sidecar binary, as cargo's `ename_mcp.d` beside it lists them, changed after that build started, or is gone. | Run the build command the warning names (here `cargo build -p ename_mcp --target-dir target/ename-mcp-bin`, the same as `cargo mcp-build`), then ask the user for `/mcp reconnect`. |
 | "the build on disk ... is not the one this process started from" | The binary changed after this process started. | Ask the user for `/mcp reconnect`. |
 
 The first result after the condition starts or changes, and every failure, carry the full text.
@@ -70,12 +73,10 @@ Other results carry a short form. Either way, do what the warning says, and tell
 reply what it asks of them, and why; if you may not build, ask the user to. Treat surprising
 results from before the reconnect with suspicion.
 
-`cargo game` builds its own copy in `target/ename-launch-bin`, so it does not clear the warning.
-`cargo dev-build` and `cargo build -p ename_mcp` build the sidecar with different features. Each
-puts its own build at `target/debug/ename_mcp`, so running one after the other changes the binary
-and raises the warning even when no source changed. On Windows the connected sidecar locks its
-`.exe` and the build fails: the user disables the `game` server in `/mcp`, you wait for them to
-confirm and build, then the user enables it again. The warning says so there.
+`cargo game` and `cargo dev-build` build their own copies, in `target/ename-launch-bin` and
+`target/debug`, so they neither clear nor raise the warning. On Windows the connected sidecar
+locks its `.exe` and the build fails: the user disables the `game` server in `/mcp`, you wait for
+them to confirm, then build, then the user enables it again. The warning says so there.
 
 ## Lifecycle
 

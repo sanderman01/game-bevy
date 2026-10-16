@@ -68,8 +68,8 @@ before relying on them.
 - Use the `cargo dev-*` aliases. A plain `cargo test -p <crate>` resolves Bevy without the
   aliases' features (`dynamic_linking`) and rebuilds all of it.
 - One cargo command per target directory at a time; a second one waits on `Blocking waiting for
-  file lock`. airshipgame's `cargo build --manifest-path ../game/Cargo.toml -p ename_mcp` uses
-  `../game/target`. `cargo game` and `cargo xtask` have their own target dirs in each repo.
+  file lock`. `cargo game` and `cargo xtask` have their own target dirs in each repo.
+  `cargo mcp-build` uses game's `target/ename-mcp-bin` from both repos.
 - `cargo dev-test --no-fail-fast` runs every test binary; without it the first failing binary
   hides the rest.
 - Leave a crate out with `cargo dev-test --exclude <crate>`; skip one known failure with
