@@ -20,7 +20,7 @@ use super::{
     Project,
     build_report::BuildReport,
     cargo,
-    crash::ExitInfo,
+    crash::{ExitInfo, ExitReason},
     now_f64, port,
     process::ProcessRef,
     spawn,
@@ -36,6 +36,14 @@ pub const DEFAULT_GRACE: f64 = 5.0;
 /// How long a restart waits for the previous run's supervisor to record its exit, past its
 /// grace.
 const STOP_MARGIN: Duration = Duration::from_secs(10);
+/// Consecutive failures to wait on the game before the supervisor gives it up and kills it.
+const MAX_WAIT_ERRORS: u32 = 25;
+/// How long the rest of the game's group may outlive it before it is killed.
+const REAP_WAIT: Duration = Duration::from_secs(5);
+/// How long the port may answer from another process before the launch fails.
+const FOREIGN_ANSWER_LIMIT: Duration = Duration::from_secs(5);
+/// A temporary executable copy older than this was left by a failed spawn.
+const STALE_TEMP_AGE: Duration = Duration::from_secs(600);
 
 /// `ename_mcp supervise <instance-dir> <generation>`.
 pub async fn run(args: &[String]) -> anyhow::Result<()> {
@@ -51,12 +59,19 @@ pub async fn run(args: &[String]) -> anyhow::Result<()> {
             .unwrap_or_default(),
         dir,
     };
+    // The game must not inherit this process's log handle along with its own.
+    #[cfg(windows)]
+    spawn::stop_inheriting_std_handles();
     let supervisor = Supervisor::new(instance, generation).await?;
     let result = supervisor.supervise().await;
     if let Err(error) = &result {
         tracing::error!("supervisor failed: {error:#}");
-        // A run nobody finishes would read as building forever.
-        let _ = supervisor.set_phase(Phase::Exited);
+        // A run nobody finishes would read as building forever, and the cause belongs in it.
+        let cause = format!("its supervisor failed: {error:#}");
+        let _ = supervisor.edit_run(|run| {
+            run.error = Some(cause);
+            run.phase = Phase::Exited;
+        });
     }
     result
 }
@@ -110,7 +125,7 @@ impl Supervisor {
             Build::Failed => return self.set_phase(Phase::BuildFailed),
             Build::Done => {}
         }
-        if self.stop_requested()?.is_some() {
+        if self.stop_requested().is_some() {
             return self.set_phase(Phase::Stopped);
         }
 
@@ -128,15 +143,23 @@ impl Supervisor {
     }
 
     /// The stop request on this run. A run that is no longer in the state was replaced by a
-    /// newer restart, which counts as a request.
-    fn stop_requested(&self) -> anyhow::Result<Option<StopRequest>> {
-        let state = self.read()?;
-        Ok(match state.run(self.generation) {
-            Some(run) => run.stop_requested,
-            None => Some(StopRequest {
-                grace_seconds: DEFAULT_GRACE,
-            }),
-        })
+    /// newer restart, and a state that is gone was removed by hand: both count as a request. A
+    /// state that cannot be read right now is no request; the next poll reads it again.
+    fn stop_requested(&self) -> Option<StopRequest> {
+        let replaced = Some(StopRequest {
+            grace_seconds: DEFAULT_GRACE,
+        });
+        match self.instance.read() {
+            Ok(Some(state)) => match state.run(self.generation) {
+                Some(run) => run.stop_requested,
+                None => replaced,
+            },
+            Ok(None) => replaced,
+            Err(error) => {
+                tracing::warn!("cannot read the state: {error:#}");
+                None
+            }
+        }
     }
 
     fn edit_run(&self, edit: impl FnOnce(&mut Run)) -> anyhow::Result<()> {
@@ -180,14 +203,22 @@ impl Supervisor {
             self.project.config.package
         );
         loop {
-            if let Some(status) = child.try_wait()? {
-                return Ok(if status.success() {
-                    Build::Done
-                } else {
-                    Build::Failed
-                });
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    return Ok(if status.success() {
+                        Build::Done
+                    } else {
+                        Build::Failed
+                    });
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    // Never leave a build running that nobody watches.
+                    let _ = child.start_kill();
+                    return Err(error).context("cannot wait on cargo build");
+                }
             }
-            if self.stop_requested()?.is_some() {
+            if self.stop_requested().is_some() {
                 Box::into_pin(child.kill()).await?;
                 return Ok(Build::Stopped);
             }
@@ -226,12 +257,9 @@ impl Supervisor {
                 return Ok(());
             }
             if !run.supervisor_alive() {
-                // Its supervisor died: the game is ours to stop by pid.
-                if let Some(game) = run.game.filter(|game| game.is_alive()) {
-                    let binary = self.project.binary_path();
-                    game.kill_checked(|exe| {
-                        super::control::is_game_binary(&self.project, exe, &binary)
-                    })?;
+                // Its supervisor died: the game is ours to stop by pid, gracefully first.
+                if let Some(game) = run.game.filter(ProcessRef::is_alive) {
+                    super::control::stop_by_pid(&self.project, self.port, game, grace).await?;
                 }
                 return Ok(());
             }
@@ -241,12 +269,19 @@ impl Supervisor {
         Ok(())
     }
 
-    /// Makes this run `current`. Returns false when it was replaced in the meantime.
+    /// Makes this run `current`. Returns false when it was replaced or asked to stop in the
+    /// meantime; the check is under the lock, so a stop cannot slip in before the spawn.
     fn promote(&self) -> anyhow::Result<bool> {
         self.instance.update(|state| {
             let Some(state) = state.as_mut() else {
                 return Ok(false);
             };
+            if state
+                .run(self.generation)
+                .is_none_or(|run| run.stop_requested.is_some())
+            {
+                return Ok(false);
+            }
             if state.pending.as_ref().map(|run| run.generation) == Some(self.generation) {
                 state.current = state.pending.take();
             }
@@ -305,19 +340,40 @@ impl Supervisor {
             "run {}: game spawned",
             self.generation
         );
-        self.edit_run(|run| run.spawned_at = Some(now_f64()))?;
+        // From here on an error must not return with the game running unwatched: transient ones
+        // are logged and the next poll tries again.
+        if let Err(error) = self.edit_run(|run| run.spawned_at = Some(now_f64())) {
+            tracing::warn!("cannot record the spawn: {error:#}");
+        }
 
         let mut watch = Watch::default();
+        let mut wait_errors = 0;
         let status = loop {
-            if let Some(status) = child.try_wait()? {
-                break status;
+            match child.try_wait() {
+                Ok(Some(status)) => break Some(status),
+                Ok(None) => wait_errors = 0,
+                Err(error) => {
+                    wait_errors += 1;
+                    tracing::warn!("cannot wait on the game: {error}");
+                    if wait_errors >= MAX_WAIT_ERRORS {
+                        break None;
+                    }
+                }
             }
-            self.watch_game(&mut watch, child_pid, child.as_mut())
-                .await?;
+            if let Err(error) = self.watch_game(&mut watch, child_pid, child.as_mut()).await {
+                tracing::warn!("watching the game: {error:#}");
+            }
             tokio::time::sleep(POLL).await;
         };
-        // Reaps the rest of the group too.
-        let status = child.wait().await.unwrap_or(status);
+        let Some(status) = status else {
+            let _ = child.start_kill();
+            bail!("lost track of the game process; killed its process group");
+        };
+        // Reaps the rest of the group. Bounded, because on Windows the job's wait lasts until
+        // every process in it is gone; what is left once the game exited is killed.
+        if tokio::time::timeout(REAP_WAIT, child.wait()).await.is_err() {
+            let _ = child.start_kill();
+        }
         self.record_exit(status, &watch)
     }
 
@@ -329,10 +385,10 @@ impl Supervisor {
         child: &mut dyn ChildWrapper,
     ) -> anyhow::Result<()> {
         if !watch.ready {
-            self.check_ready(watch, child_pid).await?;
+            self.check_ready(watch, child_pid, child).await?;
         }
         if watch.stop_deadline.is_none()
-            && let Some(request) = self.stop_requested()?
+            && let Some(request) = self.stop_requested()
         {
             watch.stop_deadline =
                 Some(Instant::now() + Duration::from_secs_f64(request.grace_seconds.max(0.0)));
@@ -358,7 +414,12 @@ impl Supervisor {
 
     /// Records the game once BRP answers from our own process, and `ready` once its main schedule
     /// has advanced two frames.
-    async fn check_ready(&self, watch: &mut Watch, child_pid: u32) -> anyhow::Result<()> {
+    async fn check_ready(
+        &self,
+        watch: &mut Watch,
+        child_pid: u32,
+        child: &mut dyn ChildWrapper,
+    ) -> anyhow::Result<()> {
         #[derive(Deserialize)]
         struct Pid {
             os_pid: u32,
@@ -379,8 +440,23 @@ impl Supervisor {
                     && super::process::info(answer.os_pid)
                         .is_some_and(|info| info.parent == Some(child_pid)));
             if !ours {
+                // Another game holds the port. Ours normally exits with code 3 by itself; one
+                // that lost the bind race never will, so it is failed here.
+                let since = *watch.foreign_since.get_or_insert_with(Instant::now);
+                if since.elapsed() >= FOREIGN_ANSWER_LIMIT && !watch.killed {
+                    let cause = format!(
+                        "port {} answers from os pid {}, not this game; it was stopped",
+                        self.port, answer.os_pid
+                    );
+                    tracing::warn!("{cause}");
+                    self.edit_run(|run| run.error = Some(cause))?;
+                    watch.conflict = true;
+                    watch.killed = true;
+                    child.start_kill()?;
+                }
                 return Ok(());
             }
+            watch.foreign_since = None;
             let Some(game) = ProcessRef::of(answer.os_pid) else {
                 return Ok(());
             };
@@ -408,7 +484,10 @@ impl Supervisor {
     fn record_exit(&self, status: ExitStatus, watch: &Watch) -> anyhow::Result<()> {
         let requested = watch.stop_deadline.is_some();
         let mut exit = ExitInfo::from_status(self.generation, status, requested);
-        if requested {
+        if watch.conflict {
+            // Killed by us for a port conflict, which the run's `error` names: not a crash.
+            exit.reason = ExitReason::Error;
+        } else if requested {
             exit.graceful = Some(!watch.killed);
         }
         tracing::info!(?exit, "game exited");
@@ -426,6 +505,10 @@ enum Build {
 #[derive(Default)]
 struct Watch {
     game: Option<ProcessRef>,
+    /// Since when the port has answered from another process.
+    foreign_since: Option<Instant>,
+    /// The game was stopped because another process holds its port.
+    conflict: bool,
     ready: bool,
     stop_deadline: Option<Instant>,
     killed: bool,
@@ -447,17 +530,33 @@ fn features(project: &Project, run: &Run) -> Vec<String> {
     }
 }
 
-/// Deletes earlier generations' executable copies. One still running cannot be deleted on
-/// Windows, and that is fine: the next generation tries again.
+/// Deletes earlier generations' executable copies, and temporary copies a failed spawn left
+/// behind. Never a newer generation's. One still running cannot be deleted on Windows, and that
+/// is fine: the next generation tries again.
 fn remove_old_copies(dir: &Path, generation: u64) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
-    let own = format!("supervise-{generation}{}", std::env::consts::EXE_SUFFIX);
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        if name.starts_with("supervise-") && name != own {
+        let stale = if name.starts_with(spawn::TEMP_PREFIX) {
+            entry
+                .metadata()
+                .and_then(|metadata| metadata.modified())
+                .is_ok_and(|modified| modified.elapsed().is_ok_and(|age| age > STALE_TEMP_AGE))
+        } else {
+            copy_generation(&name).is_some_and(|older| older < generation)
+        };
+        if stale {
             let _ = std::fs::remove_file(entry.path());
         }
     }
+}
+
+/// The generation in `supervise-<generation>[.exe]`.
+fn copy_generation(name: &str) -> Option<u64> {
+    name.strip_prefix("supervise-")?
+        .strip_suffix(std::env::consts::EXE_SUFFIX)?
+        .parse()
+        .ok()
 }

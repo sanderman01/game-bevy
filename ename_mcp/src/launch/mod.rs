@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 
 pub use control::{Caller, LaunchRequest, Launcher};
 pub use port::url as port_url;
-pub use state::{Stamp, read_selected, selected_path};
+pub use state::{Stamp, is_valid_owner, read_selected, selection_stamp};
 pub use supervise::DEFAULT_GRACE;
 
 /// The port of the `default` instance, matching the game's and the sidecar's default.
@@ -59,9 +59,18 @@ fn current_exe() -> anyhow::Result<PathBuf> {
 /// The MCP session's owner token: the sidecar's parent process, the client that spawned it from
 /// `.mcp.json`. It survives `/mcp reconnect`, differs between client sessions, and is shared
 /// by an agent and the subagents on its connection.
-pub fn mcp_owner() -> Option<String> {
-    let parent = process::parent_of_current()?;
-    Some(format!("mcp-{}-{}", parent.pid, parent.start_time))
+///
+/// When the parent cannot be read, the sidecar's own process stands in, so the session still owns
+/// only its own games and never acts as the user.
+pub fn mcp_owner() -> String {
+    if let Some(parent) = process::parent_of_current() {
+        return format!("mcp-{}-{}", parent.pid, parent.start_time);
+    }
+    tracing::warn!("cannot read the sidecar's parent process; owning games as this process");
+    match process::ProcessRef::current() {
+        Some(own) => format!("mcp-self-{}-{}", own.pid, own.start_time),
+        None => format!("mcp-self-{}-{}", std::process::id(), now()),
+    }
 }
 
 /// The workspace the launcher runs the editor of: what one `cargo metadata` call says.
@@ -86,10 +95,15 @@ pub struct LaunchConfig {
 impl Project {
     /// Runs `cargo metadata` in `cwd`.
     pub async fn discover(cwd: &Path) -> anyhow::Result<Self> {
-        let output = tokio::process::Command::new(cargo())
+        let mut command = tokio::process::Command::new(cargo());
+        command
             .args(["metadata", "--no-deps", "--format-version", "1"])
             .current_dir(cwd)
-            .stdin(std::process::Stdio::null())
+            .stdin(std::process::Stdio::null());
+        // The detached supervisor has no console, and a console child would open a window.
+        #[cfg(windows)]
+        command.creation_flags(windows::Win32::System::Threading::CREATE_NO_WINDOW.0);
+        let output = command
             .output()
             .await
             .context("cannot run `cargo metadata`")?;
@@ -364,6 +378,10 @@ pub struct Status {
     pub caller: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// Why the launch or the stop failed, when it was not the build or the game's own exit: the
+    /// supervisor died, another process answered on the port, a stop ran out of time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     /// Something about the sidecar itself that needs acting on.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub warning: Option<String>,
@@ -383,6 +401,9 @@ impl Status {
 
     /// A launch that ended in a failure the caller must act on.
     pub fn is_failure(&self) -> bool {
+        if self.error.is_some() {
+            return true;
+        }
         match self.state {
             GameState::BuildFailed | GameState::PortInUse => true,
             GameState::Exited => self.crash.is_some(),
@@ -414,6 +435,9 @@ impl Status {
         }
         if let Some(holder) = &self.holder {
             line.push_str(&format!(": held by {}", holder.describe()));
+        }
+        if let Some(error) = &self.error {
+            line.push_str(&format!(": {error}"));
         }
         if let Some(note) = &self.note {
             line.push_str(&format!(". {note}"));

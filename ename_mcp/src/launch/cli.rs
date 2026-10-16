@@ -13,7 +13,7 @@ use std::{
 
 use super::{
     Caller, DEFAULT_INSTANCE, GameState, LaunchRequest, LaunchUpdate, Launcher, Project, Status,
-    supervise::DEFAULT_GRACE,
+    control::ExternalGame, is_valid_owner, supervise::DEFAULT_GRACE,
 };
 
 const USAGE: &str = "\
@@ -126,9 +126,9 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Invocation, Strin
             "--window-size" => window_size = Some(size(&flag, &value()?)?),
             "--render-size" => render_size = Some(size(&flag, &value()?)?),
             "--settle" => settle = true,
-            "--wait" => wait = Some(number::<f64>(&flag, &value()?)?),
+            "--wait" => wait = Some(seconds_arg(&flag, &value()?)?),
             "--take-over" => take_over = true,
-            "--grace" => grace = number(&flag, &value()?)?,
+            "--grace" => grace = seconds_arg(&flag, &value()?)?,
             "--new" => new = true,
             "-h" | "--help" => return Err(USAGE.to_owned()),
             other => return Err(format!("unknown flag `{other}`\n\n{USAGE}")),
@@ -170,6 +170,15 @@ fn number<T: std::str::FromStr>(flag: &str, text: &str) -> Result<T, String> {
         .map_err(|_| format!("{flag} takes a number, not `{text}`"))
 }
 
+/// A duration in seconds: a finite number, not negative. `nan` and `inf` parse as `f64`.
+fn seconds_arg(flag: &str, text: &str) -> Result<f64, String> {
+    let seconds: f64 = number(flag, text)?;
+    if !seconds.is_finite() || seconds < 0.0 {
+        return Err(format!("{flag} takes a number of seconds, not `{text}`"));
+    }
+    Ok(seconds)
+}
+
 fn size(flag: &str, text: &str) -> Result<[u32; 2], String> {
     let (width, height) = text
         .split_once(['x', 'X'])
@@ -191,12 +200,20 @@ pub async fn run(args: &[String]) -> ExitCode {
             .ok()
             .filter(|owner| !owner.is_empty())
     });
+    if let Some(owner) = owner.as_deref().filter(|owner| !is_valid_owner(owner)) {
+        eprintln!(
+            "error: owner tokens are 1 to 64 letters, digits, `-` or `_`, not `{owner}`. \
+             `cargo game owner --new` mints one."
+        );
+        return ExitCode::from(4);
+    }
     if let Verb::Owner { new } = invocation.verb {
         let token = if new { Some(mint_owner()) } else { owner };
         println!("{}", token.as_deref().unwrap_or("null"));
         return ExitCode::SUCCESS;
     }
 
+    let stop = matches!(invocation.verb, Verb::Stop { .. });
     match execute(invocation.verb, owner).await {
         Ok(status) => {
             if invocation.json {
@@ -207,11 +224,16 @@ pub async fn run(args: &[String]) -> ExitCode {
             } else {
                 println!("{}", status.summary());
             }
-            ExitCode::from(exit_code(&status))
+            ExitCode::from(exit_code(&status, stop))
         }
         Err(error) => {
             eprintln!("error: {error:#}");
-            ExitCode::from(4)
+            // A game this launcher did not start is exit code 3 whichever verb meets it.
+            ExitCode::from(if error.downcast_ref::<ExternalGame>().is_some() {
+                3
+            } else {
+                4
+            })
         }
     }
 }
@@ -257,8 +279,14 @@ fn seconds(value: f64) -> Duration {
     Duration::from_secs_f64(value.clamp(0.0, 24.0 * 3600.0))
 }
 
-fn exit_code(status: &Status) -> u8 {
-    if status.is_failure() && status.state != GameState::PortInUse {
+fn exit_code(status: &Status, stop: bool) -> u8 {
+    // A stop fails only by itself failing; an earlier crash it reports is not its failure.
+    let failed = if stop {
+        status.error.is_some()
+    } else {
+        status.is_failure()
+    };
+    if failed && status.state != GameState::PortInUse {
         return 1;
     }
     let pending_busy = status
@@ -345,5 +373,22 @@ mod tests {
         assert!(parse_words(&["start", "--bogus"]).is_err());
         assert!(parse_words(&["start", "--env", "NOEQUALS"]).is_err());
         assert!(parse_words(&[]).is_err());
+    }
+
+    /// `nan` and `inf` parse as `f64`; as seconds they would corrupt the state or panic.
+    #[test]
+    fn rejects_seconds_that_are_not_finite() {
+        for bad in ["nan", "inf", "-1"] {
+            assert!(parse_words(&["stop", "--grace", bad]).is_err(), "{bad}");
+            assert!(parse_words(&["status", "--wait", bad]).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn owner_tokens_cannot_name_a_path() {
+        assert!(is_valid_owner("cli-0123abcd_X"));
+        for bad in ["", "../x", "a/b", "a b", "a.b"] {
+            assert!(!is_valid_owner(bad), "{bad:?}");
+        }
     }
 }

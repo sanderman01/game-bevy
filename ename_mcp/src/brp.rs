@@ -164,10 +164,19 @@ pub struct Endpoint {
 }
 
 struct Selected {
-    /// The selection file's stamp when it was last read; `None` before the first read.
-    stamp: Option<Option<crate::launch::Stamp>>,
+    /// The stamps of the selection file and the selected instance's state when they were last
+    /// read; `None` before the first read.
+    stamp: Option<SelectionStamp>,
+    /// When the selected instance's liveness was last checked.
+    checked: Option<std::time::Instant>,
     client: BrpClient,
 }
+
+type SelectionStamp = (Option<crate::launch::Stamp>, Option<crate::launch::Stamp>);
+
+/// A game can die without its state file changing (a supervisor killed with it), so liveness is
+/// checked again at least this often.
+const RECHECK: std::time::Duration = std::time::Duration::from_secs(2);
 
 impl Endpoint {
     /// Always `client`.
@@ -178,6 +187,7 @@ impl Endpoint {
             selection: None,
             current: std::sync::Mutex::new(Selected {
                 stamp: None,
+                checked: None,
                 client,
             }),
         }
@@ -195,6 +205,7 @@ impl Endpoint {
             selection: project.map(|project| (project, owner)),
             current: std::sync::Mutex::new(Selected {
                 stamp: None,
+                checked: None,
                 client: BrpClient::new(url),
             }),
         }
@@ -205,16 +216,21 @@ impl Endpoint {
         self.pinned.as_deref()
     }
 
-    /// The client for one tool call, re-reading the selection when its file changed.
+    /// The client for one tool call. The selection is read again when the selection file or the
+    /// selected instance's state changed, or [`RECHECK`] passed; a selected instance that is no
+    /// longer live falls back to 15702.
     pub fn snapshot(&self) -> BrpClient {
         let mut current = self.current.lock().unwrap();
         if self.pinned.is_none()
             && let Some((project, owner)) = &self.selection
         {
-            let path = crate::launch::selected_path(project, owner.as_deref());
-            let stamp = crate::launch::Stamp::read(&path);
-            if current.stamp != Some(stamp) {
+            let stamp = crate::launch::selection_stamp(project, owner.as_deref());
+            let due = current
+                .checked
+                .is_none_or(|checked| checked.elapsed() >= RECHECK);
+            if current.stamp != Some(stamp) || due {
                 current.stamp = Some(stamp);
+                current.checked = Some(std::time::Instant::now());
                 let url = crate::launch::read_selected(project, owner.as_deref()).map_or_else(
                     || DEFAULT_URL.to_owned(),
                     |(_, port)| crate::launch::port_url(port),

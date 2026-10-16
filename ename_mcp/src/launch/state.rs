@@ -8,6 +8,7 @@ use std::{
     fs::File,
     io::Write as _,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
     time::{Duration, Instant, SystemTime},
 };
 
@@ -55,6 +56,9 @@ pub struct Run {
     /// Unix seconds, fractional, when the game process was spawned and when it was first ready.
     pub spawned_at: Option<f64>,
     pub ready_at: Option<f64>,
+    /// Why the supervisor gave up on this run, when it did.
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,6 +99,7 @@ impl Run {
             warning_count: None,
             spawned_at: None,
             ready_at: None,
+            error: None,
         }
     }
 
@@ -256,21 +261,68 @@ pub fn read_json<T: DeserializeOwned>(path: &Path) -> anyhow::Result<Option<T>> 
 
 /// Writes a temp file and renames it over `path`, so a reader sees the old or the new file.
 pub fn write_json<T: Serialize>(path: &Path, value: &T) -> anyhow::Result<()> {
-    let temp = path.with_extension(format!("tmp-{}", std::process::id()));
+    // Unique per write, so two threads of one process never share a temp file.
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let temp = path.with_extension(format!(
+        "tmp-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
     let mut file =
         File::create(&temp).with_context(|| format!("cannot write {}", temp.display()))?;
     file.write_all(&serde_json::to_vec_pretty(value)?)?;
     file.sync_all()?;
     drop(file);
-    std::fs::rename(&temp, path).with_context(|| format!("cannot replace {}", path.display()))
+    // Windows refuses to replace a file another process has open for a moment, such as a reader
+    // in `read_json`.
+    let mut attempts = 0;
+    loop {
+        match std::fs::rename(&temp, path) {
+            Ok(()) => return Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied && attempts < 10 => {
+                attempts += 1;
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(error) => {
+                let _ = std::fs::remove_file(&temp);
+                return Err(error).with_context(|| format!("cannot replace {}", path.display()));
+            }
+        }
+    }
+}
+
+/// Whether `token` may be an owner token: it becomes a file name.
+pub fn is_valid_owner(token: &str) -> bool {
+    !token.is_empty()
+        && token.len() <= 64
+        && token
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
 /// The file naming the instance an owner's sessions talk to. `None` is the user.
 pub fn selected_path(project: &Project, owner: Option<&str>) -> PathBuf {
-    project
-        .state_root()
-        .join(SELECTED_DIR)
-        .join(owner.unwrap_or("user"))
+    let name = match owner {
+        Some(owner) if is_valid_owner(owner) => format!("owner-{owner}"),
+        // Never a path outside the directory, whatever a caller passes.
+        Some(_) => "owner-invalid".to_owned(),
+        None => "user".to_owned(),
+    };
+    project.state_root().join(SELECTED_DIR).join(name)
+}
+
+/// What a selection depends on: the selection file and the selected instance's state, so a
+/// change to either is noticed with two `stat`s and one small read.
+pub fn selection_stamp(project: &Project, owner: Option<&str>) -> (Option<Stamp>, Option<Stamp>) {
+    let path = selected_path(project, owner);
+    let instance = read_json::<String>(&path)
+        .ok()
+        .flatten()
+        .and_then(|name| Instance::new(project, &name).ok());
+    (
+        Stamp::read(&path),
+        instance.and_then(|instance| Stamp::read(&instance.path(STATE_FILE))),
+    )
 }
 
 pub fn write_selected(

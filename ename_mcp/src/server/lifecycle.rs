@@ -107,8 +107,8 @@ impl GameServer {
 
     #[tool(
         description = "Rebuild and restart a game you started, keeping the old one running until \
-                       the new build succeeds; launch params you leave out are reused from the \
-                       last launch."
+                       the new build succeeds (on Windows it is stopped before the build); launch \
+                       params you leave out are reused from the last launch."
     )]
     async fn game_restart(&self, Parameters(params): Parameters<RestartParams>) -> LifecycleResult {
         let lifecycle = self.lifecycle()?;
@@ -139,7 +139,12 @@ impl GameServer {
             )
             .await
             .map_err(fail)?;
-        Ok(Json(with_warning(status)))
+        let status = with_warning(status);
+        // Only the stop itself failing counts: an earlier crash it reports is not this call's.
+        if status.error.is_some() {
+            return Err(failure(&status));
+        }
+        Ok(Json(status))
     }
 
     #[tool(
@@ -228,9 +233,12 @@ fn launch_request(params: StartParams, take_over: bool) -> LaunchRequest {
 
 /// `wait_seconds`, clamped to 0 to 50.
 fn wait_for(seconds: Option<f64>, default: Duration) -> Duration {
-    seconds.map_or(default, |seconds| {
-        Duration::from_secs_f64(seconds.clamp(0.0, MAX_BLOCK.as_secs_f64()))
-    })
+    match seconds {
+        Some(seconds) if seconds.is_finite() => {
+            Duration::from_secs_f64(seconds.clamp(0.0, MAX_BLOCK.as_secs_f64()))
+        }
+        _ => default,
+    }
 }
 
 fn with_warning(mut status: Status) -> Status {

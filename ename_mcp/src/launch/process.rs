@@ -23,6 +23,9 @@ pub struct ProcessInfo {
     pub parent: Option<u32>,
 }
 
+/// Seconds two readings of one process's start time may differ by.
+const START_TIME_SLACK: u64 = 2;
+
 impl ProcessRef {
     /// The live process `pid`, or `None` when there is none.
     pub fn of(pid: u32) -> Option<Self> {
@@ -38,7 +41,13 @@ impl ProcessRef {
     }
 
     pub fn is_alive(&self) -> bool {
-        info(self.pid).is_some_and(|info| info.start_time == self.start_time)
+        info(self.pid).is_some_and(|info| self.started_at(info.start_time))
+    }
+
+    /// Whether `start_time` is this process's. A little slack, because Linux derives it from the
+    /// boot time and clock ticks, so a wall-clock step moves it.
+    fn started_at(&self, start_time: u64) -> bool {
+        start_time.abs_diff(self.start_time) <= START_TIME_SLACK
     }
 
     /// Kills this process, after checking again that it is still the same one and that its
@@ -50,7 +59,7 @@ impl ProcessRef {
         let Some(process) = system.process(Pid::from_u32(self.pid)) else {
             return Ok(false);
         };
-        if process.start_time() != self.start_time || is_zombie(process.status()) {
+        if !self.started_at(process.start_time()) || is_zombie(process.status()) {
             return Ok(false);
         }
         let exe = process.exe().map(strip_deleted);

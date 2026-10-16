@@ -31,6 +31,8 @@ const POLL: Duration = Duration::from_millis(250);
 const STOP_MARGIN: Duration = Duration::from_secs(5);
 /// Starting for longer than this with the process alive earns a hint.
 const SLOW_START: f64 = 90.0;
+/// The longest grace a stop accepts.
+const MAX_GRACE: f64 = 60.0;
 
 /// Who is asking: their owner token, or `None` for the user.
 #[derive(Clone, Debug, Default)]
@@ -46,6 +48,19 @@ impl Caller {
     }
 }
 
+/// A refusal because a game this launcher did not start holds the port. The CLI exits with 3
+/// for it, like any other external game.
+#[derive(Debug)]
+pub struct ExternalGame(pub String);
+
+impl std::fmt::Display for ExternalGame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for ExternalGame {}
+
 /// The launcher for one workspace.
 #[derive(Clone, Debug)]
 pub struct Launcher {
@@ -60,6 +75,13 @@ pub struct LaunchRequest {
     pub update: LaunchUpdate,
     pub take_over: bool,
     pub wait: Duration,
+}
+
+/// Another instance's live game, by the port it records.
+struct OtherGame {
+    instance: String,
+    port: u16,
+    game: Option<ProcessRef>,
 }
 
 impl Launcher {
@@ -133,12 +155,14 @@ impl Launcher {
         if let Some(status) = self.port_conflict(instance, port).await {
             return Ok(status);
         }
-        let joined = self.create_run(instance, port, launch, caller)?;
+        let joined = self.create_run(instance, port, launch, caller).await?;
+        // From now on this session's world tools talk to this instance, even while it builds.
+        self.select(instance, caller);
         let mut status = self.wait_settled_until(instance, caller, deadline).await?;
         if joined {
             status.add_note("joined a launch that started at the same time.");
         }
-        self.finish_launch(instance, request, caller, &mut status);
+        self.finish_launch(request, &mut status);
         Ok(status)
     }
 
@@ -163,11 +187,21 @@ impl Launcher {
             }
             Ok(())
         })?;
+        self.select(instance, caller);
         let mut status = self.wait_settled_until(instance, caller, deadline).await?;
         if status.state == GameState::Ready {
             status.add_note("already running; game_restart rebuilds.");
         } else if status.state.is_transient() {
             status.add_note("joined the launch in progress.");
+        }
+        let update = &request.update;
+        if update.env.is_some()
+            || update.features.is_some()
+            || update.window_size.is_some()
+            || update.render_size.is_some()
+        {
+            status
+                .add_note("launch params do not change a running game; game_restart applies them.");
         }
         if request.port.is_some_and(|port| port != state.port) {
             status.add_note(format!(
@@ -175,24 +209,18 @@ impl Launcher {
                 state.port
             ));
         }
-        self.finish_launch(instance, request, caller, &mut status);
+        self.finish_launch(request, &mut status);
         Ok(status)
     }
 
-    /// Selection and notes after a launch returns.
-    fn finish_launch(
-        &self,
-        instance: &Instance,
-        request: &LaunchRequest,
-        caller: &Caller,
-        status: &mut Status,
-    ) {
-        if status.state == GameState::Ready
-            && let Err(error) =
-                write_selected(&self.project, caller.owner.as_deref(), &instance.name)
-        {
-            status.add_note(format!("could not record the selection: {error:#}."));
+    /// Points the caller's sessions at `instance`. A failure only costs the selection.
+    fn select(&self, instance: &Instance, caller: &Caller) {
+        if let Err(error) = write_selected(&self.project, caller.owner.as_deref(), &instance.name) {
+            tracing::warn!("could not record the selected instance: {error:#}");
         }
+    }
+
+    fn finish_launch(&self, request: &LaunchRequest, status: &mut Status) {
         if request.update.settle == Some(true) {
             status.add_note("`settle` is not available yet (no wait.settled); returned at ready.");
         }
@@ -208,10 +236,11 @@ impl Launcher {
             // last launch's params.
             let port = self.port_for(&instance, request.port, state.as_ref())?;
             if let Probe::Game { os_pid, .. } = port::probe(port).await {
+                self.refuse_other_instance(port, os_pid)?;
                 if !request.take_over {
-                    bail!(not_owner_external(&instance.name, port, os_pid));
+                    return Err(not_owner_external(&instance.name, port, os_pid));
                 }
-                self.stop_external(&instance, port, os_pid, DEFAULT_GRACE)
+                self.stop_external(&instance, port, os_pid, DEFAULT_GRACE, caller)
                     .await?;
             }
             let launch = state
@@ -237,25 +266,33 @@ impl Launcher {
             );
         }
 
-        let generation = instance.update(|state| {
-            let state = state.as_mut().context("state.json disappeared")?;
-            let base = state
-                .pending
-                .as_ref()
-                .or(state.current.as_ref())
-                .map(|run| run.launch.clone())
-                .unwrap_or_default();
-            // A second restart replaces the first one's pending run; its supervisor sees that.
-            state.last_generation += 1;
-            let generation = state.last_generation;
-            state.pending = Some(Run::new(generation, base.merged(request.update.clone())));
-            state.owner = caller.owner.clone();
-            let pid = spawn::supervisor(&instance.dir, generation)?;
-            if let Some(run) = state.pending.as_mut() {
+        let copy = spawn::copy_exe(&instance.dir)?;
+        let update = request.update.clone();
+        let owner = caller.owner.clone();
+        let locked = instance.clone();
+        let generation = tokio::task::spawn_blocking(move || {
+            locked.update(|state| {
+                let state = state.as_mut().context("state.json disappeared")?;
+                let base = state
+                    .pending
+                    .as_ref()
+                    .or(state.current.as_ref())
+                    .map(|run| run.launch.clone())
+                    .unwrap_or_default();
+                // A second restart replaces the first one's pending run; its supervisor sees that.
+                state.last_generation += 1;
+                let generation = state.last_generation;
+                let mut run = Run::new(generation, base.merged(update));
+                let pid = spawn::supervisor(&locked.dir, &copy, generation)?;
                 run.supervisor = ProcessRef::of(pid);
-            }
-            Ok(generation)
-        })?;
+                state.pending = Some(run);
+                state.owner = owner;
+                Ok(generation)
+            })
+        })
+        .await
+        .context("the launch task failed")??;
+        self.select(&instance, caller);
 
         let mut status = loop {
             let status = self.snapshot(&instance, caller).await?;
@@ -280,10 +317,15 @@ impl Launcher {
             .as_ref()
             .is_some_and(|pending| pending.state == GameState::BuildFailed)
         {
-            status.add_note("the build failed; the previous game is still running.");
+            status.add_note(if cfg!(windows) {
+                "the build failed. On Windows the previous game was stopped before the build, so \
+                 nothing runs now."
+            } else {
+                "the build failed; the previous game is still running."
+            });
         }
         self.add_follow_hint(&mut status, caller);
-        self.finish_launch(&instance, &request, caller, &mut status);
+        self.finish_launch(&request, &mut status);
         Ok(status)
     }
 
@@ -295,7 +337,7 @@ impl Launcher {
         caller: &Caller,
     ) -> anyhow::Result<Status> {
         let instance = self.instance(instance)?;
-        let grace_seconds = grace_seconds.clamp(0.0, 60.0);
+        let grace_seconds = clamp_grace(grace_seconds);
         let state = instance.read()?.filter(State::is_live);
 
         let Some(state) = state else {
@@ -310,12 +352,13 @@ impl Launcher {
             };
             let port = port.unwrap_or_default();
             return match probe {
-                Probe::Game { os_pid, .. } if take_over => {
-                    self.stop_external(&instance, port, os_pid, grace_seconds)
-                        .await
-                }
                 Probe::Game { os_pid, .. } => {
-                    bail!(not_owner_external(&instance.name, port, os_pid))
+                    self.refuse_other_instance(port, os_pid)?;
+                    if !take_over {
+                        return Err(not_owner_external(&instance.name, port, os_pid));
+                    }
+                    self.stop_external(&instance, port, os_pid, grace_seconds, caller)
+                        .await
                 }
                 Probe::Other => {
                     let mut status = self.snapshot(&instance, caller).await?;
@@ -349,57 +392,73 @@ impl Launcher {
         })?;
 
         let deadline = Instant::now() + Duration::from_secs_f64(grace_seconds) + STOP_MARGIN;
-        let mut killed_orphan = false;
-        loop {
+        let mut stopped_orphan = false;
+        let mut orphan_graceful = None;
+        let mut stopped = false;
+        while Instant::now() < deadline {
             let Some(state) = instance.read()? else {
+                stopped = true;
                 break;
             };
             let runs: Vec<&Run> = [state.current.as_ref(), state.pending.as_ref()]
                 .into_iter()
                 .flatten()
                 .collect();
-            // A game whose supervisor died is stopped here, by pid, as the external path does.
+            // A game whose supervisor died is ours to stop by pid, the way an external one is.
             for run in &runs {
                 if !run.supervisor_alive()
                     && let Some(game) = run.game.filter(ProcessRef::is_alive)
                 {
-                    killed_orphan |= self.kill_game(game)?;
+                    orphan_graceful =
+                        Some(stop_by_pid(&self.project, state.port, game, grace_seconds).await?);
+                    stopped_orphan = true;
                 }
             }
-            let done = runs
+            if runs
                 .iter()
-                .all(|run| !run.supervisor_alive() && !run.game_alive());
-            if done || Instant::now() >= deadline {
+                .all(|run| !run.supervisor_alive() && !run.game_alive())
+            {
+                stopped = true;
                 break;
             }
             tokio::time::sleep(POLL).await;
         }
         self.clear_selection(&instance, caller);
         let mut status = self.snapshot(&instance, caller).await?;
-        if killed_orphan {
+        if stopped_orphan && stopped {
+            // The dead supervisor left no exit record; the stop itself worked.
+            status.state = GameState::Stopped;
+            status.error = None;
+            status.graceful = orphan_graceful;
+        }
+        if stopped_orphan {
             status.add_note(
-                "its supervisor was gone, so the game was killed by pid; exit status unknown.",
+                "its supervisor was gone, so the game was stopped by pid; exit status unknown.",
             );
         }
-        if status.state.is_transient() || status.state == GameState::Ready {
-            status.add_note("it did not stop in time.");
+        if !stopped {
+            status.error = Some(format!(
+                "it did not stop within {grace_seconds} s plus {} s; game_status shows where it \
+                 is",
+                STOP_MARGIN.as_secs()
+            ));
         }
         Ok(status)
     }
 
-    /// Stops a game this launcher did not start: `game.exit`, then a kill by pid, each only after
-    /// checking it is this workspace's editor.
+    /// Stops a game this launcher did not start, after checking it is this workspace's editor.
     async fn stop_external(
         &self,
         instance: &Instance,
         port: u16,
         os_pid: u32,
         grace_seconds: f64,
+        caller: &Caller,
     ) -> anyhow::Result<Status> {
         let holder = Holder::of(os_pid);
         let game = ProcessRef::of(os_pid).context("the game holding the port is gone")?;
-        let binary = self.project.binary_path();
         let info = process::info(os_pid).context("the game holding the port is gone")?;
+        let binary = self.project.binary_path();
         let exe_ok = info
             .exe
             .as_deref()
@@ -416,22 +475,12 @@ impl Launcher {
             );
         }
 
-        let _ = port::client(port).call_raw("game.exit", json!({})).await;
-        let deadline = Instant::now() + Duration::from_secs_f64(grace_seconds);
-        while game.is_alive() && Instant::now() < deadline {
-            tokio::time::sleep(POLL).await;
-        }
-        let graceful = !game.is_alive();
-        if !graceful {
-            self.kill_game(game)?;
-            let deadline = Instant::now() + STOP_MARGIN;
-            while game.is_alive() && Instant::now() < deadline {
-                tokio::time::sleep(POLL).await;
-            }
-        }
+        let graceful = stop_by_pid(&self.project, port, game, grace_seconds).await?;
+        self.clear_selection(instance, caller);
+        let alive = game.is_alive();
         Ok(Status {
             instance: instance.name.clone(),
-            state: if game.is_alive() {
+            state: if alive {
                 GameState::External
             } else {
                 GameState::Stopped
@@ -443,13 +492,9 @@ impl Launcher {
             holder: Some(holder),
             graceful: Some(graceful),
             note: Some("not our child; exit status unknown.".to_owned()),
+            error: alive.then(|| "it was still running after the kill".to_owned()),
             ..Status::default()
         })
-    }
-
-    fn kill_game(&self, game: ProcessRef) -> anyhow::Result<bool> {
-        let binary = self.project.binary_path();
-        game.kill_checked(|exe| is_game_binary(&self.project, exe, &binary))
     }
 
     fn clear_selection(&self, instance: &Instance, caller: &Caller) {
@@ -461,24 +506,75 @@ impl Launcher {
         }
     }
 
+    /// Live games of the other instances, with the ports they record.
+    fn other_games(&self, instance: &str) -> Vec<OtherGame> {
+        Instance::all(&self.project)
+            .into_iter()
+            .filter(|other| other.name != instance)
+            .filter_map(|other| {
+                let state = other.read().ok()??;
+                state.is_live().then(|| OtherGame {
+                    instance: other.name.clone(),
+                    port: state.port,
+                    game: [state.current.as_ref(), state.pending.as_ref()]
+                        .into_iter()
+                        .flatten()
+                        .find_map(|run| run.game.filter(ProcessRef::is_alive)),
+                })
+            })
+            .collect()
+    }
+
+    /// The other instance whose recorded game is `os_pid`.
+    fn instance_of_game(&self, instance: &str, os_pid: u32) -> Option<String> {
+        self.other_games(instance)
+            .into_iter()
+            .find(|other| other.game.is_some_and(|game| game.pid == os_pid))
+            .map(|other| other.instance)
+    }
+
+    /// Refuses to treat another instance's game as an external one: it is stopped through that
+    /// instance.
+    fn refuse_other_instance(&self, port: u16, os_pid: u32) -> anyhow::Result<()> {
+        if let Some(other) = self.instance_of_game("", os_pid) {
+            bail!(
+                "the game on port {port} is instance `{other}`'s (os pid {os_pid}). Stop or \
+                 restart it as instance `{other}`."
+            );
+        }
+        Ok(())
+    }
+
     /// The port an instance gets: the caller's, its recorded one, 15702 for `default`, else the
-    /// first free pair.
+    /// first free pair. A recorded port another live instance now uses is given up.
     fn port_for(
         &self,
         instance: &Instance,
         requested: Option<u16>,
         previous: Option<&State>,
     ) -> anyhow::Result<u16> {
+        let others = self.other_games(&instance.name);
+        let taken_by = |port: u16| {
+            others
+                .iter()
+                .find(|other| other.port.abs_diff(port) <= 1)
+                .map(|other| other.instance.clone())
+        };
         if let Some(port) = requested {
             if port == u16::MAX {
                 bail!("`port` needs a free port after it for the render world");
             }
+            if let Some(other) = taken_by(port) {
+                bail!("port {port} belongs to running instance `{other}`; pick another one.");
+            }
             return Ok(port);
         }
-        if let Some(state) = previous {
+        if let Some(state) = previous
+            && taken_by(state.port).is_none()
+        {
             return Ok(state.port);
         }
-        if instance.name == DEFAULT_INSTANCE {
+        if instance.name == DEFAULT_INSTANCE && taken_by(DEFAULT_PORT).is_none() {
             return Ok(DEFAULT_PORT);
         }
         port::free_pair(&self.project, &instance.name)
@@ -497,10 +593,16 @@ impl Launcher {
             Probe::Free => return None,
             Probe::Game { os_pid, .. } => {
                 status.holder = Some(Holder::of(os_pid));
-                status.add_note(format!(
-                    "a game this launcher did not start holds port {port}. Pass `instance` (or \
-                     `port`) to start another one beside it."
-                ));
+                match self.instance_of_game(&instance.name, os_pid) {
+                    Some(other) => status.add_note(format!(
+                        "instance `{other}` holds port {port}. Stop it, or pass `port` for \
+                         another one."
+                    )),
+                    None => status.add_note(format!(
+                        "a game this launcher did not start holds port {port}. Pass `instance` \
+                         (or `port`) to start another one beside it."
+                    )),
+                }
             }
             Probe::Other => status.add_note(format!(
                 "a process without BRP holds port {port} or {}.",
@@ -512,35 +614,51 @@ impl Launcher {
 
     /// Writes a new run as `current` and spawns its supervisor, under the lock. Returns true when
     /// another caller started one first, which is then joined instead.
-    fn create_run(
+    ///
+    /// The executable copy happens before the lock, and the locked part runs on a blocking
+    /// thread, because the lock may wait.
+    async fn create_run(
         &self,
         instance: &Instance,
         port: u16,
         launch: LaunchParams,
         caller: &Caller,
     ) -> anyhow::Result<bool> {
-        instance.update(|state| {
-            if state.as_ref().is_some_and(State::is_live) {
-                return Ok(true);
-            }
-            let last_generation = state.as_ref().map_or(0, |state| state.last_generation);
-            let generation = last_generation + 1;
-            let mut run = Run::new(generation, launch);
-            let pid = spawn::supervisor(&instance.dir, generation)?;
-            run.supervisor = ProcessRef::of(pid);
-            *state = Some(State {
-                instance: instance.name.clone(),
-                workspace_root: self.project.workspace_root.clone(),
-                boot_time: process::boot_time(),
-                port,
-                render_port: port + 1,
-                owner: caller.owner.clone(),
-                last_generation: generation,
-                current: Some(run),
-                pending: None,
-            });
-            Ok(false)
+        let copy = spawn::copy_exe(&instance.dir)?;
+        let locked = instance.clone();
+        let workspace_root = self.project.workspace_root.clone();
+        let owner = caller.owner.clone();
+        let temp = copy.clone();
+        let joined = tokio::task::spawn_blocking(move || {
+            locked.update(|state| {
+                if state.as_ref().is_some_and(State::is_live) {
+                    return Ok(true);
+                }
+                let last_generation = state.as_ref().map_or(0, |state| state.last_generation);
+                let generation = last_generation + 1;
+                let mut run = Run::new(generation, launch);
+                let pid = spawn::supervisor(&locked.dir, &temp, generation)?;
+                run.supervisor = ProcessRef::of(pid);
+                *state = Some(State {
+                    instance: locked.name.clone(),
+                    workspace_root,
+                    boot_time: process::boot_time(),
+                    port,
+                    render_port: port + 1,
+                    owner,
+                    last_generation: generation,
+                    current: Some(run),
+                    pending: None,
+                });
+                Ok(false)
+            })
         })
+        .await
+        .context("the launch task failed")?;
+        if !matches!(joined, Ok(false)) {
+            let _ = std::fs::remove_file(&copy);
+        }
+        joined
     }
 
     async fn wait_settled(
@@ -643,11 +761,14 @@ impl Launcher {
         let game = run.game.filter(ProcessRef::is_alive);
         status.os_pid = game.map(|game| game.pid);
         status.stale_binary = game.is_some_and(|game| self.is_stale(game));
+        status.error.clone_from(&run.error);
 
         status.state = match run.phase {
             Phase::Building if supervisor_alive => GameState::Building,
             Phase::Building => {
-                status.add_note("its supervisor died during the build; see supervise.log.");
+                status.error.get_or_insert_with(|| {
+                    "its supervisor died during the build; see supervise.log".to_owned()
+                });
                 GameState::Stopped
             }
             Phase::BuildFailed => {
@@ -738,8 +859,9 @@ impl Launcher {
             status.state = if supervisor_alive {
                 GameState::Starting
             } else {
-                status
-                    .add_note("its supervisor is gone and left no exit record; see supervise.log.");
+                status.error.get_or_insert_with(|| {
+                    "its supervisor is gone and left no exit record; see supervise.log".to_owned()
+                });
                 GameState::Exited
             };
             return;
@@ -782,7 +904,8 @@ impl Launcher {
         pending
     }
 
-    /// A game this launcher did not start, on a port no run of ours holds.
+    /// A game on a port no run of this instance holds: another instance's, or one this launcher
+    /// did not start.
     async fn find_external(&self, status: &mut Status) {
         if status.port == 0 {
             return;
@@ -790,17 +913,29 @@ impl Launcher {
         match port::probe(status.port).await {
             Probe::Free => {}
             Probe::Game { os_pid, pid } => {
+                let other = self.instance_of_game(&status.instance, os_pid);
                 // Nothing of our last run describes this game.
                 *status = Status {
                     instance: status.instance.clone(),
-                    state: GameState::External,
+                    state: if other.is_some() {
+                        GameState::PortInUse
+                    } else {
+                        GameState::External
+                    },
                     port: status.port,
                     pid: Some(pid),
                     os_pid: Some(os_pid),
                     package: status.package.clone(),
-                    launched_by: Some(LaunchedBy::External),
+                    launched_by: Some(if other.is_some() {
+                        LaunchedBy::Launcher
+                    } else {
+                        LaunchedBy::External
+                    }),
                     holder: Some(Holder::of(os_pid)),
-                    note: Some("a game this launcher did not start holds the port.".to_owned()),
+                    note: Some(match other {
+                        Some(other) => format!("instance `{other}` holds the port."),
+                        None => "a game this launcher did not start holds the port.".to_owned(),
+                    }),
                     ..Status::default()
                 };
             }
@@ -818,6 +953,52 @@ impl Launcher {
             .ok()
             .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok());
         modified.is_some_and(|modified| modified.as_secs() > game.start_time)
+    }
+}
+
+/// Stops a game that is no child of the caller: `game.exit` over BRP when the port answers from
+/// it, up to `grace_seconds` for it to exit, then a kill by pid after checking it is still the
+/// same process and this workspace's editor binary. Returns whether it exited by itself.
+pub(super) async fn stop_by_pid(
+    project: &Project,
+    port: u16,
+    game: ProcessRef,
+    grace_seconds: f64,
+) -> anyhow::Result<bool> {
+    #[derive(Deserialize)]
+    struct Pid {
+        os_pid: u32,
+    }
+    let client = port::client(port);
+    if client
+        .call::<Pid>("game.pid.get", json!({}))
+        .await
+        .is_ok_and(|answer| answer.os_pid == game.pid)
+    {
+        let _ = client.call_raw("game.exit", json!({})).await;
+    }
+    let deadline = Instant::now() + Duration::from_secs_f64(clamp_grace(grace_seconds));
+    while game.is_alive() && Instant::now() < deadline {
+        tokio::time::sleep(POLL).await;
+    }
+    if !game.is_alive() {
+        return Ok(true);
+    }
+    let binary = project.binary_path();
+    game.kill_checked(|exe| is_game_binary(project, exe, &binary))?;
+    let deadline = Instant::now() + STOP_MARGIN;
+    while game.is_alive() && Instant::now() < deadline {
+        tokio::time::sleep(POLL).await;
+    }
+    Ok(false)
+}
+
+/// A grace period in range; anything not a number is the default.
+fn clamp_grace(seconds: f64) -> f64 {
+    if seconds.is_finite() {
+        seconds.clamp(0.0, MAX_GRACE)
+    } else {
+        DEFAULT_GRACE
     }
 }
 
@@ -859,13 +1040,14 @@ fn not_owner(state: &State) -> String {
     )
 }
 
-fn not_owner_external(instance: &str, port: u16, os_pid: u32) -> String {
-    format!(
+fn not_owner_external(instance: &str, port: u16, os_pid: u32) -> anyhow::Error {
+    ExternalGame(format!(
         "not_owner: the game on port {port} for instance `{instance}` ({}) was not started by \
          this launcher. Pass take_over (`--take-over` on the CLI) only when the user asked you \
          to stop it.",
         Holder::of(os_pid).describe()
-    )
+    ))
+    .into()
 }
 
 fn ago(unix: u64) -> String {

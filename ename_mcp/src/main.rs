@@ -77,7 +77,7 @@ async fn serve() -> anyhow::Result<()> {
             None
         }
     };
-    let owner = launch::mcp_owner();
+    let owner = Some(launch::mcp_owner());
     tracing::info!(?pinned, ?owner, "forwarding to the game's remote server");
 
     let lifecycle = project
