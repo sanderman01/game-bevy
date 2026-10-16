@@ -6,7 +6,7 @@
 //! `Sleeping` until avian wakes it in its next step, and a rendered frame can contain no fixed
 //! step at all.
 
-use avian3d::prelude::{AngularVelocity, LinearVelocity, RigidBody, Sleeping};
+use avian3d::prelude::{AngularVelocity, LinearVelocity, RigidBody, RigidBodyDisabled, Sleeping};
 use bevy::prelude::*;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -151,10 +151,12 @@ fn not_a_dynamic_body(world: &World, entity: Entity) -> Option<String> {
     let body = world.get::<RigidBody>(entity).copied();
     let moving = world.get::<LinearVelocity>(entity).is_some()
         && world.get::<AngularVelocity>(entity).is_some();
-    if body == Some(RigidBody::Dynamic) && moving {
+    let disabled = world.get::<RigidBodyDisabled>(entity).is_some();
+    if body == Some(RigidBody::Dynamic) && moving && !disabled {
         return None;
     }
     let what = match body {
+        _ if disabled => "a disabled rigid body (`RigidBodyDisabled`)".to_owned(),
         Some(RigidBody::Dynamic) => "a dynamic body without its velocities".to_owned(),
         Some(body) => format!("a {body:?} rigid body"),
         None => "not a rigid body".to_owned(),
@@ -355,5 +357,26 @@ mod tests {
         app.update();
         app.update();
         assert_eq!(status(&app, &job).error.unwrap().kind, "not_comparable");
+    }
+
+    #[test]
+    fn a_disabled_body_is_not_comparable() {
+        let mut app = app(Duration::from_secs_f64(1.0 / 60.0));
+        let entity = EntityTarget::by_name("Crate")
+            .resolve(app.world_mut())
+            .unwrap();
+        app.world_mut().entity_mut(entity).insert(RigidBodyDisabled);
+        let err = app
+            .world_mut()
+            .call_command(
+                "wait.until",
+                json!({ "condition": { "at_rest": { "name": "Crate" } } }),
+                Caller {
+                    scope: CommandScope::Development,
+                    cwd: None,
+                },
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, "not_comparable");
     }
 }
