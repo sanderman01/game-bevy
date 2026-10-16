@@ -17,6 +17,8 @@ acting on it.
   asset tree.
 - [Commands and jobs](design/commands.md). How a crate registers functionality once for the
   agent tools and a future console, and how slow work is tracked.
+- [Waiting](design/waiting.md). How an agent waits for the game to settle or for a condition,
+  without sleeps, and what settle probes are.
 - [Video capture](design/video-capture.md). Why recording pipes raw frames to an `ffmpeg`
   process, how a duration is written, and when a recording ends early.
 - [Floating origin](design/floating-origin.md). Who holds big_space's `FloatingOrigin`, and why the

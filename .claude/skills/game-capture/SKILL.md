@@ -41,6 +41,12 @@ screenshot_capture { "path": "scratch/shots/scene.png", "source": "editor_camera
   an existing file is replaced.
 - Read the PNG with the Read tool to look at it.
 - It works while time is paused (`time_set pause`), which is how to get a frame of a known state.
+- Pass `settle: {}` on the capture, never a sleep before it: the game waits until loading,
+  pipeline compiles and streaming have finished, then captures in that frame. `video_record` takes
+  it too. A capture that cannot settle in time fails `not_settled` and names what was still busy.
+- After a file edit (a shader, a stage), wait for the `Reloaded` log line, then settle:
+  `wait_until { "condition": { "log": { "message_contains": "Reloaded" } } }`. The watcher reports
+  an edit about 300 ms late, and a settle before that has nothing to wait for.
 - A camera source is often a better crop than `window`: it already leaves out the editor panels.
 
 ### Recording video

@@ -40,7 +40,9 @@ records it as running, the feature finishes it, and the record is kept for five 
 the work entity while the job runs cancels the job, so nothing can wait on a job whose work is
 gone. Cancel either despawns the work or triggers `JobCancelRequested` and lets the feature
 decide: a recording stops and keeps its file. Waiting is the client's business; the sidecar polls,
-which costs nothing on loopback, rather than holding a BRP watching stream open.
+which costs nothing on loopback, rather than holding a BRP watching stream open. A job command can
+gate its work on the world settling first, with a `SettleGate` on the work entity (see
+[waiting.md](waiting.md)).
 
 **Every answer names the run that produced it.** A run id (eight letters, from the pid, the start
 time and an OS-seeded hash) is part of every command and job answer, and job ids are
@@ -61,7 +63,8 @@ is wherever it happened to be launched: under airshipgame the two differ.
 `editor_camera`, so the editor needs no capture commands of its own.
 
 **Scope is metadata the caller enforces.** Each command is `Safe` or `Development`; the BRP side
-channel calls with `Development`, and a shipping console will call with `Safe`. Every command
-migrated so far is `Development`, because each writes to an arbitrary path or drives the editor.
+channel calls with `Development`, and a shipping console will call with `Safe`. Most commands are
+`Development`, because they write to an arbitrary path, drive the editor or read arbitrary state;
+`wait.settled` and `wait.activity` only observe, so they are `Safe`.
 These commands are not the editor command layer that undo needs (see Known gaps in
 [../design.md](../design.md#known-gaps)).

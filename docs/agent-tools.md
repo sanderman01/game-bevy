@@ -182,6 +182,9 @@ cannot become a crate that ships by accident.
 | `editor_get_view` / `editor_set_view` | Which editor view is shown, Scene View or Game View; switch it as clicking its tab would. |
 | `screenshot_capture` | Write the game window, the game camera or the editor camera to a PNG file. |
 | `video_record` | Record the game window, the game camera or the editor camera to an `.mp4` or `.mkv` file. |
+| `wait_settled` | Wait until loading, pipeline compiles and streaming have finished and stayed finished. See "Waiting". |
+| `wait_until` | Wait until one condition holds: frames, virtual seconds, a log line, a component or resource value, a position, a body at rest. |
+| `wait_activity` | What is still loading or building, right now. |
 
 Every result also carries `pid`, eight letters naming the run of the game process that answered
 it. See "Noticing a restart".
@@ -263,6 +266,75 @@ one usually being asked. The loop that makes an experiment:
 `elapsed_seconds` is virtual time and does not advance while paused. `frame` counts real frames
 and keeps climbing, because the renderer is still drawing.
 
+## Waiting
+
+Never sleep before a capture or a measurement, and never poll in a shell loop: the game answers
+both questions itself, as job tools bounded by `timeout_seconds` (default 30, at most 600) and
+ended early by `job_cancel`. A tool waits up to `wait_seconds` (50) like any job; `job_wait`
+picks up a longer wait.
+
+**`wait_settled` asks "is the world quiet?".** Crates report work that is still pending through
+settle probes: `assets` (`meshes_loading`, `materials_loading`, `world_roots_loading`),
+`pipelines` (`pipelines_waiting`) and `stage` (`stages_loading`) in every build, plus whatever a
+game adds. The wait succeeds once every probe has been idle for `stable_frames` consecutive frames
+(default 5), because work often starts a frame after its cause. `probes` limits it to some; `[]`
+makes it a plain count of `stable_frames` frames. Progress shows the busy counters draining:
+`{"frames": 41, "stable_for": 0, "busy": {"pipelines": {"pipelines_waiting": 3}}}`. A timeout fails
+`not_settled` and names what was still busy. `wait_activity` reports the same counters at once,
+without waiting.
+
+Settling covers loading, not motion: a flying airship never stops, so moving bodies are not a
+probe. And it sees only work the game already knows about. After a file edit, first wait for the
+asset watcher's `Reloaded` log line, then settle:
+
+```json
+{"condition": {"log": {"message_contains": "Reloaded"}}}
+```
+
+**`wait_until` asks "has this happened yet?".** `condition` has exactly one key:
+
+| `condition` | Met when |
+| --- | --- |
+| `{"frames": 30}` | 30 real frames have run. Works while paused. |
+| `{"virtual_seconds": 2.0}` | Virtual time advanced 2 s. Needs the world running. |
+| `{"log": {"message_contains": "baked", "target_contains": "...", "min_level": "info", "after_sequence": 9120}}` | A log entry newer than `after_sequence` (default: the newest when the wait starts) matches, with `log_get_entries`' filters. |
+| `{"component": {"name": "Crate", "component": "LinearVelocity", "path": ".0.y", "op": "gt", "value": -0.1}}` | The component's value, as `world_get_components` shows it, passes `op`. |
+| `{"resource": {"resource": "...", "path": "...", "op": "eq", "value": ...}}` | The same, for a resource. |
+| `{"position": {"name": "Crate", "axis": "y", "op": "lt", "value": 2.0}}` | Absolute metres, Y up. |
+| `{"at_rest": {"name": "Crate", "speed_below": 0.05, "hold_seconds": 0.25}}` | A dynamic rigid body sleeps, or stays slower than `speed_below` m/s (and 0.05 rad/s) for `hold_seconds` of virtual time. Needs the world running. |
+
+`op` is `eq`, `ne` (JSON equality, numbers within 1e-6), `lt`, `le`, `gt`, `ge`, `length_lt`,
+`length_gt` (an array such as a `Vec3`), `changed` (differs from the value at the start, no
+`value`), `exists` or `absent` (no `path`, no `value`). `position` takes the four comparisons.
+Types are full paths or a unique short name. `Transform.translation` and `CellCoord` are refused,
+as `world_mutate_component` refuses them; use `position`. `hold_frames` makes a predicate hold
+for that many frames. The result carries what met it under `met`, plus `frames`, `seconds`,
+`virtual_seconds`, `frame` and `paused`. Failures name their kind: `timed_out` (with the last
+value), `entity_gone`, `component_absent`, `not_registered`, `bad_path`, `not_comparable`,
+`world_paused`.
+
+**The paused world.** Frames keep running while time is paused, so `frames`, `log` and
+`wait_settled` progress in a paused world. A condition that needs virtual time fails
+`world_paused` at once when the world is paused with no step in flight. `component`, `resource`
+and `position` cannot tell whether their value needs time; they keep waiting and report
+`paused: true`. A wait sees each frame of a `time_set step`. Waits never change time, except
+`time: "run"` on `wait_until`: it resumes the world when the wait starts and pauses it in the
+frame the wait ends, however it ends (met, timed out, cancelled). With two such waits, the first
+to end pauses the world.
+
+The deterministic capture loop is `time_set pause`, pose the camera, then `screenshot_capture`
+with `settle: {}`.
+
+**Physics.** The landing test, one call with no race between resuming and waiting:
+
+1. `time_set pause`.
+2. `world_set_position` the body above the ground (and set its velocity if needed).
+3. `wait_until` `{"condition": {"at_rest": {"name": "Crate"}}, "time": "run"}`. The world runs,
+   the body falls and comes to rest, and the world pauses in that frame.
+4. `world_get_position` and `world_get_components` read the rest state.
+
+"Falls below" is `position` with `op: "lt"`.
+
 ## Switching the view
 
 The editor shows either Scene View, its own free camera, or Game View, the loaded stage's
@@ -314,6 +386,11 @@ minimized window may never present a frame; the game gives up after 5 seconds. C
 while time is paused, because frames keep running. `job_cancel` on a screenshot is best effort: a
 PNG already being encoded is still written.
 
+`settle` takes `wait_settled`'s params (`{}` for the defaults) and settles first: the capture is
+requested in the frame the world settled, never earlier. While it settles, progress says
+`"phase": "settling"`. If it does not settle in time the call fails `not_settled` and nothing is
+written. Use it instead of a sleep before every capture.
+
 Game code uses the same capture through `ename_engine::screenshot`: spawn a `ScreenshotRequest`
 and observe `ScreenshotFinished`.
 
@@ -339,6 +416,11 @@ The tool waits for the file for up to 50 seconds. A longer recording comes back 
 50) collects it, and `job_cancel` ends it early, keeps what was recorded, and waits up to 50
 seconds for the file. A recording cancelled before its first frame ends `cancelled`, with no file.
 `wait_seconds: 0` returns at once.
+
+`settle`, as on `screenshot_capture`, settles before recording starts. The encoder needs a few
+frames to start after that, which is accepted: settled work does not restart on its own.
+Cancelling during `"phase": "settling"` ends the job `cancelled` with no file; a timeout fails
+`not_settled`.
 
 The recording follows real time, so it continues while the world is paused. A camera source must
 stay visible: switching the view, resizing the window or the tab, or five seconds without a frame
