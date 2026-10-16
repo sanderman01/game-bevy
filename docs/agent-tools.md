@@ -284,12 +284,20 @@ makes it a plain count of `stable_frames` frames. Progress shows the busy counte
 without waiting.
 
 Settling covers loading, not motion: a flying airship never stops, so moving bodies are not a
-probe. And it sees only work the game already knows about. After a file edit, first wait for the
-asset watcher's `Reloaded` log line, then settle:
+probe. And it sees only work the game already knows about: the asset watcher reports an edit
+300 to 400 ms late, as the log line `Reloaded <path>`, and a settle before that has nothing to
+wait for. So for a file edit:
+
+1. Before the edit, read the newest log `sequence`: `log_get_entries` with `limit: 1`.
+2. Edit the file.
+3. Wait for its reload line after that sequence, then settle:
 
 ```json
-{"condition": {"log": {"message_contains": "Reloaded"}}}
+{"condition": {"log": {"message_contains": "Reloaded shaders/sky.wgsl", "after_sequence": 9120}}}
 ```
+
+The `after_sequence` matters: by default the wait only looks at lines logged after it starts, and
+the reload line usually arrives before the next call does.
 
 **`wait_until` asks "has this happened yet?".** `condition` has exactly one key:
 

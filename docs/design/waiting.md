@@ -28,9 +28,12 @@ questions as job commands: "is the world quiet?" (`wait.settled`) and "has this 
 4. **Settle covers loading, not motion.** Probes report work that finishes. A flying airship or an
    ocean never stops, and a settle that can never succeed is useless; motion is a `wait.until`
    condition on a named entity (`at_rest`). A settle sees only work the engine knows about: a file
-   edit is invisible until the asset watcher reports it (300 ms debounce), so after an edit the
-   agent waits for the `Reloaded` log line, then settles. A minimum settle time covering the
-   debounce was rejected: it slows every settle to cover one case.
+   edit is invisible until the asset watcher reports it (300 ms debounce), so the agent reads the
+   newest log sequence before the edit, then waits for the `Reloaded <path>` line after that
+   sequence, then settles. The sequence is needed because the line usually lands before the
+   agent's next call, and a log wait by default looks only at lines newer than its start. A
+   minimum settle time covering the debounce was rejected: it slows every settle to cover one
+   case.
 5. **`wait.until` takes exactly one condition as a one-key object**, like `video.record`'s
    `duration`, so the shape says the kind. No `all`/`any` combinators: an agent chains two calls,
    and one condition per call keeps the result and the timeout message unambiguous.

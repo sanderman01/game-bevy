@@ -44,9 +44,11 @@ screenshot_capture { "path": "scratch/shots/scene.png", "source": "editor_camera
 - Pass `settle: {}` on the capture, never a sleep before it: the game waits until loading,
   pipeline compiles and streaming have finished, then captures in that frame. `video_record` takes
   it too. A capture that cannot settle in time fails `not_settled` and names what was still busy.
-- After a file edit (a shader, a stage), wait for the `Reloaded` log line, then settle:
-  `wait_until { "condition": { "log": { "message_contains": "Reloaded" } } }`. The watcher reports
-  an edit about 300 ms late, and a settle before that has nothing to wait for.
+- After a file edit (a shader, a stage), wait for its `Reloaded` log line, then settle. The
+  watcher reports an edit 300 to 400 ms late, usually before your next call, so read the newest
+  log `sequence` first (`log_get_entries` with `limit: 1`), edit, then
+  `wait_until { "condition": { "log": { "message_contains": "Reloaded <path>", "after_sequence": <seq> } } }`.
+  Without `after_sequence` the wait only sees lines newer than itself and misses it.
 - A camera source is often a better crop than `window`: it already leaves out the editor panels.
 
 ### Recording video
