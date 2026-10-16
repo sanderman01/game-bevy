@@ -202,7 +202,8 @@ struct SettledResult {
     frames: u32,
     /// Real seconds the settle took.
     seconds: f64,
-    /// The frame number it settled in.
+    /// `FrameCount` when it settled; like `wait.until`'s, it may read one lower than `time_get`
+    /// would for the same frame.
     frame: u32,
     /// Whether the world was paused when it settled.
     paused: bool,
@@ -302,12 +303,11 @@ fn activity(In(_): In<Call<NoParams>>, world: &mut World) -> Result<ActivityResu
 pub(super) fn resolve_gates(
     sample: Res<SettleSample>,
     time: Option<Res<Time<Virtual>>>,
-    jobs: Option<ResMut<Jobs>>,
+    mut jobs: Option<ResMut<Jobs>>,
     mut gates: Query<(Entity, &mut SettleGate, Option<&JobWork>, Has<SettleWait>)>,
     mut commands: Commands,
 ) {
     let paused = time.is_some_and(|time| time.is_paused());
-    let mut jobs = jobs;
     for (entity, mut gate, work, is_wait) in &mut gates {
         gate.frames += 1;
         gate.paused_seen |= paused;

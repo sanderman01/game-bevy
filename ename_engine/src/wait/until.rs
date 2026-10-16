@@ -156,7 +156,8 @@ struct UntilResult {
     seconds: f64,
     /// Virtual seconds that passed during the wait.
     virtual_seconds: f64,
-    /// The frame number it ended in.
+    /// `FrameCount` when it ended. Bevy bumps it in `Last` with no set to order against, so it
+    /// may read one lower than `time_get` would for the same frame.
     frame: u32,
     /// Whether the world is paused now.
     paused: bool,
@@ -202,9 +203,13 @@ fn until(
         }
     };
     let runs_time = params.time == TimeMode::Run;
-    if runs_time {
-        set_paused(world, false);
-    } else if evaluation.needs_virtual_time() && frozen(world) {
+    if runs_time && !has_time_control(world) {
+        return Err(CommandError::invalid(
+            "invalid_params",
+            "`time: \"run\"` needs the time controls, which this app does not have",
+        ));
+    }
+    if !runs_time && evaluation.needs_virtual_time() && frozen(world) {
         return Err(world_paused());
     }
     let virtual_start = virtual_elapsed(world);
@@ -213,12 +218,13 @@ fn until(
         Ok(job) => job,
         Err(err) => {
             world.despawn(work);
-            if runs_time {
-                set_paused(world, true);
-            }
             return Err(err);
         }
     };
+    // Only once the job exists, so a refused call leaves time as it was.
+    if runs_time {
+        set_paused(world, false);
+    }
     world.entity_mut(work).insert(UntilWait {
         job: job.clone(),
         evaluation: Some(evaluation),
@@ -405,8 +411,16 @@ fn check(
                 });
             };
             let (found, newest) = buffer.read(|view| {
-                let found = view
-                    .iter()
+                let Some((oldest, newest)) = view.sequence_range() else {
+                    return (None, None);
+                };
+                // Only entries not looked at yet: sequences are contiguous, so this is by index.
+                let first = filter
+                    .after_sequence
+                    .map_or(oldest, |after| after.saturating_add(1))
+                    .max(oldest);
+                let found = (first..=newest)
+                    .filter_map(|sequence| view.by_sequence(sequence))
                     .find(|entry| filter.matches(entry))
                     .map(|entry| {
                         json!({
@@ -416,9 +430,9 @@ fn check(
                             "message": entry.message,
                         })
                     });
-                (found, view.sequence_range().map(|(_, newest)| newest))
+                (found, Some(newest))
             });
-            // Entries already looked at are not looked at again.
+            // Next frame starts after the newest entry seen.
             if found.is_none() && newest.is_some() {
                 filter.after_sequence = newest;
             }
@@ -441,16 +455,23 @@ fn until_removed(mut world: DeferredWorld, context: HookContext) {
     }
 }
 
+/// Does nothing in an app without the time controls; `until` refuses `time: "run"` there.
 fn set_paused(world: &mut World, paused: bool) {
+    if !has_time_control(world) {
+        return;
+    }
     world.resource_scope(|world, mut control: Mut<TimeControl>| {
-        if let Some(mut time) = world.get_resource_mut::<Time<Virtual>>() {
-            if paused {
-                control.pause(&mut time);
-            } else {
-                control.resume(&mut time);
-            }
+        let mut time = world.resource_mut::<Time<Virtual>>();
+        if paused {
+            control.pause(&mut time);
+        } else {
+            control.resume(&mut time);
         }
     });
+}
+
+fn has_time_control(world: &World) -> bool {
+    world.contains_resource::<TimeControl>() && world.contains_resource::<Time<Virtual>>()
 }
 
 /// Paused with no step in flight: virtual time cannot advance until someone resumes it.
