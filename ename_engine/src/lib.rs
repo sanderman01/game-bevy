@@ -1,5 +1,6 @@
 //! `ename_engine` -- the runtime layer: camera rig, big_space integration, physics glue, input,
-//! time control, log capture, the command registry, screenshots, video capture.
+//! time control, log capture, the command registry, waiting for the world to settle, screenshots,
+//! video capture.
 //!
 //! Sits directly above the asset crates. It must never depend on `ename_editor` or `example_game_lib`:
 //! if engine code needs something from a higher layer, move the shared type down or invert the
@@ -19,6 +20,7 @@ pub mod screenshot;
 pub mod stage;
 pub mod time;
 pub mod video;
+pub mod wait;
 
 use bevy::{
     app::PluginGroupBuilder, asset::AssetPlugin, log::LogPlugin, prelude::*,
@@ -136,6 +138,7 @@ impl PluginGroup for EnginePlugins {
             .add(physics::PhysicsIntegrationPlugin)
             .add(time::TimeControlPlugin)
             .add(command::CommandPlugin)
+            .add(wait::WaitPlugin)
             .add(capture::CapturePlugin)
             .add(screenshot::ScreenshotPlugin)
             .add(video::VideoPlugin);

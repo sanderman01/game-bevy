@@ -46,13 +46,22 @@ impl TimeControl {
     }
 }
 
+/// Ordering points for work that judges a frame against the time controls.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TimeControlSystems {
+    /// In `Last`: a step in flight counts this frame and repauses when it was the last one.
+    Countdown,
+}
+
 /// Owns [`TimeControl`] and the countdown that ends a step request.
 pub struct TimeControlPlugin;
 
 impl Plugin for TimeControlPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<TimeControl>()
-            .add_systems(Last, repause_when_steps_exhausted);
+        app.init_resource::<TimeControl>().add_systems(
+            Last,
+            repause_when_steps_exhausted.in_set(TimeControlSystems::Countdown),
+        );
     }
 }
 
