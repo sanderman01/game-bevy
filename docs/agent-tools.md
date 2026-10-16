@@ -50,30 +50,32 @@ port, and starting one on another port is an error.
 The sidecar does not need the game to be running when it starts. A call made while the game is
 down fails with a message saying so, and works again once the game is back.
 
-The sidecar is not rebuilt by `game_start`. Whoever changes `ename_mcp` builds it
-(`cargo build -p ename_mcp`) and asks the user for `/mcp reconnect`.
-
 ### When ename_mcp is out of date
 
-The client starts the sidecar once per session and keeps that process. Only the user can replace
-it, with `/mcp reconnect`; an agent cannot. A stale sidecar lacks tools added since, or answers
-from code that predates the game's, and the symptoms read as game bugs.
+`game_start` does not rebuild the sidecar. The client starts it once per session and keeps that
+process. Only the user can replace it, with `/mcp reconnect`; an agent cannot. A stale sidecar
+lacks tools added since, or misreads answers from a newer game, and the symptoms read as game
+bugs.
 
 So every result says when the sidecar is out of date, under `warning` on a success and after the
 message on a failure:
 
 | Warning | Means | Do |
 | --- | --- | --- |
-| "its sources changed ..., after the last build" | A file under `ename_mcp/src` is newer than `target/debug/ename_mcp`. | Run the build command the warning names (`cargo build -p ename_mcp` here), then ask the user for `/mcp reconnect`. |
-| "a newer build ... is on disk" | The binary was rebuilt after this process started. | Ask the user for `/mcp reconnect`. |
+| "its sources changed ..., after the last build" | A source file of `target/debug/ename_mcp`, as cargo's `ename_mcp.d` lists them, is newer than it or gone. | Run the build command the warning names (`cargo build -p ename_mcp` here), then ask the user for `/mcp reconnect`. |
+| "the build on disk ... is not the one this process started from" | The binary changed after this process started. | Ask the user for `/mcp reconnect`. |
 
 The first result after the condition starts or changes, and every failure, carry the full text.
-Other results carry a short form. Either way, say in your reply that `/mcp reconnect` is needed,
-and why, and treat surprising results from before the reconnect with suspicion.
+Other results carry a short form. Either way, do what the warning says, and tell the user in your
+reply what it asks of them, and why; if you may not build, ask the user to. Treat surprising
+results from before the reconnect with suspicion.
 
 `cargo game` builds its own copy in `target/ename-launch-bin`, so it does not clear the warning.
-On Windows the connected sidecar locks its `.exe` and the build fails: the user disables the
-`game` server in `/mcp`, you build, then the user enables it again. The warning says so there.
+`cargo dev-build` and `cargo build -p ename_mcp` build the sidecar with different features. Each
+puts its own build at `target/debug/ename_mcp`, so running one after the other changes the binary
+and raises the warning even when no source changed. On Windows the connected sidecar locks its
+`.exe` and the build fails: the user disables the `game` server in `/mcp`, you wait for them to
+confirm and build, then the user enables it again. The warning says so there.
 
 ## Lifecycle
 
