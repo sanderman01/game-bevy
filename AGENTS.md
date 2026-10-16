@@ -39,7 +39,19 @@ Where the two overlap, this file wins.
 
 ## Building and testing
 
-Use `cargo clippy` and `cargo build` to check for correctness and build success.
+Use the cargo aliases from `.cargo/config.toml`: `cargo dev-clippy`, `cargo dev-build` and
+`cargo dev-test` (add `-p <crate>` to narrow tests). They all pass the `dev` feature, so every
+command shares one Bevy build in `target/`.
+
+- Always build with `dev`. Never run plain `cargo build`, `cargo clippy` or `cargo test -p <crate>`
+  without it: each other feature set rebuilds Bevy and fills `target/` with copies. `dev` is good
+  enough for tests, profiling and benchmarking; build release only when asked.
+- Keep to one feature set. Don't add `--release`, `--no-default-features` or extra `--features`
+  unless the task needs that build.
+- `airshipgame` depends on this workspace. Don't work on both in parallel: finish the `game`
+  side first (built, tested, reviewed), then start on `airshipgame`. Never edit `game` while an
+  `airshipgame` build runs.
+
 To test at runtime, start the editor with `game_start` (MCP) or `cargo game start`, and rebuild
 it with `game_restart` / `cargo game restart`; never `pkill`. They run `example_game_editor_bin`,
 the only target that links `ename_remote`, so the only one the MCP tools in
