@@ -120,7 +120,9 @@ pub fn near_misses(metadata: &Metadata, name: &str, limit: usize) -> Vec<String>
 /// Numeric comparison of the `major.minor.patch` core, a pre-release before its release, then
 /// the full string.
 fn compare_versions(a: &str, b: &str) -> Ordering {
-    fn key(version: &str) -> (Vec<u64>, bool) {
+    // Numeric pre-release identifiers compare numerically and before alphanumeric ones.
+    type Key = (Vec<u64>, bool, Vec<(bool, u64, String)>);
+    fn key(version: &str) -> Key {
         let without_build = version.split('+').next().unwrap_or_default();
         let (core, pre) = match without_build.split_once('-') {
             Some((core, pre)) => (core, Some(pre)),
@@ -130,7 +132,15 @@ fn compare_versions(a: &str, b: &str) -> Ordering {
             .split('.')
             .map(|part| part.parse().unwrap_or(0))
             .collect();
-        (core, pre.is_none())
+        let idents = pre
+            .into_iter()
+            .flat_map(|pre| pre.split('.'))
+            .map(|id| match id.parse() {
+                Ok(n) => (false, n, String::new()),
+                Err(_) => (true, 0, id.to_owned()),
+            })
+            .collect();
+        (core, pre.is_none(), idents)
     }
     key(a).cmp(&key(b)).then_with(|| a.cmp(b))
 }
@@ -149,9 +159,12 @@ mod tests {
         {"name": "bitflags", "version": "0.10.0",
          "source": "registry+https://github.com/rust-lang/crates.io-index",
          "manifest_path": "/reg/bitflags-0.10.0/Cargo.toml"},
-        {"name": "bitflags", "version": "0.10.0-rc.1",
+        {"name": "bitflags", "version": "0.10.0-rc.10",
          "source": "registry+https://github.com/rust-lang/crates.io-index",
-         "manifest_path": "/reg/bitflags-0.10.0-rc.1/Cargo.toml"},
+         "manifest_path": "/reg/bitflags-0.10.0-rc.10/Cargo.toml"},
+        {"name": "bitflags", "version": "0.10.0-rc.9",
+         "source": "registry+https://github.com/rust-lang/crates.io-index",
+         "manifest_path": "/reg/bitflags-0.10.0-rc.9/Cargo.toml"},
         {"name": "bitflags", "version": "0.9.0",
          "source": "registry+https://github.com/rust-lang/crates.io-index",
          "manifest_path": "/reg/bitflags-0.9.0/Cargo.toml"},
@@ -235,7 +248,7 @@ mod tests {
             .into_iter()
             .map(|d| d.version)
             .collect();
-        assert_eq!(versions, ["0.9.0", "0.10.0-rc.1", "0.10.0"]);
+        assert_eq!(versions, ["0.9.0", "0.10.0-rc.9", "0.10.0-rc.10", "0.10.0"]);
     }
 
     #[test]

@@ -87,9 +87,16 @@ fn dep_src(name: &str) -> ExitCode {
     };
     // `--all-features` reaches lock entries only optional features pull in. Offline it fails if
     // such a crate was never downloaded, so fall back to the default features.
+    let mut complete = true;
     let output = match metadata(true) {
         Ok(output) if output.status.success() => Ok(output),
-        _ => metadata(false),
+        _ => {
+            eprintln!(
+                "ename_dep_src: --all-features metadata failed; listing default features only"
+            );
+            complete = false;
+            metadata(false)
+        }
     };
     let output = match output {
         Ok(output) => output,
@@ -112,7 +119,13 @@ fn dep_src(name: &str) -> ExitCode {
 
     let found = dep_src::find(&metadata, name);
     if found.is_empty() {
-        eprintln!("{name} is not in this workspace's Cargo.lock");
+        if complete {
+            eprintln!("{name} is not in this workspace's Cargo.lock");
+        } else {
+            eprintln!(
+                "{name} is not in this workspace's default-feature graph; the list may be incomplete"
+            );
+        }
         for near in dep_src::near_misses(&metadata, name, 10) {
             eprintln!("  {near}");
         }
@@ -121,12 +134,14 @@ fn dep_src(name: &str) -> ExitCode {
     for source in &found {
         println!("{source}");
     }
-    if let [first, .., last] = found.as_slice() {
+    let mut versions: Vec<&str> = found.iter().map(|s| s.version.as_str()).collect();
+    versions.dedup();
+    if let [_, .., last] = versions.as_slice() {
         eprintln!(
             "{} versions; cargo tree --target all --all-features -i {}@{} shows who pulls each in",
-            found.len(),
-            first.name,
-            last.version
+            versions.len(),
+            found[0].name,
+            last
         );
     }
     ExitCode::SUCCESS
