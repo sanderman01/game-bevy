@@ -1,0 +1,20 @@
+.claude/skills/game-capture/SKILL.md
+  s_51349e13722b35::t_eb63aac8249011 1-23,25-144
+  s_51349e13722b35::t_cca7792629639b 24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2fb7316fc6e716d593c6717d9a6d40dc134db9b5",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
