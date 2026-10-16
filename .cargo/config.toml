@@ -25,3 +25,8 @@ dev-test = "test --workspace --features example_game_editor_bin/dev"
 # `ename_xtask` links no Bevy, so this does not need the shared `dev`-feature build the aliases
 # above do.
 xtask = "run -p ename_xtask --"
+# The editor launcher (`cargo game start|stop|restart|status`). Its own target dir, so it never
+# waits on cargo's lock of `target/` while the launcher builds the editor there. If an
+# `ename_mcp` edit breaks this alias, `target/ename-launch-bin/debug/ename_mcp game stop` still
+# works.
+game = "run -q --target-dir target/ename-launch-bin -p ename_mcp -- game"

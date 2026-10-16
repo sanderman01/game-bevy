@@ -11,17 +11,16 @@
 //! | Invocation | Role |
 //! | --- | --- |
 //! | `ename_mcp` | The MCP server. |
+//! | `ename_mcp game <start\|stop\|restart\|status\|owner> [flags]` | The launcher's CLI, aliased as `cargo game`. |
 //! | `ename_mcp supervise <dir> <generation>` | The detached supervisor of one game run. Started by the launcher, never by hand. |
 
 mod brp;
 mod entity;
-#[allow(
-    dead_code,
-    reason = "the CLI that uses the rest lands in the next commit"
-)]
 mod launch;
 mod server;
 mod staleness;
+
+use std::process::ExitCode;
 
 use anyhow::Context as _;
 use rmcp::{ServiceExt as _, transport::stdio};
@@ -31,24 +30,37 @@ use rmcp::{ServiceExt as _, transport::stdio};
 const URL_VAR: &str = "ENAME_BRP_URL";
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    let role = args.first().map(String::as_str);
     // stderr, never stdout: stdout is the MCP transport and one stray line corrupts it. The
-    // supervisor's stderr is a log file, so no colour codes there.
+    // supervisor's stderr is a log file, so no colour codes there; the CLI's output is its
+    // summary line, so only warnings.
+    let default_level = if role == Some("game") { "warn" } else { "info" };
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
-        .with_ansi(args.first().is_none_or(|role| role != "supervise"))
+        .with_ansi(role != Some("supervise"))
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(default_level)),
         )
         .init();
     launch::record_exe();
 
-    match args.first().map(String::as_str) {
+    let result = match role {
         None => serve().await,
+        Some("game") => return launch::cli::run(&args[1..]).await,
         Some("supervise") => launch::supervise::run(&args[1..]).await,
-        Some(other) => anyhow::bail!("unknown command `{other}`"),
+        Some(other) => Err(anyhow::anyhow!(
+            "unknown command `{other}`; `ename_mcp game --help` lists the launcher's"
+        )),
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("error: {error:#}");
+            ExitCode::FAILURE
+        }
     }
 }
 

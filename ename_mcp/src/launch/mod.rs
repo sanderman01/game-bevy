@@ -10,6 +10,7 @@
 //! executable were checked again.
 
 mod build_report;
+pub mod cli;
 mod control;
 mod crash;
 mod port;
@@ -496,6 +497,16 @@ mod tests {
             error.contains("[workspace.metadata.ename.launch]"),
             "{error}"
         );
+    }
+
+    /// Two worktrees of one repo sharing a `CARGO_TARGET_DIR` must not share state.
+    #[test]
+    fn worktrees_with_one_name_get_separate_keys() {
+        let a = workspace_key(Path::new("/nonexistent/one/game"));
+        let b = workspace_key(Path::new("/nonexistent/two/game"));
+        assert!(a.starts_with("game-") && b.starts_with("game-"));
+        assert_ne!(a, b);
+        assert_eq!(a, workspace_key(Path::new("/nonexistent/one/game")));
     }
 
     #[test]

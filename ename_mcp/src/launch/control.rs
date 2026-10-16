@@ -790,15 +790,19 @@ impl Launcher {
         match port::probe(status.port).await {
             Probe::Free => {}
             Probe::Game { os_pid, pid } => {
-                status.state = GameState::External;
-                status.launched_by = Some(LaunchedBy::External);
-                status.os_pid = Some(os_pid);
-                status.pid = Some(pid);
-                status.holder = Some(Holder::of(os_pid));
-                status.owner = None;
-                status.owned_by_caller = false;
-                status.crash = None;
-                status.add_note("a game this launcher did not start holds the port.");
+                // Nothing of our last run describes this game.
+                *status = Status {
+                    instance: status.instance.clone(),
+                    state: GameState::External,
+                    port: status.port,
+                    pid: Some(pid),
+                    os_pid: Some(os_pid),
+                    package: status.package.clone(),
+                    launched_by: Some(LaunchedBy::External),
+                    holder: Some(Holder::of(os_pid)),
+                    note: Some("a game this launcher did not start holds the port.".to_owned()),
+                    ..Status::default()
+                };
             }
             Probe::Other => {
                 status.state = GameState::PortInUse;
@@ -850,7 +854,7 @@ fn not_owner(state: &State) -> String {
         .unwrap_or_default();
     format!(
         "not_owner: instance `{}` was started{started} by {owner}. Only its owner may stop or \
-         restart it; pass take_over: true only when the user asked you to.",
+         restart it; pass take_over (`--take-over` on the CLI) only when the user asked you to.",
         state.instance
     )
 }
@@ -858,7 +862,8 @@ fn not_owner(state: &State) -> String {
 fn not_owner_external(instance: &str, port: u16, os_pid: u32) -> String {
     format!(
         "not_owner: the game on port {port} for instance `{instance}` ({}) was not started by \
-         this launcher. Pass take_over: true only when the user asked you to stop it.",
+         this launcher. Pass take_over (`--take-over` on the CLI) only when the user asked you \
+         to stop it.",
         Holder::of(os_pid).describe()
     )
 }
