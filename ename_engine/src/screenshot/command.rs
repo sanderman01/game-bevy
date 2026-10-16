@@ -333,9 +333,11 @@ mod tests {
 
         fn requests(app: &mut App) -> Vec<(Entity, bool)> {
             app.world_mut()
-                .query::<(Entity, &ScreenshotRequest, Has<CaptureStage>)>()
+                .query::<(Entity, &ScreenshotRequest, Option<&CaptureStage>)>()
                 .iter(app.world())
-                .map(|(entity, _, started)| (entity, started))
+                .map(|(entity, _, stage)| {
+                    (entity, matches!(stage, Some(CaptureStage::Waiting { .. })))
+                })
                 .collect()
         }
 
