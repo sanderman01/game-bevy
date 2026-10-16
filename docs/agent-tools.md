@@ -88,8 +88,9 @@ them to confirm, then build, then the user enables it again. The warning says so
 | `game_status` | `cargo game status` | Report the state; `wait_seconds` waits out a build or startup. |
 
 Launch params: `instance`, `port`, `env` (e.g. `{"AIRSHIP_DIAGNOSTICS": "1"}`), `features`,
-`window_size`, `render_size`, `wait_seconds` (0 to 50, default 50). `settle` is accepted and
-ignored until a settle wait exists.
+`window_size`, `render_size`, `wait_seconds` (0 to 50, default 50). `settle: true` (`--settle`)
+runs `wait_settled` once the game is ready, within the same wait, and says how it went in the
+`note`; a game that does not settle in time still counts as started.
 
 **States.** `stopped`, `building`, `build_failed` (with `errors` in `path:line:col: error[...]`
 form), `starting`, `ready`, `exited` (with `exit` and, for an error code or a crash, `crash` with

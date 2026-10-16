@@ -15,6 +15,7 @@ mod control;
 mod crash;
 mod port;
 mod process;
+mod settle;
 mod spawn;
 mod state;
 pub mod supervise;
@@ -236,7 +237,7 @@ pub struct LaunchParams {
     /// Render size, [width, height]. Passed as ENAME_RENDER_SIZE.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub render_size: Option<[u32; 2]>,
-    /// Wait for the game to settle after it is ready. Not available yet; ignored with a note.
+    /// Wait for the game to settle (`wait.settled`) after it is ready.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub settle: bool,
 }
@@ -270,7 +271,8 @@ pub struct LaunchUpdate {
     /// Render size, [width, height].
     #[serde(default)]
     pub render_size: Option<[u32; 2]>,
-    /// Wait for streaming to finish after ready. Defaults to false. Not available yet.
+    /// After ready, wait for loading and streaming to finish (`wait.settled`) within the same
+    /// wait. Defaults to false.
     #[serde(default)]
     pub settle: Option<bool>,
 }

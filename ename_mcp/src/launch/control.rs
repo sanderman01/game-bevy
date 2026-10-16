@@ -18,7 +18,7 @@ use super::{
     now, now_f64,
     port::{self, Holder, Probe},
     process::{self, ProcessRef},
-    spawn,
+    settle, spawn,
     state::{
         BUILD_JSON, BUILD_LOG, EXIT_FILE, GAME_LOG, Instance, Phase, Run, State, StopRequest,
         read_json, read_selected, selected_path, write_selected,
@@ -176,7 +176,7 @@ impl Launcher {
                 previous.name
             ));
         }
-        self.finish_launch(request, &mut status);
+        self.finish_launch(request, &mut status, deadline).await;
         Ok(status)
     }
 
@@ -223,7 +223,7 @@ impl Launcher {
                 state.port
             ));
         }
-        self.finish_launch(request, &mut status);
+        self.finish_launch(request, &mut status, deadline).await;
         Ok(status)
     }
 
@@ -234,10 +234,16 @@ impl Launcher {
         }
     }
 
-    fn finish_launch(&self, request: &LaunchRequest, status: &mut Status) {
-        if request.update.settle == Some(true) {
-            status.add_note("`settle` is not available yet (no wait.settled); returned at ready.");
+    /// With `settle`, a ready game runs `wait.settled` within what is left of `deadline`.
+    async fn finish_launch(&self, request: &LaunchRequest, status: &mut Status, deadline: Instant) {
+        if request.update.settle != Some(true) {
+            return;
         }
+        if status.state != GameState::Ready || status.is_failure() {
+            status.add_note("`settle` skipped: the launch did not end ready.");
+            return;
+        }
+        status.add_note(settle::settle(status.port, deadline).await);
     }
 
     pub async fn restart(&self, request: LaunchRequest, caller: &Caller) -> anyhow::Result<Status> {
@@ -344,7 +350,7 @@ impl Launcher {
             });
         }
         self.add_follow_hint(&mut status, caller);
-        self.finish_launch(&request, &mut status);
+        self.finish_launch(&request, &mut status, deadline).await;
         Ok(status)
     }
 
