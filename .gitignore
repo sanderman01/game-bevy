@@ -4,9 +4,11 @@
 debug/
 target/
 
-# Only track specific content assets in this repo. Ignore other assets or symlinks to other assets.
+# Track the content search path directories; ignore anything else under assets/.
 assets/*
+!assets/basegame/
 !assets/examples/
+!assets/mods/
 
 # Remove Cargo.lock from gitignore if creating an executable, leave it for libraries
 # More information here https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html
