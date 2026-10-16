@@ -1026,8 +1026,14 @@ fn crate_matches(schema: &Value, crates: &[String]) -> bool {
 /// moves as the camera moves, so writing it sets a different world point every time. Failing
 /// here is the whole reason `world_set_position` exists.
 fn reject_position_write(component: &str, path: &str) -> Result<(), ErrorData> {
-    let touches_translation =
-        component.ends_with("::Transform") && (path.is_empty() || path.starts_with("translation"));
+    // Field 0 of `Transform` is `translation`, so `#0` names it too; a leading `.` is optional.
+    let first = path
+        .trim_start_matches('.')
+        .split(['.', '['])
+        .next()
+        .unwrap_or_default();
+    let touches_translation = component.ends_with("::Transform")
+        && (first.is_empty() || first == "translation" || first == "#0");
     let touches_cell = component.ends_with("::CellCoord");
     if touches_translation || touches_cell {
         return Err(ErrorData::invalid_params(
@@ -1251,6 +1257,9 @@ mod tests {
         for (component, path) in [
             (TRANSFORM, "translation"),
             (TRANSFORM, "translation.x"),
+            (TRANSFORM, ".translation"),
+            (TRANSFORM, "#0"),
+            (TRANSFORM, ".#0.y"),
             (TRANSFORM, ""),
             (CELL, "x"),
         ] {
