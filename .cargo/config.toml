@@ -32,3 +32,9 @@ xtask = "run -q --target-dir target/ename-xtask-bin -p ename_xtask --"
 # works. Run it from the repo root: cargo resolves `--target-dir` against the working directory,
 # and an alias cannot name the config file's own directory.
 game = "run -q --target-dir target/ename-launch-bin -p ename_mcp -- game"
+# The MCP sidecar that `.mcp.json` runs, in both repos. Its own target dir: in `target/`,
+# `dev-build`'s feature-unified build and a plain `-p ename_mcp` build replace each other's binary,
+# which the running sidecar reports as out of date. Not `ename-launch-bin`, or `cargo game` would
+# rebuild the connected sidecar (and fail on Windows, where it is locked). Run it from the repo
+# root.
+mcp-build = "build --target-dir target/ename-mcp-bin -p ename_mcp"

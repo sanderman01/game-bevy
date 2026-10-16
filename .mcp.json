@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "game": {
-      "command": "./target/debug/ename_mcp"
+      "command": "./target/ename-mcp-bin/debug/ename_mcp"
     }
   }
 }
