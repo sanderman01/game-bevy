@@ -7,9 +7,11 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::port;
-use crate::brp::BrpError;
+use crate::brp::{BrpClient, BrpError};
 
 const POLL: Duration = Duration::from_millis(250);
+/// Per request: a game busy compiling shaders can stall a frame for well over a second.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 /// `wait.settled`'s own bounds on `timeout_seconds`.
 const MIN_TIMEOUT: f64 = 1.0;
 const MAX_TIMEOUT: f64 = 600.0;
@@ -39,7 +41,7 @@ struct JobError {
 
 /// Settles the game on `port` until `deadline` and says how it went.
 pub(super) async fn settle(port: u16, deadline: Instant) -> String {
-    let client = port::client(port);
+    let client = BrpClient::with_timeout(port::url(port), REQUEST_TIMEOUT);
     let timeout = deadline
         .saturating_duration_since(Instant::now())
         .as_secs_f64()
@@ -92,12 +94,22 @@ pub(super) async fn settle(port: u16, deadline: Instant) -> String {
             _ => {}
         }
         tokio::time::sleep(POLL).await;
-        job = match client
+        match client
             .call::<JobAnswer>("game.job.status", json!({ "job": job.id }))
             .await
         {
-            Ok(answer) => answer.job,
+            Ok(answer) => job = answer.job,
+            // A slow frame, such as a shader compile stall: the job still runs, so ask again.
+            Err(err) if is_timeout(&err) => {}
             Err(err) => return format!("lost the settle job: {err:#}"),
-        };
+        }
     }
+}
+
+fn is_timeout(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| {
+        cause
+            .downcast_ref::<reqwest::Error>()
+            .is_some_and(reqwest::Error::is_timeout)
+    })
 }
