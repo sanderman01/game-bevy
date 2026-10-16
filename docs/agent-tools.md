@@ -53,6 +53,28 @@ down fails with a message saying so, and works again once the game is back.
 The sidecar is not rebuilt by `game_start`. Whoever changes `ename_mcp` builds it
 (`cargo build -p ename_mcp`) and asks the user for `/mcp reconnect`.
 
+### When ename_mcp is out of date
+
+The client starts the sidecar once per session and keeps that process. Only the user can replace
+it, with `/mcp reconnect`; an agent cannot. A stale sidecar lacks tools added since, or answers
+from code that predates the game's, and the symptoms read as game bugs.
+
+So every result says when the sidecar is out of date, under `warning` on a success and after the
+message on a failure:
+
+| Warning | Means | Do |
+| --- | --- | --- |
+| "its sources changed ..., after the last build" | A file under `ename_mcp/src` is newer than `target/debug/ename_mcp`. | Run the build command the warning names (`cargo build -p ename_mcp` here), then ask the user for `/mcp reconnect`. |
+| "a newer build ... is on disk" | The binary was rebuilt after this process started. | Ask the user for `/mcp reconnect`. |
+
+The first result after the condition starts or changes, and every failure, carry the full text.
+Other results carry a short form. Either way, say in your reply that `/mcp reconnect` is needed,
+and why, and treat surprising results from before the reconnect with suspicion.
+
+`cargo game` builds its own copy in `target/ename-launch-bin`, so it does not clear the warning.
+On Windows the connected sidecar locks its `.exe` and the build fails: the user disables the
+`game` server in `/mcp`, you build, then the user enables it again. The warning says so there.
+
 ## Lifecycle
 
 | Tool | CLI | Does |
