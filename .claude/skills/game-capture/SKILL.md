@@ -50,7 +50,9 @@ screenshot_capture { "path": "scratch/shots/scene.png", "source": "editor_camera
   `wait_until { "condition": { "log": { "message_contains": "Reloaded <path>", "after_sequence": <seq> } } }`.
   Without `after_sequence` the wait only sees lines newer than itself and misses it. `<path>` is
   the asset path the game loaded: an aliased file reloads as its `alias://` name (for example
-  `alias://examples::backdrop`); match `"Reloaded"` alone when unsure.
+  `alias://examples::backdrop`); match `"Reloaded"` alone when unsure. A file that fails to load
+  logs an error and no `Reloaded` line: match the asset path alone and check the matched entry's
+  `level`, or pass `timeout_seconds: 10`.
 - A camera source is often a better crop than `window`: it already leaves out the editor panels.
 
 ### Recording video

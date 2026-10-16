@@ -280,8 +280,9 @@ game adds. The wait succeeds once every probe has been idle for `stable_frames` 
 (default 5), because work often starts a frame after its cause. `probes` limits it to some; `[]`
 makes it a plain count of `stable_frames` frames. Progress shows the busy counters draining:
 `{"frames": 41, "stable_for": 0, "busy": {"pipelines": {"pipelines_waiting": 3}}}`. A timeout fails
-`not_settled` and names what was still busy. `wait_activity` reports the same counters at once,
-without waiting.
+`not_settled` and names what was still busy. An unknown probe name is `unknown_probe`, listing the
+registered ones, and an out-of-range `stable_frames` or `timeout_seconds` is `invalid_params`.
+`wait_activity` reports the same counters at once, without waiting.
 
 Settling covers loading, not motion: a flying airship never stops, so moving bodies are not a
 probe. And it sees only work the game already knows about: the asset watcher reports an edit
@@ -300,6 +301,11 @@ The asset path is the one the game loaded it by: an aliased file such as
 `examples-stage/backdrop.sky.ron` reloads as `alias://examples::backdrop`. When unsure, match
 `"Reloaded"` alone. The `after_sequence` matters: by default the wait only looks at lines logged
 after it starts, and the reload line often arrives before the next call does.
+
+A file that fails to load (a syntax error) logs an error naming the asset path, and no
+`Reloaded` line. To catch both, match the asset path alone (`"examples::backdrop"`) and check the
+matched entry's `level`, or pass a short `timeout_seconds` such as 10 so a broken file does not
+hold the wait for 30 s.
 
 **`wait_until` asks "has this happened yet?".** `condition` has exactly one key:
 
