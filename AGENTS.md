@@ -19,6 +19,13 @@ Where the two overlap, this file wins.
 
 ## Architecture rules
 
+- New or changed functionality must work on Linux, macOS and Windows. Avoid Linux-only
+  mechanisms (`/proc`, signals as the only stop path, bash-only scripts); prefer Rust and
+  cross-platform crates, with per-OS arms behind one abstraction where needed. Existing shell
+  scripts may stay as they are.
+- Write new scripts in Rust or modern Python 3 rather than shell, since both run on every
+  platform. In Python, use `pathlib`, `subprocess.run` and f-strings; no Python 2 idioms.
+
 ## Version Control
 
 - At the start of a task, switch to a new branch.
