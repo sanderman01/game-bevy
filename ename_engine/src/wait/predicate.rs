@@ -293,7 +293,10 @@ impl Predicate {
                 _ => Err(self.absent()),
             };
         };
-        let met = self.compare(&current)?;
+        // The call was fine when it started; a value that stopped fitting the op is a failure.
+        let met = self
+            .compare(&current)
+            .map_err(|err| CommandError::failed(err.kind, err.message))?;
         let report = match self.op {
             Op::Exists | Op::Absent => json!({ "present": true }),
             _ => json!({ "value": current }),
