@@ -28,11 +28,7 @@ before relying on them.
 
 ## Game ownership
 
-- Stop or restart only games you or your parent agent started; stop others only when the user
-  asks (`take_over` / `--take-over`).
-- When your tasks are done, stop the games you started, unless you leave one running for the user
-  to inspect; then say so.
-- Tokens on the CLI and handing a game to another agent: [agent-tools.md](agent-tools.md#lifecycle).
+- See the repo's `AGENTS.md` and [agent-tools.md](agent-tools.md#lifecycle).
 
 ## Disk
 
@@ -87,14 +83,14 @@ before relying on them.
 - A game started by the launcher logs plain text to `game.log`; every lifecycle result names it
   under `log`.
 - While the game runs, prefer `log_get_entries`.
-- Anything run with `NO_COLOR` set prints no colour codes, so there is no need to strip them with
-  `sed`.
+- The engine (and most tools) print no colour codes when `NO_COLOR` is set, so there is no need
+  to strip them with `sed`.
 
 ## Dependency source
 
 - `cargo xtask ename_dep_src <crate>` prints the directory cargo compiles for each locked version:
-  `big_space 0.13.0 git 5f25522 ~/.cargo/git/checkouts/big_space-.../5f25522`. It works in both
-  repos and answers for the repo you run it in.
+  `big_space 0.13.0 git 5f25522 ~/.cargo/git/checkouts/big_space-.../5f25522`. Run it from the
+  repo root; it works in both repos and answers for the repo you run it in.
 - Never glob the registry for a version and never `find /`: the registry holds several versions of
   most crates. `big_space` is a git checkout, not the registry copy.
 - Without a build (a read-only sandbox), see below; `Cargo.lock` also gives the version and the
@@ -105,7 +101,7 @@ before relying on them.
 - Cargo cannot take its build lock, so no builds, no `cargo xtask` and no test runs. Ask the
   parent for a test run.
 - `cargo metadata` needs no lock and works. Dependency source there (`py` instead of `python3` on
-  Windows):
+  Windows; drop `--all-features` if it fails offline):
   `cargo metadata --format-version 1 --locked --offline --all-features | python3 -c 'import json,sys; [print(p["version"], p["manifest_path"]) for p in json.load(sys.stdin)["packages"] if p["name"] == "big_space"]'`
 - Heredocs fail (`can't create temp file`): use `python3 -c '...'` or plain commands.
 - Read pinned revisions with `git show <sha>:<path>`. Read files in ranges (`sed -n 1,200p`,
