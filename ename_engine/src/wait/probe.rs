@@ -116,6 +116,14 @@ impl SettleAppExt for App {
     }
 }
 
+/// The registered probe names, sorted.
+pub(crate) fn probe_names(world: &World) -> Vec<&'static str> {
+    world
+        .get_resource::<SettleProbes>()
+        .map(|probes| probes.0.keys().copied().collect())
+        .unwrap_or_default()
+}
+
 /// Runs every probe once and returns the busy ones.
 pub(crate) fn run_probes(world: &mut World) -> BTreeMap<&'static str, Activity> {
     let Some(probes) = world.get_resource::<SettleProbes>() else {
