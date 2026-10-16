@@ -80,6 +80,38 @@ of a JSON-RPC error and drops its `data`, where the error's kind and hint would 
 failure, a game that cannot be reached included, comes back as a tool result marked `isError`,
 with the message, the kind and the hint in its text.
 
+**The launcher lives in the sidecar binary.** `game_start`, `game_stop`, `game_restart` and
+`game_status`, and the same verbs as `cargo game`, are a module of `ename_mcp`, not a crate or a
+script. The sidecar already has the async runtime and the BRP client that readiness needs, a CLI
+mode of the same binary adds no crate for one user, and agents without MCP get the same code.
+Hand-written restart scripts were the evidence against a script: pattern kills, unbounded polls,
+no check of who held the port.
+
+**A detached supervisor per run, and a state directory.** Each launch spawns `ename_mcp supervise`
+from its own copy of the binary, in its own session (Unix) or detached process group (Windows). It
+builds the editor, runs it under `cargo run` in a process group or job object, and records how it
+exited. Callers only edit `state.json` under a short lock and wait, always for a bounded time. So
+a caller that times out, a `/mcp reconnect` or a closed client changes nothing, and any later
+sidecar or CLI call can report or stop the game. The game running as the sidecar's child was
+rejected because a reconnect would kill it or lose its exit status.
+
+**Build before stop.** `game_restart` builds while the old game runs and swaps only after the
+build succeeds, so a type error costs nothing but the build. Windows will not let the linker
+replace a running executable, so there the old game is stopped first.
+
+**Ready means the recorded process answers.** A launch is `ready` when the game process is alive,
+`game.pid.get` answers on its port with that process's `os_pid`, and the main schedule has run
+two frames. An answer from any other process is a port conflict. This exists because a stale
+editor holding 15702 used to make a new one's failed bind invisible while the agent talked to the
+old build. The game now also binds both its ports itself before Bevy does, and exits with code 3
+when either is taken.
+
+**No kill by name or pattern.** `pkill -f` matched the agent's own shell often enough to be a
+known failure, and `pkill -x` silently matched nothing for names over 15 characters. The
+supervisor stops a game with `game.exit` over BRP, then kills only its own child's group or job.
+A game the launcher did not start is killed by pid only when the user asked (`take_over`), and
+only after its start time, executable and working directory were checked again.
+
 **Relative paths mean the agent's directory.** The sidecar sends its working directory with every
 command call, and the game resolves relative paths against it. The game's own working directory
 is wherever it was launched from, which under airshipgame is not the directory the agent works in.

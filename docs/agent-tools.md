@@ -12,21 +12,18 @@ Why the design is shaped this way is in
 
 ## Running it
 
-Run the editor binary. It is the only target that links `ename_remote`, so it is the only one
-with a server to talk to:
+Start the editor with `game_start` over MCP, or `cargo game start` from a shell. Both build and
+run the package `[workspace.metadata.ename.launch]` in `Cargo.toml` names
+(`example_game_editor_bin`, the only target that links `ename_remote`) and wait until it answers.
+`game_restart` rebuilds after a code change, `game_stop` stops it, `game_status` reports it. Never
+start it with a hand-written `cargo dev-run &`, and never stop it with `pkill`: see "Lifecycle".
 
-```sh
-cargo run -p example_game_editor_bin
-```
-
-It listens on `127.0.0.1:15702`. `example_game_bin` is the shipping composition and has no BRP
-server at all -- it runs and renders normally, nothing binds the port, and every tool call fails
-with "cannot reach the game's remote server" as though the game were down. See Security below for
-why the split exists.
+`example_game_bin` is the shipping composition and has no BRP server. The launcher cannot run it,
+but a hand-started one makes every tool call fail as though the game were down.
 
 Expect a long first build: the editor pulls in egui and the dev-only Bevy features, and this
-workspace optimizes dependencies, so a target directory warm for `example_game_bin` still
-recompiles most of the render stack. Give it ten minutes before concluding anything is wrong.
+workspace optimizes dependencies. `game_start` returns `building` after 50 seconds;
+`game_status` with `wait_seconds: 50` follows it.
 
 Build the sidecar once:
 
@@ -46,10 +43,70 @@ Register it with the client. For Claude Code, in `.mcp.json` at the repo root:
 }
 ```
 
-`ENAME_BRP_URL` overrides the address if the game is not on the default port.
+`ENAME_BRP_URL` pins the address. The session then never follows a started instance to another
+port, and starting one on another port is an error.
 
 The sidecar does not need the game to be running when it starts. A call made while the game is
 down fails with a message saying so, and works again once the game is back.
+
+The sidecar is not rebuilt by `game_start`. Whoever changes `ename_mcp` builds it
+(`cargo build -p ename_mcp`) and asks the user for `/mcp reconnect`.
+
+## Lifecycle
+
+| Tool | CLI | Does |
+| --- | --- | --- |
+| `game_start` | `cargo game start` | Build and start the editor, or report the one running, and wait until it answers. |
+| `game_restart` | `cargo game restart` | Build while the old game keeps running; on success stop it and start the new one. Params you leave out are the last launch's. |
+| `game_stop` | `cargo game stop` | `game.exit` over BRP, then a kill after `grace_seconds` (default 5). |
+| `game_status` | `cargo game status` | Report the state; `wait_seconds` waits out a build or startup. |
+
+Launch params: `instance`, `port`, `env` (e.g. `{"AIRSHIP_DIAGNOSTICS": "1"}`), `features`,
+`window_size`, `render_size`, `wait_seconds` (0 to 50, default 50). `settle` is accepted and
+ignored until a settle wait exists.
+
+**States.** `stopped`, `building`, `build_failed` (with `errors` in `path:line:col: error[...]`
+form), `starting`, `ready`, `exited` (with `exit` and, for an error code or a crash, `crash` with
+the cause and the last lines of the log), `external` and `port_in_use` (with `holder`). `ready`
+means the game process is alive, `game.pid.get` answers on its port from that process, and the main
+schedule has run two frames. It does not mean a frame was presented. A launch that ends in
+`build_failed`, `port_in_use` or a crash is a tool error. A `restart` whose build fails leaves the
+old game running and says so under `pending`.
+
+**Ownership.** Every launch records who started it: the MCP session's client process, the
+`--owner` token or `ENAME_GAME_OWNER` on the CLI, or nobody, meaning the user. Only the owner may
+stop or restart a game. Anything else is refused with `not_owner` unless `take_over` is passed,
+and that is only for when the user asked. Subagents share their parent's MCP session, so they
+share its games. An agent driving the CLI must pass a token: `cargo game owner --new` mints one,
+and `game_status` reports the session's own as `caller`, to hand to a separate-process agent as
+`ENAME_GAME_OWNER`. Before you finish, stop the games you started (`game_status` lists them under
+`yours`), unless you are leaving one running for the user to inspect; then say so.
+
+**Ports and instances.** The `default` instance uses 15702 and the render world's listener 15703.
+Another `instance` gets the first free pair from 15704. A started instance becomes the one this
+session's world tools talk to, and stays so across `/mcp reconnect`. Another owner's start never
+moves it. `game_start {instance}` on a running instance selects it.
+
+**Games the launcher did not start.** An editor started from a terminal still works with every
+world tool. `game_status` reports it as `external`, and `game_start` reports `port_in_use` with its
+pid and executable. `game_stop` with `take_over` stops it after checking it is this workspace's
+editor binary run from this workspace, and reports its exit as unknown.
+
+**A taken port is loud.** The game itself exits with code 3 and `BRP port 15702 is in use:
+another game is running` when either of its ports is taken, rather than running without a server.
+`ENAME_BRP_PORT` sets the port pair for a game started by hand.
+
+**Where things are.** `target/ename-launch/<workspace>-<hash>/<instance>/`: `game.log` (plain
+text, `RUST_BACKTRACE=1`; the previous run's is `game.prev.log`), `build.jsonl` and `build.log`
+from the last build, `exit.json`, `state.json` and `supervise.log`. Every result names the log
+under `log`.
+
+**When `cargo game` itself does not build.** It builds into `target/ename-launch-bin`, so it
+answers while the editor builds. If an `ename_mcp` edit breaks it, the last good binary still works:
+`target/ename-launch-bin/debug/ename_mcp game stop`.
+
+CLI exit codes: 0 ready or stopped, 1 build failed or crashed, 2 still building or starting, 3
+port in use or external game, 4 refused or invalid.
 
 ## Security
 
@@ -146,7 +203,8 @@ two runs share one essentially never. Job ids start with it (`kqvzmbta-3`), so a
 earlier run is recognisably stale. A command result's `pid` comes from the same answer as the
 result, so it cannot belong to a different run than the result does.
 
-A dead game is a different signal: the call fails with "cannot reach the game's remote server".
+A dead game is a different signal: the call fails with "cannot reach the game's remote server",
+and `game_status` says why.
 "Connection refused" means the process is gone. "Connection closed before message completed"
 means a handler panicked mid-request, and the game may still be running in an unknown state, so
 read `log_get_entries` before trusting it.

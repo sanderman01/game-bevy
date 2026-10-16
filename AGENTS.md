@@ -39,9 +39,11 @@ Where the two overlap, this file wins.
 ## Building and testing
 
 Use `cargo clippy` and `cargo build` to check for correctness and build success.
-To test at runtime, run `cargo run -p example_game_editor_bin`, not `example_game_bin`.
-The editor binary is the only target that links `ename_remote`, so it is the only one the
-MCP tools in [docs/agent-tools.md](docs/agent-tools.md) can reach.
+To test at runtime, start the editor with `game_start` (MCP) or `cargo game start`, and rebuild
+it with `game_restart` / `cargo game restart`; never `pkill`. They run `example_game_editor_bin`,
+the only target that links `ename_remote`, so the only one the MCP tools in
+[docs/agent-tools.md](docs/agent-tools.md) can reach. On the CLI, pass `--owner` (from
+`cargo game owner --new`). Stop the games you started before you finish.
 
 ## Code style
 
