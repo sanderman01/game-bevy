@@ -20,6 +20,12 @@ unsafe_code = "deny"
 manual_let_else = "warn"
 undocumented_unsafe_blocks = "warn"
 
+# The editor package `cargo game` and the `game_*` MCP tools build and run (`ename_mcp`'s
+# launcher). `features` is the same as the `dev-run` alias's; keep them in step.
+[workspace.metadata.ename.launch]
+package = "example_game_editor_bin"
+features = ["dev"]
+
 # Note: Use `cargo sort` to keep dependencies somewhat organised.
 # First-party crates carry a `version` alongside `path` so a `[patch]` can redirect them later:
 # `[patch]` silently does nothing against a bare `path` dependency.
