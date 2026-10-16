@@ -102,8 +102,16 @@ struct LogCondition {
 /// A condition being evaluated, with what it needs between frames.
 enum Evaluation {
     Frames(u32),
-    VirtualSeconds { seconds: f64 },
-    Log(LogFilter),
+    VirtualSeconds {
+        seconds: f64,
+    },
+    Log {
+        filter: LogFilter,
+        /// The sequence the wait started after, for the timeout hint.
+        start: Option<u64>,
+        /// `LogBuffer::dropped` when the wait started.
+        dropped_at_start: u64,
+    },
     Predicate(Predicate),
     Position(PositionCheck),
     AtRest(AtRest),
@@ -117,7 +125,7 @@ impl Evaluation {
     fn holds(&self) -> bool {
         !matches!(
             self,
-            Self::Frames(_) | Self::VirtualSeconds { .. } | Self::Log(_)
+            Self::Frames(_) | Self::VirtualSeconds { .. } | Self::Log { .. }
         )
     }
 }
@@ -286,7 +294,14 @@ fn evaluation(condition: &Condition, world: &mut World) -> Result<Evaluation, Co
                     .and_then(|buffer| buffer.read(|view| view.sequence_range()))
                     .map(|(_, newest)| newest);
             }
-            Evaluation::Log(filter)
+            let dropped_at_start = world
+                .get_resource::<LogBuffer>()
+                .map_or(0, LogBuffer::dropped);
+            Evaluation::Log {
+                start: filter.after_sequence,
+                filter,
+                dropped_at_start,
+            }
         }
     })
 }
@@ -313,6 +328,14 @@ pub(super) fn resolve_untils(world: &mut World) {
             (wait.frames, wait.virtual_start)
         };
         let check = check(&mut evaluation, world, frames, virtual_now, virtual_start);
+        let expired = world
+            .get::<UntilWait>(entity)
+            .is_some_and(|wait| wait.started.elapsed().as_secs_f64() >= wait.timeout_seconds);
+        let (note, hint) = if expired {
+            log_timeout_note(&evaluation, world)
+        } else {
+            (String::new(), None)
+        };
         let frozen = frozen(world);
         let paused_now = world_is_paused(world);
         let Some(mut wait) = world.get_mut::<UntilWait>(entity) else {
@@ -330,14 +353,18 @@ pub(super) fn resolve_untils(world: &mut World) {
                 match check.met {
                     Some(met) if wait.held >= wait.hold_frames => Some(Ok(met)),
                     _ if evaluation.needs_virtual_time() && frozen => Some(Err(world_paused())),
-                    _ if wait.started.elapsed().as_secs_f64() >= wait.timeout_seconds => {
-                        Some(Err(CommandError::failed(
+                    _ if expired => {
+                        let error = CommandError::failed(
                             "timed_out",
                             format!(
-                                "the condition did not hold within {} s; last seen: {}",
+                                "the condition did not hold within {} s; last seen: {}{note}",
                                 wait.timeout_seconds, wait.last
                             ),
-                        )))
+                        );
+                        Some(Err(match hint {
+                            Some(hint) => error.with_hint(hint),
+                            None => error,
+                        }))
                     }
                     _ => None,
                 }
@@ -403,7 +430,7 @@ fn check(
         Evaluation::Predicate(predicate) => predicate.check(world)?,
         Evaluation::Position(position) => position.check(world)?,
         Evaluation::AtRest(rest) => rest.check(world, virtual_now)?,
-        Evaluation::Log(filter) => {
+        Evaluation::Log { filter, .. } => {
             let Some(buffer) = world.get_resource::<LogBuffer>() else {
                 return Ok(Check {
                     met: None,
@@ -434,7 +461,7 @@ fn check(
             });
             // Next frame starts after the newest entry seen.
             if found.is_none() && newest.is_some() {
-                filter.after_sequence = newest;
+                filter.after_sequence = filter.after_sequence.max(newest);
             }
             Check {
                 met: found,
@@ -442,6 +469,45 @@ fn check(
             }
         }
     })
+}
+
+/// For a log wait that timed out: lines the buffer dropped meanwhile, and a matching entry from
+/// before the wait started, the usual reason a reload line is missed.
+fn log_timeout_note(evaluation: &Evaluation, world: &World) -> (String, Option<String>) {
+    let (
+        Evaluation::Log {
+            filter,
+            start,
+            dropped_at_start,
+        },
+        Some(buffer),
+    ) = (evaluation, world.get_resource::<LogBuffer>())
+    else {
+        return (String::new(), None);
+    };
+    let dropped = buffer.dropped().saturating_sub(*dropped_at_start);
+    let note = if dropped > 0 {
+        format!("; {dropped} log lines were dropped during the wait")
+    } else {
+        String::new()
+    };
+    let earlier = start.and_then(|start| {
+        let mut unbounded = filter.clone();
+        unbounded.after_sequence = None;
+        buffer.read(|view| {
+            view.iter()
+                .filter(|entry| entry.sequence <= start && unbounded.matches(entry))
+                .last()
+                .map(|entry| entry.sequence)
+        })
+    });
+    let hint = earlier.map(|sequence| {
+        format!(
+            "A matching entry (sequence {sequence}) arrived before this wait started; pass \
+             `after_sequence` read before the change you are waiting for."
+        )
+    });
+    (note, hint)
 }
 
 fn until_removed(mut world: DeferredWorld, context: HookContext) {
@@ -702,6 +768,49 @@ mod tests {
         .unwrap();
         app.update();
         assert_eq!(status(&app, &job).result.unwrap()["met"]["sequence"], 1);
+    }
+
+    #[test]
+    fn a_log_timeout_points_at_a_match_from_before_the_wait() {
+        let mut app = app();
+        let buffer = app.world().resource::<LogBuffer>().clone();
+        buffer.push(0., Level::INFO, "bevy_asset", "Reloaded sky.ron".to_owned());
+        let job = call(
+            &mut app,
+            json!({
+                "condition": { "log": { "message_contains": "reloaded sky" } },
+                "timeout_seconds": 0.01,
+            }),
+        )
+        .unwrap();
+        app.update();
+        std::thread::sleep(Duration::from_millis(20));
+        app.update();
+        let error = status(&app, &job).error.unwrap();
+        assert_eq!(error.kind, "timed_out");
+        let hint = error.hint.unwrap();
+        assert!(hint.contains("sequence 0"), "{hint}");
+    }
+
+    #[test]
+    fn an_after_sequence_beyond_the_newest_entry_is_kept() {
+        let mut app = app();
+        let buffer = app.world().resource::<LogBuffer>().clone();
+        buffer.push(0., Level::INFO, "t", "line".to_owned());
+        let job = call(
+            &mut app,
+            json!({ "condition": { "log": { "message_contains": "line", "after_sequence": 5 } } }),
+        )
+        .unwrap();
+        app.update();
+        for sequence in 1..=5 {
+            buffer.push(f64::from(sequence), Level::INFO, "t", "line".to_owned());
+        }
+        app.update();
+        assert_eq!(status(&app, &job).state, "running");
+        buffer.push(6., Level::INFO, "t", "line".to_owned());
+        app.update();
+        assert_eq!(status(&app, &job).result.unwrap()["met"]["sequence"], 6);
     }
 
     #[test]
