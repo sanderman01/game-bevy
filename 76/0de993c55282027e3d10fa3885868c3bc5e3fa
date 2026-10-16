@@ -1,0 +1,21 @@
+.claude/skills/game-capture/SKILL.md
+  s_51349e13722b35::t_7c8a308fd065d5 53-55
+docs/agent-tools.md
+  s_51349e13722b35::t_6bc279b27d4666 283-285,305-309
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "760de993c55282027e3d10fa3885868c3bc5e3fa",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
