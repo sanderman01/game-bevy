@@ -19,6 +19,7 @@
 //! This module has no network code and is in every build. Nothing runs a command unless
 //! something calls it, and the caller states its own [`CommandScope`].
 
+mod entity;
 mod error;
 mod jobs;
 mod registry;
@@ -26,6 +27,7 @@ mod run_id;
 
 use bevy::prelude::*;
 
+pub use entity::EntityTarget;
 pub use error::{CommandError, ErrorClass};
 pub use jobs::{
     JobCancelRequested, JobHandle, JobId, JobStatus, JobWork, Jobs, OnCancel, RETENTION,

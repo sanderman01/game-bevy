@@ -110,9 +110,9 @@ pub(crate) fn list(In(params): In<Option<Value>>, world: &mut World) -> BrpResul
         matched.push(EntitySummary {
             entity,
             name,
-            position: crate::position::absolute_position(world, entity)
+            position: ename_engine::bigspace::grid::absolute_position(world, entity)
                 .ok()
-                .map(|p| p.to_array()),
+                .map(|found| found.position.to_array()),
         });
     }
 
