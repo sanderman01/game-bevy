@@ -10,7 +10,7 @@ use std::time::Duration;
 use rmcp::{ErrorData, Json, handler::server::wrapper::Parameters, schemars, tool, tool_router};
 use serde::Deserialize;
 
-use super::{GameServer, commands::MAX_BLOCK};
+use super::{GameServer, commands::MAX_BLOCK, fail};
 use crate::{
     launch::{Caller, DEFAULT_INSTANCE, GameState, LaunchRequest, LaunchUpdate, Launcher, Status},
     staleness,
@@ -244,10 +244,6 @@ fn wait_for(seconds: Option<f64>, default: Duration) -> Duration {
 fn with_warning(mut status: Status) -> Status {
     status.warning = staleness::warning();
     status
-}
-
-fn fail(error: anyhow::Error) -> ErrorData {
-    super::fail(error)
 }
 
 /// A failed launch: the one-line summary, then the whole result.

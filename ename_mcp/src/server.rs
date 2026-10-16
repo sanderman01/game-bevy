@@ -1052,8 +1052,8 @@ impl ServerHandler for GameServer {
              you are leaving one running for the user to inspect; then say so in your final \
              message. The game's own commands (screenshots, video, editor views) appear as tools \
              while it runs; command_list and command_call reach them at any time. If a result \
-             says ename_mcp is out of date, tell the user in your reply that `/mcp reconnect` is \
-             needed, and why."
+             says ename_mcp is out of date, do what it says and tell the user in your reply what \
+             it asks of them, and why; if you may not build, ask the user to."
                 .to_owned(),
         );
         info.capabilities = ServerCapabilities::builder()
