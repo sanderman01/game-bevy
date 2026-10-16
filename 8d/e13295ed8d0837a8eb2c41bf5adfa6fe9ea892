@@ -1,0 +1,27 @@
+ename_engine/src/wait/predicate.rs
+  s_51349e13722b35::t_9a1614076de153 209-215,217-221
+  s_51349e13722b35::t_b74a587cfa02ec 55-73
+  s_51349e13722b35::t_55f92237649943 657,660-661
+  s_51349e13722b35::t_903f74f6a5b7b6 27-32
+  s_51349e13722b35::t_b2da802825484d 732,734-834,836-847,849-856,858-860
+  s_51349e13722b35::t_4e5763c3d2753d 91-93,107
+  s_51349e13722b35::t_833f4a4cffbd1d 247,402-405
+  s_51349e13722b35::t_a7d64bf0da0389 566,579,586
+  s_51349e13722b35::t_04e119a36a5ad8 552,835,857
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8de13295ed8d0837a8eb2c41bf5adfa6fe9ea892",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
