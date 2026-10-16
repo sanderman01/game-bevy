@@ -19,19 +19,28 @@
 //! | `game.position.get` / `.set` | Position is a `CellCoord` plus a `Transform`, relative to a moving origin. A bare `Transform` is wrong everywhere but one cell. |
 //! | `game.time.get` / `.set` | Nothing in BRP can freeze the world, and reading a world that is still advancing answers a different question. |
 //! | `game.logs.get` | Bevy's logs go to stderr, which a JSON-RPC client cannot see. |
-//! | `game.pid.get` | Nothing in BRP says which run of the process answered, so a restart between two calls is invisible. |
+//! | `game.pid.get` | Nothing in BRP says which run of the process answered, so a restart between two calls is invisible. Also answers the OS process id (`os_pid`), so a launcher can tell its game from another one on the port. |
+//! | `game.exit` | A graceful stop with exit code 0 on every platform; Ctrl+C cannot reach a detached Windows process. |
 //! | `game.command.list` / `.call` | The commands any crate registered in `ename_engine::command`, listed with their schemas and called by name. This crate never learns what they are. |
 //! | `game.job.status` / `.list` / `.cancel` | The jobs those commands start. |
 //!
 //! It also replaces `world.mutate_components` with a guarded version. See [`mutate`].
+//!
+//! # Ports
+//!
+//! The server listens on `ENAME_BRP_PORT` (default 15702) and the render world's on the next
+//! port. A taken port exits the game with code 3 instead of leaving it silently unreachable. See
+//! [`port`].
 //!
 //! Screenshots, video and the editor's views are not here. Their crates register them as commands,
 //! and they arrive through `game.command.*` like any other.
 
 mod command;
 mod entities;
+mod exit;
 mod logs;
 mod mutate;
+mod port;
 mod position;
 mod run_id;
 mod time;
@@ -71,6 +80,7 @@ impl PluginGroup for RemotePlugins {
             .with_method_main(time::SET_METHOD, time::set)
             .with_method_main(logs::GET_METHOD, logs::get)
             .with_method_main(run_id::GET_METHOD, run_id::get)
+            .with_method_main(exit::METHOD, exit::exit)
             .with_method_main(command::LIST_METHOD, command::list)
             .with_method_main(command::CALL_METHOD, command::call)
             .with_method_main(command::JOB_STATUS_METHOD, command::job_status)
@@ -79,8 +89,12 @@ impl PluginGroup for RemotePlugins {
             // Last, so it replaces the built-in of the same name.
             .with_method_main(mutate::METHOD, mutate::mutate_components);
 
+        let port = port::brp_port();
         PluginGroupBuilder::start::<Self>()
             .add(remote)
-            .add(RemoteHttpPlugin::default())
+            .add(RemoteHttpPlugin::default().with_port(port))
+            // After the HTTP plugin, so its render-world port replaces the default one.
+            .add(port::BrpPortPlugin { port })
+            .add(exit::ExitPlugin)
     }
 }

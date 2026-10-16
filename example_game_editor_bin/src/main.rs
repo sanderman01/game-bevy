@@ -5,7 +5,8 @@
 
 use bevy::{prelude::*, window::WindowResolution};
 
-fn main() {
+/// Returns the app's exit, so a stop or an error reaches the OS as the process exit code.
+fn main() -> AppExit {
     let mut app = App::new();
 
     let mut engine = ename_engine::EnginePlugins::default()
@@ -25,7 +26,7 @@ fn main() {
     app.add_plugins(ename_editor::EditorPlugins::default());
     app.add_plugins(ename_remote::RemotePlugins);
 
-    app.run();
+    app.run()
 }
 
 /// Where the user's load order file lives.

@@ -18,6 +18,9 @@ pub const GET_METHOD: &str = "game.pid.get";
 #[derive(Serialize)]
 struct PidResponse {
     pid: String,
+    /// The operating system's id for this process, so a launcher can tell its own game from
+    /// another one holding the port.
+    os_pid: u32,
 }
 
 pub(crate) fn get(In(_): In<Option<Value>>, world: &mut World) -> BrpResult {
@@ -28,5 +31,6 @@ pub(crate) fn get(In(_): In<Option<Value>>, world: &mut World) -> BrpResult {
     };
     crate::to_value(PidResponse {
         pid: run.as_str().to_owned(),
+        os_pid: std::process::id(),
     })
 }
