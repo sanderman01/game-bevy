@@ -1,0 +1,27 @@
+ename_asset_vfs/tests/archive_source.rs
+  s_b915bd5f72c4be::t_4e21a453b001c6 203
+ename_asset_alias/tests/alias_watch.rs
+  s_b915bd5f72c4be::t_0981273f03ad0b 9-10
+.cargo/config.toml
+  s_b915bd5f72c4be::t_4e21a453b001c6 20-23
+docs/design.md
+  s_b915bd5f72c4be::t_0981273f03ad0b 76-78
+ename_asset_content/tests/alias_watch.rs
+  s_b915bd5f72c4be::t_4e21a453b001c6 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f25a1a39f69f1a1e82294f569aaea7dc5f518d0e",
+  "prompts": {},
+  "sessions": {
+    "s_b915bd5f72c4be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6f5d82ea-08e1-42ee-9c8c-6ab3babe4de5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
