@@ -2,7 +2,7 @@
 //!
 //! Copies the `base` and `mods` fixtures into a temp dir, where `loud` overrides
 //! `core::greeting`, and edits both files while frames run. Needs Bevy's `file_watcher` feature
-//! (on under `cargo dt`); without it the test says so and returns.
+//! (on under `cargo dev-test`); without it the test says so and returns.
 
 use bevy::{
     app::{App, TaskPoolPlugin},

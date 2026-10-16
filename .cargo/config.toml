@@ -17,10 +17,10 @@ WGPU_ADAPTER_TYPE = "discrete"
 # target/. They also save typing out `-p example_game_editor_bin --features ...` for the common
 # cases.
 [alias]
-db = "build --workspace --features example_game_editor_bin/dev"
-dr = "run -p example_game_editor_bin --features dev"
-dc = "clippy --workspace --all-targets --features example_game_editor_bin/dev"
-dt = "test --workspace --features example_game_editor_bin/dev"
+dev-build = "build --workspace --features example_game_editor_bin/dev"
+dev-run = "run -p example_game_editor_bin --features dev"
+dev-clippy = "clippy --workspace --all-targets --features example_game_editor_bin/dev"
+dev-test = "test --workspace --features example_game_editor_bin/dev"
 
 # `ename_xtask` links no Bevy, so this does not need the shared `dev`-feature build the aliases
 # above do.

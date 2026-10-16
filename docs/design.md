@@ -73,9 +73,9 @@ bumps one, and the resulting type errors read as nonsense.
 crates declare them, each behind its own `dev` feature, which its defaults turn on.
 So any workspace-wide command resolves Bevy with `dynamic_linking` and `target/` holds one copy.
 Build a subset that leaves both binaries out, `cargo check -p ename_engine` for
-instance, and Bevy resolves without it: a second copy
-and a full rebuild each way. The `cargo db` / `dr` / `dc` / `dt` aliases in `.cargo/config.toml` are
-the workspace-wide commands written out, so reaching for one avoids that.
+instance, and Bevy resolves without it: a second copy and a full rebuild each way. The
+`cargo dev-build` / `dev-run` / `dev-clippy` / `dev-test` aliases in `.cargo/config.toml` are the
+workspace-wide commands written out, so reaching for one avoids that.
 
 `reflect_auto_register` is on workspace-wide already, through `bevy`'s defaults
 (`default` -> `3d` -> `default_app`). Forbidding a library to turn it on is not enforceable without

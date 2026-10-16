@@ -200,7 +200,7 @@ fn the_default_writer_refuses_paths_inside_a_mount() {
 }
 
 /// The `Default` source's watcher is wrapped to drop archive events; loose files must still
-/// reload through it. Needs Bevy's `file_watcher` feature (on under `cargo dt`).
+/// reload through it. Needs Bevy's `file_watcher` feature (on under `cargo dev-test`).
 #[test]
 fn loose_files_still_reload_beside_an_archive() {
     let root = root_with("basic.zip");

@@ -6,8 +6,8 @@
 //! Each test builds its own tree in a temp dir and edits it while frames run. Routing itself is
 //! covered deterministically by the unit tests in `src/watcher.rs`; these prove the wiring.
 //!
-//! Needs Bevy's `file_watcher` feature, which the workspace aliases (`cargo dt`) turn on. Without
-//! it there is no watcher, and each test says so and returns.
+//! Needs Bevy's `file_watcher` feature, which the workspace aliases (`cargo dev-test`) turn on.
+//! Without it there is no watcher, and each test says so and returns.
 
 mod bevy_support;
 
