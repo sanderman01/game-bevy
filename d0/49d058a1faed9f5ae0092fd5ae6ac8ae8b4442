@@ -1,0 +1,26 @@
+ename_engine/src/wait/until.rs
+  s_51349e13722b35::t_cd191d261f633d 331-338
+  s_51349e13722b35::t_72029ed66bf83a 105-107,477-484,773-814
+  s_51349e13722b35::t_4d5e0fadd6cee0 108-114,128,433
+  s_51349e13722b35::t_af0865093e2945 356-357,360,363-367
+  s_51349e13722b35::t_365b0446a1b0d5 474-476,485-494,497-512
+  s_51349e13722b35::t_2182778123d189 297-304,464
+  s_51349e13722b35::t_c005f82fd6eba6 495-496
+  s_51349e13722b35::t_effa45f2d75a9e 815
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d049d058a1faed9f5ae0092fd5ae6ac8ae8b4442",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
