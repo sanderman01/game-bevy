@@ -9,6 +9,7 @@
 
 mod assets;
 mod pipelines;
+mod predicate;
 mod probe;
 mod settled;
 mod until;

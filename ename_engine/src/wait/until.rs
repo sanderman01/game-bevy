@@ -16,6 +16,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use super::predicate::{
+    ComponentCondition, PositionCheck, PositionCondition, Predicate, ResourceCondition,
+};
 use crate::{
     command::{Call, CommandAppExt, CommandError, CommandSpec, JobHandle, Jobs, OnCancel},
     log::{CaptureLevel, LogBuffer, LogFilter},
@@ -30,7 +33,8 @@ const MAX_HOLD_FRAMES: u32 = 600;
 #[serde(deny_unknown_fields)]
 struct UntilParams {
     /// What to wait for. Exactly one key: {"frames": 30} real frames; {"virtual_seconds": 2.0}
-    /// of game time; {"log": {"message_contains": "baked"}} a new log line.
+    /// of game time; {"log": {"message_contains": "baked"}} a new log line; {"component": ..},
+    /// {"resource": ..} or {"position": ..} a predicate on reflected state.
     condition: Condition,
     /// Consecutive frames the condition must hold, 1 to 600. Defaults to 1. Not for `frames`,
     /// `virtual_seconds` or `log`.
@@ -64,6 +68,14 @@ enum Condition {
     /// A log entry newer than `after_sequence` (default: the newest when the job starts) that
     /// matches, with the same filters as `log_get_entries`.
     Log(LogCondition),
+    /// A component of one entity, compared with `op`:
+    /// {"name": "Crate", "component": "LinearVelocity", "path": ".0.y", "op": "gt", "value": -0.1}.
+    Component(ComponentCondition),
+    /// A resource, compared with `op`: {"resource": "...", "path": "...", "op": "eq", "value": ..}.
+    Resource(ResourceCondition),
+    /// An entity's absolute position along one axis, metres, Y up:
+    /// {"name": "Crate", "axis": "y", "op": "lt", "value": 2.0}.
+    Position(PositionCondition),
 }
 
 #[derive(Deserialize, JsonSchema, Clone, Debug)]
@@ -88,6 +100,8 @@ enum Evaluation {
     Frames(u32),
     VirtualSeconds { seconds: f64 },
     Log(LogFilter),
+    Predicate(Predicate),
+    Position(PositionCheck),
 }
 
 impl Evaluation {
@@ -104,11 +118,11 @@ impl Evaluation {
 }
 
 /// What one frame's check saw.
-struct Check {
+pub(super) struct Check {
     /// The value to report when met.
-    met: Option<Value>,
+    pub(super) met: Option<Value>,
     /// The last value seen, for progress and the timeout message.
-    last: Value,
+    pub(super) last: Value,
 }
 
 /// A running `wait.until`.
@@ -147,7 +161,8 @@ pub(super) fn register(app: &mut App) {
     app.register_job_command(
         CommandSpec::new(
             "wait.until",
-            "Wait until one condition holds: a number of frames, virtual seconds, or a log line. \
+            "Wait until one condition holds: frames, virtual seconds, a log line, a component or \
+             resource value, or a position. \
              time=run runs the world for the wait and pauses it in the frame it ends.",
         ),
         until,
@@ -214,9 +229,16 @@ fn until(
     Ok(job)
 }
 
-fn evaluation(condition: &Condition, world: &World) -> Result<Evaluation, CommandError> {
+fn evaluation(condition: &Condition, world: &mut World) -> Result<Evaluation, CommandError> {
     Ok(match condition {
         Condition::Frames(frames) => Evaluation::Frames(*frames),
+        Condition::Component(component) => {
+            Evaluation::Predicate(Predicate::component(component, world)?)
+        }
+        Condition::Resource(resource) => {
+            Evaluation::Predicate(Predicate::resource(resource, world)?)
+        }
+        Condition::Position(position) => Evaluation::Position(PositionCheck::new(position, world)?),
         Condition::VirtualSeconds(seconds) if seconds.is_finite() && *seconds >= 0.0 => {
             Evaluation::VirtualSeconds { seconds: *seconds }
         }
@@ -364,6 +386,8 @@ fn check(
                 .then(|| json!({ "virtual_seconds": round_ms(virtual_seconds) })),
             last: json!(round_ms(virtual_seconds)),
         },
+        Evaluation::Predicate(predicate) => predicate.check(world)?,
+        Evaluation::Position(position) => position.check(world)?,
         Evaluation::Log(filter) => {
             let Some(buffer) = world.get_resource::<LogBuffer>() else {
                 return Ok(Check {
