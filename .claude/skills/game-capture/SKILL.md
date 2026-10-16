@@ -3,7 +3,7 @@ name: game-capture
 description: Take a screenshot or record a video of the running example game or editor, or screenshot any other window, then crop and zoom it for reading. Use when you need to see what the game actually rendered - verifying a UI or rendering change, reading on-screen text, or checking motion and animation over time. Capture through the game's MCP `screenshot_capture` and `video_record` tools; spectacle is the fallback for anything else.
 ---
 
-# Screen capture (ename engine workspace)
+# Game capture (ename engine workspace)
 
 ## The game: use MCP
 
@@ -87,11 +87,12 @@ To look at a clip, extract stills and read them, or tile several into one image:
 
 ```sh
 for t in 0 3 6 9.9; do
-  ffmpeg -v error -y -ss $t -i clip.mp4 -frames:v 1 \
-    -vf scale=flags=bilinear+full_chroma_int+accurate_rnd:in_h_chr_pos=0:in_v_chr_pos=128,format=rgb24 f_$t.png
+  ffmpeg -v error -y -ss $t -i scratch/video/clip.mp4 -frames:v 1 \
+    -vf scale=flags=bilinear+full_chroma_int+accurate_rnd:in_h_chr_pos=0:in_v_chr_pos=128,format=rgb24 scratch/shots/f_$t.png
 done
-magick f_0.png f_3.png f_6.png f_9.9.png -resize 40% +append strip.png
-ffprobe -v error -count_frames -show_entries stream=width,height,nb_read_frames,r_frame_rate:format=duration clip.mp4
+s=scratch/shots
+magick $s/f_0.png $s/f_3.png $s/f_6.png $s/f_9.9.png -resize 40% +append $s/strip.png
+ffprobe -v error -count_frames -show_entries stream=width,height,nb_read_frames,r_frame_rate:format=duration scratch/video/clip.mp4
 ```
 
 The `scale` options decode the left-sited chroma correctly; a plain `ffmpeg -i clip.mp4 f.png` can
@@ -136,7 +137,7 @@ path steals focus; give it back afterwards.
 A large shot scaled into a message is unreadable. Crop to the region and scale it up:
 
 ```sh
-magick shot.png -crop 1290x750+1998+330 +repage -resize 200% crop.png
+magick scratch/shots/shot.png -crop 1290x750+1998+330 +repage -resize 200% scratch/shots/crop.png
 ```
 
 `WxH+X+Y` is in source pixels. `+repage` discards the leftover canvas offset. Use `magick`, not the
