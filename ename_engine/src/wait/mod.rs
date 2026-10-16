@@ -20,7 +20,7 @@ use bevy::prelude::*;
 pub use probe::{Activity, SettleAppExt, SettleSample, SettleWaiter};
 pub use settled::{SettleGate, SettleParams, SettleProgress, SettleTimedOut, Settled};
 
-use crate::time::TimeControlSystems;
+use crate::{readback::ReadbackSystems, time::TimeControlSystems};
 
 /// The order waits are evaluated in, in `Last`.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
@@ -48,6 +48,9 @@ impl Plugin for WaitPlugin {
                     .chain()
                     .after(TimeControlSystems::Countdown),
             )
+            // A capture gated on settling is requested in the frame its gate opens, so no frame
+            // passes between the last idle sample and the readback.
+            .configure_sets(Last, WaitSystems::Resolve.before(ReadbackSystems::Request))
             .add_systems(
                 Last,
                 probe::sample_probes

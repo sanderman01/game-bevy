@@ -2,7 +2,9 @@
 //!
 //! The job's work entity is the [`VideoRequest`]. Cancelling the job stops the recording and keeps
 //! what was recorded; a recording stopped before its first frame has nothing to keep and ends
-//! `cancelled`. Progress is copied from [`VideoProgress`] while it records.
+//! `cancelled`. With `settle`, the entity first carries a [`SettleGate`] and gets its request once
+//! the gate opens; cancelled while settling, the job ends `cancelled` with no file. Progress is
+//! copied from [`VideoProgress`] while it records.
 
 use std::path::PathBuf;
 
@@ -20,6 +22,7 @@ use crate::{
         Call, CommandAppExt, CommandError, CommandSpec, JobCancelRequested, JobHandle, JobWork,
         Jobs, OnCancel,
     },
+    wait::{SettleGate, SettleParams, SettleTimedOut, Settled},
 };
 
 #[derive(Deserialize, JsonSchema)]
@@ -40,6 +43,10 @@ struct RecordParams {
     /// Output frames per second, 1 to 240. Defaults to 30.
     #[serde(default)]
     frame_rate: Option<u32>,
+    /// Wait for loading, pipelines and streaming to settle first, as `wait.settled` does; `{}`
+    /// uses its defaults. Recording starts once it settles; fails `not_settled` on timeout.
+    #[serde(default)]
+    settle: Option<SettleParams>,
 }
 
 /// A length with its unit as the key, so `10` is never read as frames when seconds were meant.
@@ -127,7 +134,15 @@ fn record(
     if let Some(frame_rate) = frame_rate {
         request.frame_rate = frame_rate;
     }
-    let work = world.spawn(request).id();
+    let gate = params
+        .settle
+        .as_ref()
+        .map(|settle| SettleGate::new(settle, world))
+        .transpose()?;
+    let work = match gate {
+        Some(gate) => world.spawn(gate).id(),
+        None => world.spawn(request.clone()).id(),
+    };
     let job = match call.start_job::<Recorded>(world, work, OnCancel::Notify) {
         Ok(job) => job,
         Err(err) => {
@@ -136,8 +151,18 @@ fn record(
         }
     };
     let handle = job.clone();
+    let (timed_out, settling_cancelled) = (job.clone(), job.clone());
     world
         .entity_mut(work)
+        .observe(move |settled: On<Settled>, mut commands: Commands| {
+            commands.entity(settled.entity).insert(request.clone());
+        })
+        .observe(
+            move |timeout: On<SettleTimedOut>, mut jobs: ResMut<Jobs>, mut commands: Commands| {
+                jobs.finish(&timed_out, Err(timeout.error()));
+                commands.entity(timeout.entity).despawn();
+            },
+        )
         .observe(
             move |done: On<VideoFinished>, mut jobs: ResMut<Jobs>, sources: Res<CaptureSources>| {
                 match &done.result {
@@ -153,11 +178,22 @@ fn record(
                 }
             },
         )
-        .observe(|cancel: On<JobCancelRequested>, mut commands: Commands| {
-            commands.trigger(VideoStopRequested {
-                entity: cancel.entity,
-            });
-        });
+        .observe(
+            move |cancel: On<JobCancelRequested>,
+                  settling: Query<(), With<SettleGate>>,
+                  mut jobs: ResMut<Jobs>,
+                  mut commands: Commands| {
+                // Still settling: nothing was recorded, so there is nothing to keep.
+                if settling.contains(cancel.entity) {
+                    jobs.cancelled(settling_cancelled.id());
+                    commands.entity(cancel.entity).despawn();
+                } else {
+                    commands.trigger(VideoStopRequested {
+                        entity: cancel.entity,
+                    });
+                }
+            },
+        );
     Ok(job)
 }
 
@@ -211,4 +247,80 @@ pub(super) fn sync_job_progress(
 /// noise.
 fn seconds(duration: std::time::Duration) -> f64 {
     (duration.as_secs_f64() * 1000.0).round() / 1000.0
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::window::PrimaryWindow;
+    use serde_json::json;
+
+    use super::*;
+    use crate::{
+        capture::CapturePlugin,
+        command::{Caller, CommandPlugin, CommandScope, CommandWorldExt, Reply},
+        time::TimeControlPlugin,
+        wait::{Activity, SettleAppExt, WaitPlugin},
+    };
+
+    fn always_busy() -> Activity {
+        Activity::idle().pending("work", 1)
+    }
+
+    #[test]
+    fn cancelling_while_settling_ends_cancelled_with_nothing_recorded() {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            TimeControlPlugin,
+            CommandPlugin,
+            CapturePlugin,
+            WaitPlugin,
+        ))
+        .register_settle_probe("test", always_busy);
+        register(&mut app);
+        app.world_mut().spawn((Window::default(), PrimaryWindow));
+        let Reply::Job(job) = app
+            .world_mut()
+            .call_command(
+                "video.record",
+                json!({
+                    "path": "/clip.mp4", "source": "window", "duration": { "frames": 10 },
+                    "settle": {},
+                }),
+                Caller {
+                    scope: CommandScope::Development,
+                    cwd: None,
+                },
+            )
+            .unwrap()
+        else {
+            panic!("not a job");
+        };
+        app.update();
+        let status = app
+            .world()
+            .resource::<Jobs>()
+            .status(&job, CommandScope::Development)
+            .unwrap();
+        assert_eq!(status.progress.unwrap()["phase"], "settling");
+
+        let status = app
+            .world_mut()
+            .cancel_job(&job, CommandScope::Development)
+            .unwrap();
+        assert_eq!(status.state, "cancelled");
+        app.update();
+        let requests = app
+            .world_mut()
+            .query::<&VideoRequest>()
+            .iter(app.world())
+            .count();
+        assert_eq!(requests, 0);
+        let gates = app
+            .world_mut()
+            .query::<&SettleGate>()
+            .iter(app.world())
+            .count();
+        assert_eq!(gates, 0);
+    }
 }

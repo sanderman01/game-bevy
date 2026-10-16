@@ -1,7 +1,8 @@
 //! `screenshot.capture`: a screenshot as a job command.
 //!
-//! The job's work entity is the [`ScreenshotRequest`]. Cancelling despawns it, which is best
-//! effort: a PNG already being encoded is still written after the job reports `cancelled`.
+//! The job's work entity is the [`ScreenshotRequest`]. With `settle`, the entity first carries a
+//! [`SettleGate`] and gets its request in the frame the gate opens. Cancelling despawns it, which
+//! is best effort: a PNG already being encoded is still written after the job reports `cancelled`.
 
 use std::path::PathBuf;
 
@@ -13,6 +14,7 @@ use super::{ScreenshotFinished, ScreenshotRequest, check_png_path};
 use crate::{
     capture::{CaptureError, CaptureSources, restrict_source},
     command::{Call, CommandAppExt, CommandError, CommandSpec, JobHandle, Jobs, OnCancel},
+    wait::{SettleGate, SettleParams, SettleTimedOut, Settled},
 };
 
 #[derive(Deserialize, JsonSchema)]
@@ -26,6 +28,11 @@ struct CaptureParams {
     /// Plugins add more, such as the editor's "editor_camera". A camera source needs its camera
     /// to be rendering.
     source: String,
+    /// Wait for loading, pipelines and streaming to settle first, as `wait.settled` does; `{}`
+    /// uses its defaults. The capture is taken in the frame it settles. Fails `not_settled` on
+    /// timeout, without capturing.
+    #[serde(default)]
+    settle: Option<SettleParams>,
 }
 
 #[derive(Serialize, JsonSchema, Debug, PartialEq)]
@@ -65,7 +72,17 @@ fn capture(
     check_png_path(&path).map_err(|err| CommandError::invalid(err.kind(), err.to_string()))?;
     let name = call.params.source.clone();
     let source = CaptureSources::resolve(world, &name)?;
-    let work = world.spawn(ScreenshotRequest { source, path }).id();
+    let request = ScreenshotRequest { source, path };
+    let gate = call
+        .params
+        .settle
+        .as_ref()
+        .map(|settle| SettleGate::new(settle, world))
+        .transpose()?;
+    let work = match gate {
+        Some(gate) => world.spawn(gate).id(),
+        None => world.spawn(request.clone()).id(),
+    };
     let job = match call.start_job(world, work, OnCancel::Despawn) {
         Ok(job) => job,
         Err(err) => {
@@ -74,6 +91,18 @@ fn capture(
         }
     };
     let handle = job.clone();
+    let timed_out = job.clone();
+    world
+        .entity_mut(work)
+        .observe(move |settled: On<Settled>, mut commands: Commands| {
+            commands.entity(settled.entity).insert(request.clone());
+        })
+        .observe(
+            move |timeout: On<SettleTimedOut>, mut jobs: ResMut<Jobs>, mut commands: Commands| {
+                jobs.finish(&timed_out, Err(timeout.error()));
+                commands.entity(timeout.entity).despawn();
+            },
+        );
     world.entity_mut(work).observe(
         move |done: On<ScreenshotFinished>,
               mut jobs: ResMut<Jobs>,
@@ -253,5 +282,118 @@ mod tests {
             .unwrap();
         assert_eq!(status.state, "cancelled");
         assert!(app.world().get_entity(request).is_err());
+    }
+
+    mod settle {
+        use bevy::window::PrimaryWindow;
+
+        use super::*;
+        use crate::{
+            screenshot::{CaptureStage, ScreenshotPlugin},
+            time::TimeControlPlugin,
+            wait::{Activity, SettleAppExt, WaitPlugin},
+        };
+
+        #[derive(Resource, Default)]
+        struct Busy(bool);
+
+        fn busy_probe(busy: Res<Busy>) -> Activity {
+            Activity::idle().pending("work", usize::from(busy.0))
+        }
+
+        fn app() -> App {
+            let mut app = App::new();
+            app.add_plugins((
+                MinimalPlugins,
+                TimeControlPlugin,
+                CommandPlugin,
+                CapturePlugin,
+                WaitPlugin,
+                ScreenshotPlugin,
+            ))
+            .insert_resource(Busy(true))
+            .register_settle_probe("test", busy_probe);
+            app.finish();
+            app.cleanup();
+            app.world_mut().spawn((Window::default(), PrimaryWindow));
+            app
+        }
+
+        fn start(app: &mut App, settle: Value) -> JobId {
+            let reply = call(
+                app,
+                json!({ "path": "/a.png", "source": "window", "settle": settle }),
+            )
+            .unwrap();
+            let Reply::Job(job) = reply else {
+                panic!("not a job");
+            };
+            job
+        }
+
+        fn requests(app: &mut App) -> Vec<(Entity, bool)> {
+            app.world_mut()
+                .query::<(Entity, &ScreenshotRequest, Has<CaptureStage>)>()
+                .iter(app.world())
+                .map(|(entity, _, started)| (entity, started))
+                .collect()
+        }
+
+        #[test]
+        fn the_capture_is_requested_in_the_frame_it_settles() {
+            let mut app = app();
+            let job = start(&mut app, json!({ "stable_frames": 2, "probes": ["test"] }));
+            for _ in 0..3 {
+                app.update();
+                assert!(requests(&mut app).is_empty(), "requested while busy");
+            }
+            let progress = status(&app, &job).progress.unwrap();
+            assert_eq!(progress["phase"], "settling");
+            assert_eq!(progress["busy"], json!({ "test": { "work": 1 } }));
+
+            app.world_mut().resource_mut::<Busy>().0 = false;
+            app.update();
+            assert!(requests(&mut app).is_empty(), "one idle frame of two");
+            app.update();
+            // Settled and asked for its readback in the same `Last`.
+            let requested = requests(&mut app);
+            assert_eq!(requested.len(), 1);
+            assert!(
+                requested[0].1,
+                "the readback was not requested in the settling frame"
+            );
+            assert_eq!(status(&app, &job).state, "running");
+        }
+
+        #[test]
+        fn a_timeout_fails_and_captures_nothing() {
+            let mut app = app();
+            let job = start(&mut app, json!({ "timeout_seconds": 0.01 }));
+            app.update();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            app.update();
+            app.update();
+            let error = status(&app, &job).error.unwrap();
+            assert_eq!(error.kind, "not_settled");
+            assert!(error.message.contains("test (work 1)"), "{}", error.message);
+            assert!(requests(&mut app).is_empty());
+        }
+
+        #[test]
+        fn cancelling_while_settling_ends_the_job() {
+            let mut app = app();
+            let job = start(&mut app, json!({}));
+            app.update();
+            let status = app
+                .world_mut()
+                .cancel_job(&job, CommandScope::Development)
+                .unwrap();
+            assert_eq!(status.state, "cancelled");
+            app.world_mut().resource_mut::<Busy>().0 = false;
+            for _ in 0..10 {
+                app.update();
+            }
+            assert!(requests(&mut app).is_empty());
+        }
     }
 }
