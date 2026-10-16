@@ -50,7 +50,15 @@ pub(super) async fn settle(port: u16, deadline: Instant) -> String {
         "command": "wait.settled",
         "params": { "timeout_seconds": (timeout * 1000.0).round() / 1000.0 },
     });
-    let mut job = match client.call::<JobAnswer>("game.command.call", body).await {
+    // The call that starts the job may wait on a long frame (a shader compile stall); give it the
+    // whole remaining wait.
+    let start = BrpClient::with_timeout(
+        port::url(port),
+        deadline
+            .saturating_duration_since(Instant::now())
+            .max(REQUEST_TIMEOUT),
+    );
+    let mut job = match start.call::<JobAnswer>("game.command.call", body).await {
         Ok(answer) => answer.job,
         Err(err) => {
             let unknown = err.downcast_ref::<BrpError>().is_some_and(|err| {
