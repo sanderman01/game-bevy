@@ -181,6 +181,71 @@ async fn a_failing_static_tool_is_a_tool_error_the_agent_can_read() {
     assert!(text.contains("game.time.get"), "{text}");
 }
 
+#[tokio::test]
+async fn static_tools_carry_new_errors_on_results_and_failures() {
+    let respond: Responder = Arc::new(|_, request: &Value| {
+        let log = json!({ "errors": 1, "warnings": 0, "last_sequence": 9,
+                          "last_error": "bevy_render: failed to process shader" });
+        Some(match request["method"].as_str().unwrap() {
+            "game.pid.get" => json!({ "result": { "pid": "aaaaaaaa", "os_pid": 1, "log": log } }),
+            "game.time.get" => json!({ "result": { "paused": false } }),
+            _ => json!({ "error": { "code": -23401, "message": "no such entity" } }),
+        })
+    });
+    let server = GameServer::new(BrpClient::new(serve(respond).await));
+    let (server_io, client_io) = tokio::io::duplex(64 * 1024);
+    tokio::spawn(async move {
+        server.serve(server_io).await?.waiting().await?;
+        anyhow::Ok(())
+    });
+    let client = ().serve(client_io).await.unwrap();
+
+    let first = client
+        .call_tool(CallToolRequestParams::new("time_get"))
+        .await
+        .unwrap()
+        .structured_content
+        .unwrap();
+    assert_eq!(first["log"]["new_errors"], 1, "{first}");
+    let second = client
+        .call_tool(CallToolRequestParams::new("time_get"))
+        .await
+        .unwrap()
+        .structured_content
+        .unwrap();
+    assert!(second.get("log").is_none(), "{second}");
+
+    // A fresh server has its own baseline, so its failure reports the same error.
+    let respond: Responder = Arc::new(|_, request: &Value| {
+        Some(match request["method"].as_str().unwrap() {
+            "game.pid.get" => json!({ "result": { "pid": "aaaaaaaa", "os_pid": 1,
+                "log": { "errors": 2, "warnings": 0, "last_error": "panic: boom" } } }),
+            _ => json!({ "error": { "code": -23401, "message": "no such entity" } }),
+        })
+    });
+    let server = GameServer::new(BrpClient::new(serve(respond).await));
+    let (server_io, client_io) = tokio::io::duplex(64 * 1024);
+    tokio::spawn(async move {
+        server.serve(server_io).await?.waiting().await?;
+        anyhow::Ok(())
+    });
+    let client = ().serve(client_io).await.unwrap();
+    let failed = client
+        .call_tool(CallToolRequestParams::new("time_get"))
+        .await
+        .unwrap();
+    assert_eq!(failed.is_error, Some(true));
+    let text: String = failed
+        .content
+        .iter()
+        .filter_map(|block| block.as_text().map(|text| text.text.clone()))
+        .collect();
+    assert!(
+        text.contains("2 new error(s)") && text.contains("panic: boom"),
+        "{text}"
+    );
+}
+
 /// A launcher over an empty temporary workspace: no state directory, no game.
 fn empty_lifecycle(root: &std::path::Path) -> super::Lifecycle {
     let project = crate::launch::Project {

@@ -25,6 +25,7 @@ use serde_json::{Map, Value, json};
 use super::GameServer;
 use crate::{
     brp::{BrpError, METHOD_NOT_FOUND},
+    notice::{LogNotice, Tally},
     staleness,
 };
 
@@ -91,12 +92,19 @@ struct GameError {
     message: String,
     #[serde(default)]
     hint: Option<String>,
+    /// The run and log tally a BRP error's `data` carries.
+    #[serde(default)]
+    run: Option<String>,
+    #[serde(default)]
+    log: Option<Tally>,
 }
 
 #[derive(Deserialize)]
 struct JobAnswer {
     run: String,
     job: JobStatus,
+    #[serde(default)]
+    log: Option<Tally>,
 }
 
 /// What the follow loop last saw, for the message when the hard deadline fires.
@@ -155,7 +163,7 @@ impl GameServer {
                 entry
             })
             .collect();
-        Ok(success(json!({ "commands": commands }), &run))
+        Ok(self.success(json!({ "commands": commands }), &run, &answer))
     }
 
     #[tool(
@@ -181,7 +189,7 @@ impl GameServer {
         match self.read("game.job.list").await {
             Ok(answer) => {
                 let run = answer["run"].as_str().unwrap_or_default().to_owned();
-                Ok(success(json!({ "jobs": answer["jobs"] }), &run))
+                Ok(self.success(json!({ "jobs": answer["jobs"] }), &run, &answer))
             }
             Err(failure) => Ok(failure),
         }
@@ -237,10 +245,11 @@ impl GameServer {
             };
             let run = answer["run"].as_str().unwrap_or_default().to_owned();
             if let Some(result) = answer.get("result") {
-                return success(result.clone(), &run);
+                return self.success(result.clone(), &run, &answer);
             }
+            let tally = tally_of(&answer);
             match serde_json::from_value::<JobStatus>(answer["job"].clone()) {
-                Ok(status) => self.follow(status, run, wait, &seen).await,
+                Ok(status) => self.follow(status, run, tally, wait, &seen).await,
                 Err(err) => failure(format!(
                     "`game.command.call` answered with neither a result nor a job: {err}"
                 )),
@@ -276,18 +285,20 @@ impl GameServer {
                 Err(err) => return self.brp_failure(err).await,
             };
             match serde_json::from_value::<JobAnswer>(answer) {
-                Ok(JobAnswer { run, job }) => self.follow(job, run, wait, &seen).await,
+                Ok(JobAnswer { run, job, log }) => self.follow(job, run, log, wait, &seen).await,
                 Err(err) => failure(format!("`{method}` answered in an unexpected shape: {err}")),
             }
         };
         self.under_deadline(wait, work, &seen).await
     }
 
-    /// Polls a job until it finishes or `wait` passes.
+    /// Polls a job until it finishes or `wait` passes. `tally` is the log tally of the answer
+    /// that carried `status`; only the one on the final result becomes a notice.
     async fn follow(
         &self,
         mut status: JobStatus,
         run: String,
+        mut tally: Option<Tally>,
         wait: Duration,
         seen: &Mutex<Seen>,
     ) -> CallToolResult {
@@ -295,10 +306,14 @@ impl GameServer {
         loop {
             seen.lock().unwrap().job = Some((status.clone(), Instant::now()));
             match status.state.as_str() {
-                "succeeded" => return success(status.result.unwrap_or(Value::Null), &run),
+                "succeeded" => {
+                    let log = self.notice(&run, tally.as_ref());
+                    return success(status.result.unwrap_or(Value::Null), &run, log);
+                }
                 "failed" => {
                     let error = status.error.unwrap_or_default();
-                    return failure(self.describe(&error));
+                    let log = self.notice(&run, tally.as_ref());
+                    return failure(with_notice(self.describe(&error), log));
                 }
                 "cancelled" => {
                     return failure(format!(
@@ -306,7 +321,9 @@ impl GameServer {
                         status.id
                     ));
                 }
-                _ if started.elapsed() >= wait => return running(&status, &run),
+                _ if started.elapsed() >= wait => {
+                    return running(&status, &run, self.notice(&run, tally.as_ref()));
+                }
                 _ => {}
             }
             tokio::time::sleep(POLL).await;
@@ -330,6 +347,7 @@ impl GameServer {
                 ));
             }
             status = answer.job;
+            tally = answer.log;
         }
     }
 
@@ -383,14 +401,26 @@ impl GameServer {
             message: brp.message.clone(),
             ..game_error
         };
+        let log = game_error
+            .run
+            .as_deref()
+            .and_then(|run| self.notice(run, game_error.log.as_ref()));
         if game_error.kind.as_deref() == Some("wrong_run") {
             self.catalog.refresh_and_notify(&self.brp).await;
-            return failure(format!(
-                "{} The tools have been refreshed; call again if it is still wanted.",
-                game_error.message
+            return failure(with_notice(
+                format!(
+                    "{} The tools have been refreshed; call again if it is still wanted.",
+                    game_error.message
+                ),
+                log,
             ));
         }
-        failure(self.describe(&game_error))
+        failure(with_notice(self.describe(&game_error), log))
+    }
+
+    /// `value` tagged with `run` and the notice for the tally `answer` carries.
+    fn success(&self, value: Value, run: &str, answer: &Value) -> CallToolResult {
+        success(value, run, self.notice(run, tally_of(answer).as_ref()))
     }
 
     /// "message (kind)", then the hint, with command names rewritten into callable ones.
@@ -413,8 +443,21 @@ fn wait_for(value: Option<&Value>, default: Duration) -> Duration {
     })
 }
 
+/// The log tally beside an answer's `run`, from a game recent enough to send one.
+fn tally_of(answer: &Value) -> Option<Tally> {
+    serde_json::from_value(answer.get("log")?.clone()).ok()
+}
+
+/// A failure's text with the log notice after it.
+fn with_notice(text: String, log: Option<LogNotice>) -> String {
+    match log {
+        Some(log) => format!("{text}\n\n{}", log.sentence()),
+        None => text,
+    }
+}
+
 /// A job still running when the wait ran out.
-fn running(status: &JobStatus, run: &str) -> CallToolResult {
+fn running(status: &JobStatus, run: &str, log: Option<LogNotice>) -> CallToolResult {
     let mut value = json!({
         "job": status.id,
         "state": status.state,
@@ -428,15 +471,21 @@ fn running(status: &JobStatus, run: &str) -> CallToolResult {
     if let Some(progress) = &status.progress {
         value["progress"] = progress.clone();
     }
-    success(value, run)
+    success(value, run, log)
 }
 
-/// `value` tagged with the run that produced it, as `pid`, and the staleness warning when there is
-/// one. An object is tagged in place unless it has its own `pid` or `warning`; anything else is
-/// nested under `result`, so nothing is overwritten.
-pub(super) fn tagged(value: Value, run: &str) -> Value {
+/// `value` tagged with the run that produced it, as `pid`, the log notice and the staleness
+/// warning when there are any. An object is tagged in place unless it has its own `pid`, `log` or
+/// `warning`; anything else is nested under `result`, so nothing is overwritten.
+pub(super) fn tagged(value: Value, run: &str, log: Option<LogNotice>) -> Value {
     let mut object = match value {
-        Value::Object(map) if !map.contains_key("pid") && !map.contains_key("warning") => map,
+        Value::Object(map)
+            if !["pid", "log", "warning"]
+                .iter()
+                .any(|key| map.contains_key(*key)) =>
+        {
+            map
+        }
         other => {
             let mut map = Map::new();
             map.insert("result".into(), other);
@@ -444,14 +493,17 @@ pub(super) fn tagged(value: Value, run: &str) -> Value {
         }
     };
     object.insert("pid".into(), json!(run));
+    if let Some(log) = log {
+        object.insert("log".into(), json!(log));
+    }
     if let Some(warning) = staleness::warning() {
         object.insert("warning".into(), json!(warning));
     }
     Value::Object(object)
 }
 
-fn success(value: Value, run: &str) -> CallToolResult {
-    CallToolResult::structured(tagged(value, run))
+fn success(value: Value, run: &str, log: Option<LogNotice>) -> CallToolResult {
+    CallToolResult::structured(tagged(value, run, log))
 }
 
 /// A tool failure the agent sees whole. `GameServer::call_tool` adds the staleness warning.
@@ -777,6 +829,76 @@ mod tests {
         assert_eq!(
             text(&result),
             "no capture source `moon` (unknown_source). try window"
+        );
+    }
+
+    fn log(errors: u64, last_sequence: u64) -> Value {
+        json!({ "errors": errors, "warnings": 0, "last_sequence": last_sequence,
+                "last_error": format!("shader: broken {errors}") })
+    }
+
+    #[tokio::test]
+    async fn a_result_carries_new_errors_once() {
+        let instant = |errors| json!({ "result": { "run": "aaaaaaaa", "log": log(errors, 7), "result": { "view": "game" } } });
+        let (url, _) = game(
+            HashMap::from([(
+                "game.command.call",
+                vec![instant(1), instant(1), instant(2)],
+            )]),
+            None,
+        )
+        .await;
+        let server = server(url);
+        let call = || server.call_command("view.read", args(json!({})), None);
+
+        let first = structured(&call().await);
+        assert_eq!(
+            first["log"],
+            json!({ "new_errors": 1, "new_warnings": 0, "last_error": "shader: broken 1" })
+        );
+        assert_eq!(first["view"], "game");
+        assert!(
+            structured(&call().await).get("log").is_none(),
+            "nothing new"
+        );
+        let third = structured(&call().await);
+        assert_eq!(third["log"]["new_errors"], 1);
+        assert_eq!(third["log"]["after_sequence"], 7);
+    }
+
+    #[tokio::test]
+    async fn failures_carry_the_notice_in_their_text() {
+        let failed = json!({ "result": { "run": "aaaaaaaa", "log": log(1, 3), "job": {
+            "id": "aaaaaaaa-1", "command": "photo.take", "state": "failed",
+            "error": { "kind": "camera_inactive", "class": "failed", "message": "dark" },
+        } } });
+        let error = json!({ "error": { "code": -32000, "message": "no",
+            "data": { "kind": "nope", "class": "failed", "run": "aaaaaaaa", "log": log(2, 4) } } });
+        let (url, _) = game(
+            HashMap::from([
+                ("game.command.call", vec![running("aaaaaaaa-1", 0), error]),
+                ("game.job.status", vec![failed]),
+            ]),
+            None,
+        )
+        .await;
+        let server = server(url);
+        let job = server
+            .call_command("photo.take", args(json!({})), None)
+            .await;
+        assert_eq!(job.is_error, Some(true));
+        assert!(
+            text(&job).contains("1 new error(s)") && text(&job).contains("shader: broken 1"),
+            "{}",
+            text(&job)
+        );
+        let brp = server
+            .call_command("photo.take", args(json!({})), None)
+            .await;
+        assert!(
+            text(&brp).contains("1 new error(s)") && text(&brp).contains("after_sequence 3"),
+            "{}",
+            text(&brp)
         );
     }
 

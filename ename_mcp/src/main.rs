@@ -17,6 +17,7 @@
 mod brp;
 mod entity;
 mod launch;
+mod notice;
 mod server;
 mod staleness;
 

@@ -16,27 +16,36 @@ pub struct BrpClient {
     http: reqwest::Client,
     url: String,
     next_id: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    /// The newest error the game's log tally named, for when the game is gone and cannot say.
+    last_error: std::sync::Arc<std::sync::Mutex<Option<String>>>,
 }
 
 impl BrpClient {
     pub fn new(url: impl Into<String>) -> Self {
-        Self {
-            http: reqwest::Client::new(),
-            url: url.into(),
-            next_id: std::sync::Arc::default(),
-        }
+        Self::with_http(url, reqwest::Client::new())
     }
 
     /// A client whose every request gives up after `timeout`, for probes.
     pub fn with_timeout(url: impl Into<String>, timeout: std::time::Duration) -> Self {
+        let http = reqwest::Client::builder()
+            .timeout(timeout)
+            .build()
+            .unwrap_or_default();
+        Self::with_http(url, http)
+    }
+
+    fn with_http(url: impl Into<String>, http: reqwest::Client) -> Self {
         Self {
-            http: reqwest::Client::builder()
-                .timeout(timeout)
-                .build()
-                .unwrap_or_default(),
+            http,
             url: url.into(),
             next_id: std::sync::Arc::default(),
+            last_error: std::sync::Arc::default(),
         }
+    }
+
+    /// Keeps `error` as the newest the game logged.
+    pub fn remember_error(&self, error: &str) {
+        *self.last_error.lock().unwrap() = Some(error.to_owned());
     }
 
     /// Calls `method` and deserializes the `result` field.

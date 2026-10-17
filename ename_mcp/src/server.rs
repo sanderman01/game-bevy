@@ -46,6 +46,7 @@ pub use lifecycle::Lifecycle;
 use crate::{
     brp::{BrpClient, Endpoint},
     entity::{self, EntitySelector, ResolvedEntity},
+    notice::{LogNotice, NoticeState, Tally},
     staleness,
 };
 
@@ -66,6 +67,8 @@ pub struct GameServer {
     cwd: Option<PathBuf>,
     /// Room past a tool's own wait before it gives up on a game that stopped answering.
     hard_margin: Duration,
+    /// The log tally each run has already reported to the agent.
+    notices: Arc<NoticeState>,
 }
 
 impl GameServer {
@@ -90,6 +93,7 @@ impl GameServer {
             tool_router,
             cwd: std::env::current_dir().ok(),
             hard_margin: commands::HARD_MARGIN,
+            notices: Arc::default(),
         }
     }
 
@@ -107,21 +111,51 @@ impl GameServer {
     /// actually served the request. One extra loopback call per tool; the handler reads a
     /// single resource.
     async fn tag<T>(&self, result: T) -> ToolResult<T> {
-        #[derive(Deserialize)]
-        struct Pid {
-            pid: String,
-        }
         let pid: Pid = self
             .brp
             .call("game.pid.get", json!({}))
             .await
             .map_err(fail)?;
         Ok(Json(Tagged {
+            log: self.notice(&pid.pid, pid.log.as_ref()),
             pid: pid.pid,
             warning: staleness::warning(),
             result,
         }))
     }
+
+    /// The log notice for an answer from `run`, if the game logged anything new. Advances the
+    /// run's mark, so call it only for a result the agent will see.
+    fn notice(&self, run: &str, tally: Option<&Tally>) -> Option<LogNotice> {
+        let tally = tally?;
+        if let Some(error) = &tally.last_error {
+            self.brp.remember_error(error);
+        }
+        self.notices.notice(run, tally)
+    }
+
+    /// The log notice as a sentence for a static tool that failed, from a `game.pid.get` read
+    /// bounded like the failed call. `None` when the game cannot say.
+    async fn failure_notice(&self) -> Option<String> {
+        let read = self.brp.call::<Pid>("game.pid.get", json!({}));
+        let pid = tokio::time::timeout(FAILURE_NOTICE_WAIT, read)
+            .await
+            .ok()?
+            .ok()?;
+        Some(self.notice(&pid.pid, pid.log.as_ref())?.sentence())
+    }
+}
+
+/// How long a failed static tool waits to read the log tally. Short: a game that cannot answer
+/// already said so in the failure.
+const FAILURE_NOTICE_WAIT: Duration = Duration::from_secs(2);
+
+/// What `game.pid.get` answers.
+#[derive(Deserialize)]
+struct Pid {
+    pid: String,
+    #[serde(default)]
+    log: Option<Tally>,
 }
 
 /// Tool failures reach the agent as failures, with the sentence that explains them.
@@ -155,6 +189,10 @@ pub struct Tagged<T> {
     /// Identifies this run of the game process. A different value from the last call means the
     /// game restarted: re-resolve entities by name, because the ids are stale.
     pid: String,
+    /// New errors and warnings the game logged since the last result that reported any. Absent
+    /// when there are none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    log: Option<LogNotice>,
     /// Something about this server, not about the result, that needs acting on. Absent in the
     /// ordinary case, which is all of them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1114,8 +1152,12 @@ impl ServerHandler for GameServer {
             let response = match server.tool_router.call(call).await {
                 Ok(response) => response,
                 Err(error) => {
-                    CallToolResult::error(vec![ContentBlock::text(error.message.into_owned())])
-                        .into()
+                    let mut content = vec![ContentBlock::text(error.message.into_owned())];
+                    // A failure is where an error the game logged alongside matters most.
+                    if let Some(notice) = server.failure_notice().await {
+                        content.push(ContentBlock::text(notice));
+                    }
+                    CallToolResult::error(content).into()
                 }
             };
             return Ok(warn_on_failure(response));
