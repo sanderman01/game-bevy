@@ -1,0 +1,39 @@
+ename_mcp/src/server/session_tests.rs
+  s_67b8126579ad2d::t_570f3868fac14b 243-246
+  s_67b8126579ad2d::t_71c6935145ba4d 184-242,247-248
+ename_mcp/src/notice.rs
+  s_67b8126579ad2d::t_62c97a826ba49b 1-139,144-172
+  s_67b8126579ad2d::t_570f3868fac14b 140-143
+ename_mcp/src/server.rs
+  s_67b8126579ad2d::t_62bcb26d611e31 96
+  s_67b8126579ad2d::t_a76200390f0a35 1155-1160
+  s_67b8126579ad2d::t_d7efb2973f863e 120,126-158
+  s_67b8126579ad2d::t_18a9219935e7bb 49
+  s_67b8126579ad2d::t_f3b6124bfe7833 70-71
+  s_67b8126579ad2d::t_86138dc506814d 192-195
+ename_mcp/src/brp.rs
+  s_67b8126579ad2d::t_d9d113912cc85c 19-20,25,30-37,39,42,46-49
+  s_67b8126579ad2d::t_67428a6fad6ed9 50
+ename_mcp/src/server/commands.rs
+  s_67b8126579ad2d::t_5d6858115ecead 28,95-99,106-107,166,192,248,250,252,288,295-296,301,309-312,315-316,324-326,350,404-407,410-415,418-423,446-458,460,474,477-480,487-488,496-498,505-506
+  s_67b8126579ad2d::t_c00ee3d93ba110 835-841,843-859,864-904
+  s_67b8126579ad2d::t_570f3868fac14b 482-486,842,860-863
+ename_mcp/src/main.rs
+  s_67b8126579ad2d::t_7bbdea3a863904 20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fc5bb860b281e0ab84c8dc09e3b853464003529e",
+  "prompts": {},
+  "sessions": {
+    "s_67b8126579ad2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f8609ac4-10b1-417b-8047-fdf9b3191298",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
