@@ -23,7 +23,13 @@ pub(crate) struct ExitPlugin;
 
 impl Plugin for ExitPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Last, exit_when_due.run_if(resource_exists::<ExitRequested>));
+        app.add_systems(
+            Last,
+            exit_when_due
+                .run_if(resource_exists::<ExitRequested>)
+                // So the run record sees this exit in the frame the app stops.
+                .before(crate::run_record::RecordExit),
+        );
     }
 }
 

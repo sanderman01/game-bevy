@@ -1,0 +1,17 @@
+{
+  "run": "kqvzmbta",
+  "os_pid": 41237,
+  "exe": "/home/user/game/target/ename-launch/game/default/example_game_editor_bin",
+  "started_unix_ms": 1781533200000,
+  "panic": {
+    "message": "Failed to get directional light visible entities for cascade",
+    "location": "bevy_pbr-0.19.1/src/render/light.rs:2928:22",
+    "thread": "Compute Task Pool (3)",
+    "at_unix_ms": 1781533260000
+  },
+  "panics": 1,
+  "exit": {
+    "code": 0,
+    "at_unix_ms": 1781533270000
+  }
+}

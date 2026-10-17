@@ -3075,6 +3075,7 @@ name = "ename_mcp"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "dirs",
  "process-wrap",
  "reqwest",
  "rmcp",
@@ -3094,10 +3095,12 @@ name = "ename_remote"
 version = "0.0.0"
 dependencies = [
  "bevy",
+ "dirs",
  "ename_engine",
  "schemars",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

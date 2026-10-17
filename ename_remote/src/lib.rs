@@ -32,6 +32,11 @@
 //! port. A taken port exits the game with code 3 instead of leaving it silently unreachable. See
 //! [`port`].
 //!
+//! # Run record
+//!
+//! A small file per port says which run holds it, its latest panic and how it exited, so a client
+//! that can no longer reach the game can say how it died. See [`run_record`].
+//!
 //! Screenshots, video and the editor's views are not here. Their crates register them as commands,
 //! and they arrive through `game.command.*` like any other.
 
@@ -43,6 +48,7 @@ mod mutate;
 mod port;
 mod position;
 mod run_id;
+mod run_record;
 mod time;
 
 use bevy::{
@@ -95,6 +101,11 @@ impl PluginGroup for RemotePlugins {
             .add(RemoteHttpPlugin::default().with_port(port))
             // After the HTTP plugin, so its render-world port replaces the default one.
             .add(port::BrpPortPlugin { port })
+            // After the port check, which exits first when another game holds the port, so the
+            // record of that game is left alone.
+            .add(run_record::RunRecordPlugin {
+                path: run_record::record_path(port),
+            })
             .add(exit::ExitPlugin)
     }
 }
