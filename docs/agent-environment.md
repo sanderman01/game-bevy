@@ -106,8 +106,8 @@ before relying on them.
 - Heredocs fail (`can't create temp file`): use `python3 -c '...'` or plain commands.
 - Read pinned revisions with `git show <sha>:<path>`. Read files in ranges (`sed -n 1,200p`,
   `rg -n`): output over about 10k tokens is truncated.
-- Nothing can be written, so images cannot be resized there. The parent captures them small
-  (`max_width`) or downscales them into `scratch/` first and names those files in the brief.
+- Nothing can be written, so images cannot be resized there. The parent downscales them into
+  `scratch/` first (`magick in.png -resize 1024x out.png`) and names those files in the brief.
 - `EROFS` failures from a test writing temp files are the sandbox, not the code.
 
 ## Worktrees
