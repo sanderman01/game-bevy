@@ -1,0 +1,22 @@
+ename_engine/src/camera/ground/mod.rs
+  s_51349e13722b35::t_2d786d89443e9c 782-783
+  s_51349e13722b35::t_98d7bba0f8fe66 757-763,767-781,784-797
+  s_51349e13722b35::t_88724332bda4c6 764-766
+  s_51349e13722b35::t_b071fd7cf15ff6 756
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "14763b641d9bce1948e0f9ec83ff8d13999f1ad6",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
