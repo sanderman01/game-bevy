@@ -2,10 +2,10 @@
 //! `job_cancel`, and the generic call every per-command tool goes through.
 //!
 //! None of this knows any command. A command answers at once or starts a job; a job is followed
-//! for up to [`MAX_BLOCK`], then returned still running with its id for `job_wait`. Every request
-//! runs under one hard deadline, because the HTTP client has no timeout of its own: the soft cap
-//! is the poll loop choosing to return, the hard deadline only catches a game that stopped
-//! answering. Failures come back as tool results with `isError`, because a client may show only
+//! for up to [`MAX_BLOCK`], then returned still running with its id for `job_wait`. A whole call
+//! runs under one hard deadline, on top of each request's own timeout: the soft cap is the poll
+//! loop choosing to return, the hard deadline only catches a game that stopped answering, and its
+//! message says how the game died when the run record does. Failures come back as tool results with `isError`, because a client may show only
 //! the message of a JSON-RPC error and drop its data.
 
 use std::{
@@ -32,8 +32,8 @@ use crate::{
 /// The longest a tool waits for a job before returning it still running. Under the 60 s request
 /// timeout many MCP clients inherit.
 pub const MAX_BLOCK: Duration = Duration::from_secs(50);
-/// Room on top of the soft cap for the last status call.
-pub const HARD_MARGIN: Duration = Duration::from_secs(10);
+/// Room on top of the soft cap for the last status call: one request's timeout.
+pub const HARD_MARGIN: Duration = crate::brp::REQUEST_TIMEOUT;
 const POLL: Duration = Duration::from_millis(50);
 
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
@@ -258,16 +258,24 @@ impl GameServer {
         self.under_deadline(wait, work, &seen).await
     }
 
-    /// One parameterless read under the hard deadline, because the HTTP client has none.
+    /// One parameterless read under the hard deadline.
     async fn read(&self, method: &str) -> Result<Value, CallToolResult> {
         match tokio::time::timeout(self.hard_margin, self.brp.call_raw(method, json!({}))).await {
             Ok(Ok(answer)) => Ok(answer),
             Ok(Err(err)) => Err(self.brp_failure(err).await),
-            Err(_) => Err(failure(format!(
+            Err(_) => Err(failure(self.with_cause(format!(
                 "the game stopped answering: `{method}` had no answer within {} seconds. It may \
                  be hung or stopped at a breakpoint.",
                 self.hard_margin.as_secs_f32()
-            ))),
+            )))),
+        }
+    }
+
+    /// `text`, then how the game died when its run record says.
+    fn with_cause(&self, text: String) -> String {
+        match self.brp.unreachable() {
+            Some(cause) => format!("{text} {cause}"),
+            None => text,
         }
     }
 
@@ -362,7 +370,7 @@ impl GameServer {
             Ok(result) => result,
             Err(_) => {
                 let seen = seen.lock().unwrap();
-                failure(match &seen.job {
+                failure(self.with_cause(match &seen.job {
                     Some((job, at)) => format!(
                         "the game stopped answering. Job `{}` was last {}, {:.1} seconds ago. \
                          Check it with job_wait.",
@@ -375,7 +383,7 @@ impl GameServer {
                          or stopped at a breakpoint.",
                         deadline.as_secs_f32()
                     ),
-                })
+                }))
             }
         }
     }

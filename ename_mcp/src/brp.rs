@@ -18,11 +18,24 @@ pub struct BrpClient {
     next_id: std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// The newest error the game's log tally named, for when the game is gone and cannot say.
     last_error: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+    /// Where the game keeps its run record (`ename_remote::run_record`).
+    record_dir: std::sync::Arc<std::path::Path>,
 }
+
+/// The longest one request waits for an answer. A hung game would otherwise block a tool forever;
+/// commands keep their own, longer deadlines by polling.
+pub const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 impl BrpClient {
     pub fn new(url: impl Into<String>) -> Self {
-        Self::with_http(url, reqwest::Client::new())
+        Self::with_timeout(url, REQUEST_TIMEOUT)
+    }
+
+    /// This client, reading run records from `dir`.
+    #[cfg(test)]
+    pub fn with_record_dir(mut self, dir: &std::path::Path) -> Self {
+        self.record_dir = dir.into();
+        self
     }
 
     /// A client whose every request gives up after `timeout`, for probes.
@@ -40,6 +53,7 @@ impl BrpClient {
             url: url.into(),
             next_id: std::sync::Arc::default(),
             last_error: std::sync::Arc::default(),
+            record_dir: crate::crash::record_dir().into(),
         }
     }
 
@@ -59,10 +73,17 @@ impl BrpClient {
             .with_context(|| format!("BRP method `{method}` returned an unexpected result shape"))
     }
 
+    /// How a game that gave no answer died, from its run record, or `None` without one.
+    pub fn unreachable(&self) -> Option<String> {
+        let port = port_of(&self.url)?;
+        let last_error = self.last_error.lock().unwrap().clone();
+        crate::crash::unreachable(&self.record_dir, port, last_error.as_deref())
+    }
+
     /// Calls `method` and returns the raw `result` field.
     ///
-    /// A transport failure is reported as "the game is not running", because that is what it
-    /// means in practice and it is the answer the agent needs.
+    /// A transport failure is reported as "the game is not running", with how it died when its
+    /// run record says, because that is the answer the agent needs.
     pub async fn call_raw(&self, method: &str, params: Value) -> anyhow::Result<Value> {
         let id = self
             .next_id
@@ -75,19 +96,26 @@ impl BrpClient {
             .json(&request)
             .send()
             .await
-            .with_context(|| {
-                format!(
-                    "cannot reach the game's remote server at {}. The game is not running, or \
-                     runs on another port: game_status says which, and game_start (or `cargo \
-                     game start`) starts it.",
+            .map_err(|err| {
+                let fallback = "The game is not running, or runs on another port: game_status \
+                                says which, and game_start (or `cargo game start`) starts it.";
+                let why = self.unreachable().unwrap_or_else(|| fallback.to_owned());
+                anyhow::Error::new(err).context(format!(
+                    "cannot reach the game's remote server at {}. {why}",
                     self.url
-                )
+                ))
             })?;
 
-        let body: serde_json::Map<String, Value> = response
-            .json()
-            .await
-            .context("the game's remote server returned a body that is not JSON-RPC")?;
+        let body: serde_json::Map<String, Value> = response.json().await.map_err(|err| {
+            // A body cut off is a game that died or a handler that panicked mid-answer.
+            let why = (!err.is_decode())
+                .then(|| self.unreachable())
+                .flatten()
+                .map_or_else(String::new, |why| format!(". {why}"));
+            anyhow::Error::new(err).context(format!(
+                "the game's remote server returned a body that is not JSON-RPC{why}"
+            ))
+        })?;
 
         // `contains_key` and not `Option<Value>`: several BRP methods answer with a literal
         // `null` result, which serde would otherwise render indistinguishable from no result.
@@ -109,6 +137,13 @@ impl BrpClient {
             _ => bail!("BRP `{method}` returned neither a result nor an error"),
         }
     }
+}
+
+/// The port of `http://host:port[/...]`.
+fn port_of(url: &str) -> Option<u16> {
+    let authority = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let authority = authority.split('/').next()?;
+    authority.rsplit_once(':')?.1.parse().ok()
 }
 
 #[derive(Deserialize)]

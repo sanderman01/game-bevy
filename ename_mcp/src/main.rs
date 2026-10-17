@@ -15,6 +15,7 @@
 //! | `ename_mcp supervise <dir> <generation>` | The detached supervisor of one game run. Started by the launcher, never by hand. |
 
 mod brp;
+mod crash;
 mod entity;
 mod launch;
 mod notice;

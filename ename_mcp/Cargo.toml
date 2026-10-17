@@ -9,6 +9,7 @@ description = "MCP sidecar exposing the running game's world to a coding agent."
 
 [dependencies]
 anyhow = { workspace = true }
+dirs = { workspace = true }
 process-wrap = { workspace = true, features = ["job-object", "creation-flags", "process-group", "process-session", "tokio1"] }
 reqwest = { workspace = true }
 rmcp = { workspace = true, features = ["server", "macros", "transport-io"] }

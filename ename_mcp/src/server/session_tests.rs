@@ -246,6 +246,50 @@ async fn static_tools_carry_new_errors_on_results_and_failures() {
     );
 }
 
+#[tokio::test]
+async fn a_hung_game_is_reported_as_running_but_not_answering() {
+    let url = serve(Arc::new(|_, _: &Value| None)).await;
+    let port = url.rsplit_once(':').unwrap().1.to_owned();
+    // This test process plays the game the record names, so it counts as alive.
+    let records = tempfile::tempdir().unwrap();
+    let me = crate::launch::process::info(std::process::id()).unwrap();
+    let record = json!({
+        "run": "aaaaaaaa", "os_pid": std::process::id(), "exe": me.exe,
+        "started_unix_ms": me.start_time * 1000, "panics": 0,
+    });
+    std::fs::write(
+        records.path().join(format!("brp-{port}.json")),
+        record.to_string(),
+    )
+    .unwrap();
+    let brp =
+        BrpClient::with_timeout(url, Duration::from_millis(300)).with_record_dir(records.path());
+    let server = GameServer::new(brp);
+    let (server_io, client_io) = tokio::io::duplex(64 * 1024);
+    tokio::spawn(async move {
+        server.serve(server_io).await?.waiting().await?;
+        anyhow::Ok(())
+    });
+    let client = ().serve(client_io).await.unwrap();
+
+    let started = std::time::Instant::now();
+    let result = client
+        .call_tool(CallToolRequestParams::new("time_get"))
+        .await
+        .unwrap();
+    assert!(started.elapsed() < Duration::from_secs(5));
+    assert_eq!(result.is_error, Some(true));
+    let text: String = result
+        .content
+        .iter()
+        .filter_map(|block| block.as_text().map(|text| text.text.clone()))
+        .collect();
+    assert!(
+        text.contains(&format!("is running but not answering on {port}")),
+        "{text}"
+    );
+}
+
 /// A launcher over an empty temporary workspace: no state directory, no game.
 fn empty_lifecycle(root: &std::path::Path) -> super::Lifecycle {
     let project = crate::launch::Project {

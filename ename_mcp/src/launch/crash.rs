@@ -6,6 +6,7 @@ use rmcp::schemars;
 use serde::{Deserialize, Serialize};
 
 use super::build_report::tail;
+use crate::crash::{RunRecord, known_crash};
 
 /// How much of `game.log` a crash without a panic record carries.
 const LOG_TAIL_LINES: usize = 20;
@@ -96,15 +97,51 @@ impl ExitInfo {
 pub struct Crash {
     /// One line: the exit code, signal or exception.
     pub cause: String,
-    /// The last lines of `game.log`: without a panic record, the only clue.
+    /// The panic that killed the game, from its run record.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub panic: Option<CrashPanic>,
+    /// The last lines of `game.log`: the backtrace, or without a panic the only clue.
     pub log_tail: Vec<String>,
     pub log: String,
 }
 
+#[derive(Clone, Debug, Serialize, schemars::JsonSchema)]
+pub struct CrashPanic {
+    pub message: String,
+    /// `file:line:column`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+    pub thread: String,
+    /// Panics in the run, this one included. The others were survived.
+    pub panics: u64,
+    /// `docs/known-crashes.md#...` when this is a known crash.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub known_crash: Option<String>,
+}
+
 impl Crash {
-    pub fn new(exit: &ExitInfo, log: &Path) -> Self {
+    /// `record` is the run record of the instance's port; it is used only when it belongs to
+    /// `game`, the run's game process.
+    pub fn new(exit: &ExitInfo, log: &Path, record: Option<RunRecord>, game: Option<u32>) -> Self {
+        let panic = record
+            .filter(|record| Some(record.os_pid) == game)
+            .and_then(|record| {
+                let panic = record.fatal_panic()?.clone();
+                let texts = [
+                    panic.message.as_str(),
+                    panic.location.as_deref().unwrap_or(""),
+                ];
+                Some(CrashPanic {
+                    known_crash: known_crash(&texts),
+                    message: panic.message,
+                    location: panic.location,
+                    thread: panic.thread,
+                    panics: record.panics,
+                })
+            });
         Self {
             cause: exit.describe(),
+            panic,
             log_tail: tail(log, LOG_TAIL_LINES),
             log: log.display().to_string(),
         }
