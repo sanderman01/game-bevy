@@ -1,0 +1,19 @@
+ename_editor/src/input_inject/mod.rs
+  s_36d39a2464f61e::t_e2e42bc6def71c 323-327
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "593e3bff53e287b22bcfdcee71820e50fb2dd6ca",
+  "prompts": {},
+  "sessions": {
+    "s_36d39a2464f61e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "06788778-3756-4e70-98fa-9e678be2c257",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
