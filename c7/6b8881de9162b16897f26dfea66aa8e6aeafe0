@@ -1,0 +1,23 @@
+ename_engine/src/capture.rs
+  s_67b8126579ad2d::t_af4d0c4a43be9c 20
+ename_engine/src/video/mod.rs
+  s_67b8126579ad2d::t_6985c41526d52f 136-139,584,596,704-705,890
+ename_engine/src/readback.rs
+  s_67b8126579ad2d::t_af4d0c4a43be9c 144-146,148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c76b8881de9162b16897f26dfea66aa8e6aeafe0",
+  "prompts": {},
+  "sessions": {
+    "s_67b8126579ad2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f8609ac4-10b1-417b-8047-fdf9b3191298",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
