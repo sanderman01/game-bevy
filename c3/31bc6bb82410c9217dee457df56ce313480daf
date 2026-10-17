@@ -1,0 +1,20 @@
+ename_editor/src/capture_sequence/mod.rs
+  s_67b8126579ad2d::t_8637d69a2016d9 1209-1213,1217
+  s_67b8126579ad2d::t_845ee8691b72f4 1207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c331bc6bb82410c9217dee457df56ce313480daf",
+  "prompts": {},
+  "sessions": {
+    "s_67b8126579ad2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f8609ac4-10b1-417b-8047-fdf9b3191298",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
