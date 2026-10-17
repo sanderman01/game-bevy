@@ -1,0 +1,60 @@
+example_game_lib/src/lib.rs
+  s_21d283d4e8f139::t_59023cb5d8c0be 12-21
+example_game_bin/src/main.rs
+  s_21d283d4e8f139::t_ae617cdb109872 11,17-19
+ename_asset_content/src/lib.rs
+  s_21d283d4e8f139::t_93a17d1aeb77d0 105-106
+ename_engine/src/application.rs
+  s_21d283d4e8f139::t_874ec1ff97b3ab 1-75,78,82-83,85-95,103
+  s_21d283d4e8f139::t_00e09b4cb130ee 79-81,96-102
+  s_21d283d4e8f139::t_68bfdd25dea02a 76-77,84
+ename_engine/src/lib.rs
+  s_21d283d4e8f139::t_a95e0d7e2a7e39 26
+  s_21d283d4e8f139::t_ae2ac478c3b26c 57-59,69-71
+  s_21d283d4e8f139::t_7626c26442a2b0 102-103,108-137,237
+  s_21d283d4e8f139::t_0d07ae59ad48ba 11
+  s_21d283d4e8f139::t_03c51b75299419 170
+  s_21d283d4e8f139::t_f3bb15b59cde24 175-178
+  s_21d283d4e8f139::t_d3ab44d789820a 201-236
+  s_21d283d4e8f139::t_caabd0d8af59ce 142-147
+example_game_editor_bin/src/main.rs
+  s_21d283d4e8f139::t_d435d84bfb1825 12,18-20
+ename_xtask/Cargo.toml
+  s_21d283d4e8f139::t_9f47104309fb14 11
+ename_engine/tests/application_paths.rs
+  s_21d283d4e8f139::t_d3ab44d789820a 1-32,37-51
+  s_21d283d4e8f139::t_a95e0d7e2a7e39 33-36
+ename_xtask/src/policy.rs
+  s_21d283d4e8f139::t_9f47104309fb14 3-8,10,21-24,30-31,34-35
+docs/conventions.md
+  s_21d283d4e8f139::t_4a0cf76ee57494 23-46
+docs/assets-packages.md
+  s_21d283d4e8f139::t_ee5769255c6f11 59-62
+ename_engine/Cargo.toml
+  s_21d283d4e8f139::t_0d07ae59ad48ba 22
+docs/design/crate-layout.md
+  s_21d283d4e8f139::t_8b12c9a345dae7 24-25,29-31
+  s_21d283d4e8f139::t_27333385626c0e 10-11
+  s_21d283d4e8f139::t_d4013883601e18 44-46,50-52
+  s_21d283d4e8f139::t_c9dfb891e13c53 53
+ename_asset_package/src/load_order.rs
+  s_21d283d4e8f139::t_6c8af68af95c37 5-6
+Cargo.lock
+  s_21d283d4e8f139::t_419bc3f2d3f989 2959-2967,3057,3107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2a8814d1357fa832b0a0a152199a8e59a1f273ad",
+  "prompts": {},
+  "sessions": {
+    "s_21d283d4e8f139": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "624eef6a-b338-4761-aef9-757af59b5da4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
