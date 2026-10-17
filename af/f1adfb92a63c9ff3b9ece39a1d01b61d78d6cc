@@ -1,0 +1,24 @@
+ename_editor/src/camera_memory.rs
+  s_51349e13722b35::t_06f6de9e84e6fc 53
+  s_51349e13722b35::t_68d9170666d0d0 184,186-193
+  s_51349e13722b35::t_d39548cfe191c7 274-280
+  s_51349e13722b35::t_732b08bf4ff7cd 466-525
+  s_51349e13722b35::t_a76bf056490965 128-129,139-142
+  s_51349e13722b35::t_cfe766eda7f266 239-244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aff1adfb92a63c9ff3b9ece39a1d01b61d78d6cc",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
