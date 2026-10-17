@@ -1,0 +1,20 @@
+example_game_lib/src/lib.rs
+  s_51349e13722b35::t_c64a2d33e14820 24-25,27
+  s_51349e13722b35::t_b2e628fba0333f 49-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9b90968f6f0e477eb8051aa461cc1d2616e2bc91",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
