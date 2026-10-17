@@ -1,0 +1,23 @@
+ename_engine/src/physics/ground_probe/tests.rs
+  s_51349e13722b35::t_a03bb35188991c 580-624
+ename_engine/src/physics/ground_probe.rs
+  s_51349e13722b35::t_7bf835fe07641d 26-31
+  s_51349e13722b35::t_6c24cfbcaee47e 304-309,312-317
+  s_51349e13722b35::t_5c9ac120aa2f7f 235-240,248-257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ae91cc1d2fe0d782e7b5398bbc266045048425ab",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
