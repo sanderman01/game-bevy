@@ -175,6 +175,47 @@ function, stored as raw RON and shown as JSON. `viewpoint_save` captures only th
 told to, so a viewpoint never silently resets state a comparison depends on. An unregistered
 facet fails before anything is applied.
 
+## Early failure detection
+
+**Errors ride on every result.** The game sends a cumulative log tally (ERROR and WARN counts,
+the newest of each, the newest sequence number) beside every run id: in `game.pid.get`, in every
+command and job envelope, and in a command error's `data`. The sidecar keeps the highest tally
+each run has reported to the agent and adds a `log` notice to a result only when something is
+new, failed results included. Cumulative counts keep the game stateless per client, add no BRP
+parameter, and degrade both ways: an older sidecar ignores the field, a newer sidecar against an
+older game prints nothing. Tool calls run concurrently, so the baseline is a high-water mark per
+run (the last four runs); a late, lower tally adds nothing and never lowers it. The mark lives in
+memory, so a `/mcp reconnect` repeats a run's tally once. A signal the agent has to ask for is one
+it will not ask for, which is why `pid` is on every result too. Rejected: failing screenshots
+when a pipeline is in error, which is narrower than the log and would block captures that are
+fine.
+
+**Panics go into the log buffer.** Std prints panics to stderr only, which a BRP client cannot
+see. `LogBufferPlugin` installs a chained panic hook that pushes one ERROR entry under target
+`panic`, then calls the hook it replaced. It must be outermost, because Bevy's
+`error_panic_hook` skips the inner hook for its own error handler's panics; building after
+`DefaultPlugins` gives that.
+
+**A dead game says how it died.** `ename_remote` writes a run record to
+`<runtime dir>/ename/brp-<port>.json` (`$XDG_RUNTIME_DIR` on Linux, else the temp dir): run id,
+OS pid, executable, start time, the latest panic plus a count, and the exit code on `AppExit`.
+Written atomically at plugin build (after the port check, so a second game that fails to bind
+leaves the record alone), from a panic hook, and from a `Last` system. Keyed by port, not by the
+launcher's state directory, because a game the user started by hand has no instance, and the
+port is the one fact the game and the sidecar share. When a call gets no answer (refused, body
+lost, timed out), the sidecar reads the record and says, in this order: it exited (with its
+`AppExit`), it is running but not answering, it panicked (and where), or it ended with neither
+(killed, or a native crash). Liveness checks pid, executable and start time through `sysinfo`,
+so a recycled pid never counts. A panic followed by a clean exit was survived and is not the
+cause of death. The launcher's `crash` block takes the panic from the same record. The sidecar
+names no first-party crate, so both sides read the format on their own and test against
+`ename_mcp/tests/fixtures/run_record.json`.
+
+**Known crashes are a markdown file.** `docs/known-crashes.md` lists each crash as a `##`
+heading and a `Signature:` line holding a literal substring of the panic message or location.
+The sidecar matches a panic or the last error against it and links the section. A path list in
+`ENAME_KNOWN_CRASHES` lets a downstream repo list its own file and the engine's.
+
 ## What the agent can actually see
 
 Type registration is a correctness requirement for MCP, not a convenience for the inspector. An

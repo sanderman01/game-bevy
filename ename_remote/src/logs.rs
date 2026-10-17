@@ -9,7 +9,7 @@ use bevy::{
     prelude::*,
     remote::{BrpResult, builtin_methods::parse},
 };
-use ename_engine::log::{LogBuffer, LogFilter};
+use ename_engine::log::{LogBuffer, LogFilter, TallyEntry};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -52,6 +52,54 @@ pub(crate) struct GetResponse {
     entries: Vec<Entry>,
     /// Matching entries older than the ones returned. The response holds the newest.
     older_matches: usize,
+}
+
+/// How much of the newest error or warning a tally carries. Shader errors are codespan blocks:
+/// three lines hold the file, the line and the error.
+const SUMMARY_LINES: usize = 3;
+const SUMMARY_CHARS: usize = 300;
+
+/// `ename_engine::log::LogTally` on the wire, sent beside every run id.
+///
+/// Cumulative since the process started, so the game keeps no state per client: the sidecar diffs
+/// it against the last one it saw and tells the agent only what is new.
+#[derive(Serialize, Debug, PartialEq, Eq)]
+pub(crate) struct Tally {
+    errors: u64,
+    warnings: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_sequence: Option<u64>,
+    /// `target: message`, cut to [`SUMMARY_LINES`] and [`SUMMARY_CHARS`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_warning: Option<String>,
+}
+
+/// This run's tally, or `None` in an app without a log buffer.
+pub(crate) fn tally(world: &World) -> Option<Tally> {
+    let tally = world.get_resource::<LogBuffer>()?.tally();
+    Some(Tally {
+        errors: tally.errors,
+        warnings: tally.warnings,
+        last_sequence: tally.last_sequence,
+        last_error: tally.last_error.as_ref().map(summary),
+        last_warning: tally.last_warning.as_ref().map(summary),
+    })
+}
+
+fn summary(entry: &TallyEntry) -> String {
+    let text = format!("{}: {}", entry.target, entry.message);
+    let mut lines = text
+        .lines()
+        .take(SUMMARY_LINES)
+        .collect::<Vec<_>>()
+        .join("\n");
+    if let Some((cut, _)) = lines.char_indices().nth(SUMMARY_CHARS) {
+        lines.truncate(cut);
+        lines.push('…');
+    }
+    lines
 }
 
 pub(crate) fn get(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {

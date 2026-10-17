@@ -128,6 +128,12 @@ struct Shared {
     /// Events [`LogBuffer::push`] gave up on rather than wait for the lock. Outside the `Mutex`,
     /// because the thread that has to count one is the thread that could not take it.
     dropped: AtomicU64,
+    /// Every ERROR and WARN pushed, outside the `Mutex` for the same reason as `dropped`: a
+    /// dropped or evicted one is still counted.
+    errors: AtomicU64,
+    warnings: AtomicU64,
+    /// What entry timestamps count from.
+    start: Instant,
     /// The wall clock reading of the moment entry timestamps count from.
     ///
     /// Entries store elapsed seconds, measured on a monotonic `Instant`. This is the one wall
@@ -141,6 +147,9 @@ struct Ring {
     interner: Interner,
     capacity: usize,
     next_sequence: u64,
+    /// Kept apart from `entries`, so they outlive the ring wrapping.
+    last_error: Option<TallyEntry>,
+    last_warning: Option<TallyEntry>,
 }
 
 impl Default for LogBuffer {
@@ -151,10 +160,83 @@ impl Default for LogBuffer {
                 interner: Interner::default(),
                 capacity: DEFAULT_CAPACITY,
                 next_sequence: 0,
+                last_error: None,
+                last_warning: None,
             }),
             dropped: AtomicU64::new(0),
+            errors: AtomicU64::new(0),
+            warnings: AtomicU64::new(0),
+            start: Instant::now(),
             started: SystemTime::now(),
         }))
+    }
+}
+
+/// What the process has logged at ERROR and WARN, counted since it started.
+///
+/// Cumulative, so any number of readers can each keep their own baseline and diff against it.
+/// The counts follow [`CaptureLevel`], which never drops below WARN unless someone raises it past.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LogTally {
+    pub errors: u64,
+    pub warnings: u64,
+    /// The newest sequence number handed out, `None` before the first entry.
+    pub last_sequence: Option<u64>,
+    pub last_error: Option<TallyEntry>,
+    pub last_warning: Option<TallyEntry>,
+}
+
+/// The newest entry of one level, as [`LogTally`] keeps it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TallyEntry {
+    pub sequence: u64,
+    pub target: String,
+    pub message: String,
+}
+
+/// The target a captured panic is logged under.
+pub const PANIC_TARGET: &str = "panic";
+
+/// A panic, taken apart. The log buffer and `ename_remote`'s run record both keep one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PanicReport {
+    pub message: String,
+    /// `file:line:column`.
+    pub location: Option<String>,
+    pub thread: String,
+}
+
+impl PanicReport {
+    pub fn of(info: &std::panic::PanicHookInfo<'_>) -> Self {
+        let payload = info.payload();
+        let message = payload
+            .downcast_ref::<&str>()
+            .map(|text| (*text).to_owned())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "Box<dyn Any>".to_owned());
+        Self {
+            message,
+            location: info.location().map(ToString::to_string),
+            thread: std::thread::current()
+                .name()
+                .unwrap_or("<unnamed>")
+                .to_owned(),
+        }
+    }
+}
+
+impl std::fmt::Display for PanicReport {
+    /// The first line std prints for a panic.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            message,
+            location,
+            thread,
+        } = self;
+        match location {
+            Some(location) => write!(f, "thread '{thread}' panicked at {location}: {message}"),
+            None => write!(f, "thread '{thread}' panicked: {message}"),
+        }
     }
 }
 
@@ -186,7 +268,29 @@ impl LogBuffer {
         self.0.started
     }
 
+    /// The ERROR and WARN counts and the newest of each.
+    pub fn tally(&self) -> LogTally {
+        let ring = self.lock();
+        LogTally {
+            errors: self.0.errors.load(Ordering::Relaxed),
+            warnings: self.0.warnings.load(Ordering::Relaxed),
+            last_sequence: ring.next_sequence.checked_sub(1),
+            last_error: ring.last_error.clone(),
+            last_warning: ring.last_warning.clone(),
+        }
+    }
+
+    /// Seconds since the buffer was created, the clock entry timestamps use.
+    fn elapsed(&self) -> f64 {
+        self.0.start.elapsed().as_secs_f64()
+    }
+
     pub(crate) fn push(&self, timestamp: f64, level: Level, target: &str, message: String) {
+        match level {
+            Level::ERROR => self.0.errors.fetch_add(1, Ordering::Relaxed),
+            Level::WARN => self.0.warnings.fetch_add(1, Ordering::Relaxed),
+            _ => 0,
+        };
         // Never waits. A reader holds this lock while it works, and a reader that logs -- egui
         // does, through the `log` crate -- would otherwise deadlock its own thread against a
         // `Mutex` it already holds. Dropping the line is the recoverable half of that trade.
@@ -203,6 +307,18 @@ impl LogBuffer {
         }
         let sequence = ring.next_sequence;
         ring.next_sequence += 1;
+        let last = match level {
+            Level::ERROR => Some(&mut ring.last_error),
+            Level::WARN => Some(&mut ring.last_warning),
+            _ => None,
+        };
+        if let Some(last) = last {
+            *last = Some(TallyEntry {
+                sequence,
+                target: target.to_owned(),
+                message: message.clone(),
+            });
+        }
         let target = ring.interner.intern(target);
         while ring.entries.len() >= ring.capacity {
             ring.entries.pop_front();
@@ -371,20 +487,16 @@ pub fn capture_layer(app: &mut App) -> Option<BoxedLayer> {
     });
 
     Some(Box::new(
-        CaptureLayer {
-            buffer,
-            start: Instant::now(),
-        }
-        // A per-layer filter, not a subscriber-wide one: it decides what this layer sees without
-        // touching what stderr prints, and it takes part in callsite interest, so a level it
-        // rejects is never formatted.
-        .with_filter(filter),
+        CaptureLayer { buffer }
+            // A per-layer filter, not a subscriber-wide one: it decides what this layer sees without
+            // touching what stderr prints, and it takes part in callsite interest, so a level it
+            // rejects is never formatted.
+            .with_filter(filter),
     ))
 }
 
 struct CaptureLayer {
     buffer: LogBuffer,
-    start: Instant,
 }
 
 impl<S: Subscriber> Layer<S> for CaptureLayer {
@@ -396,7 +508,7 @@ impl<S: Subscriber> Layer<S> for CaptureLayer {
             .as_deref()
             .unwrap_or_else(|| event.metadata().target());
         self.buffer.push(
-            self.start.elapsed().as_secs_f64(),
+            self.buffer.elapsed(),
             *event.metadata().level(),
             target,
             fields.message,
@@ -433,7 +545,7 @@ impl Visit for EventFields {
     }
 }
 
-/// Resizes the buffer [`capture_layer`] already built.
+/// Resizes the buffer [`capture_layer`] already built, and puts panics into it.
 ///
 /// `LogPlugin::custom_layer` is a bare `fn` pointer and cannot capture a chosen capacity, so the
 /// layer starts at [`DEFAULT_CAPACITY`] and this plugin applies the target's choice afterwards.
@@ -446,8 +558,30 @@ impl Plugin for LogBufferPlugin {
     fn build(&self, app: &mut App) {
         if let Some(buffer) = app.world().get_resource::<LogBuffer>() {
             buffer.set_capacity(self.capacity);
+            install_panic_hook(buffer.clone());
         }
     }
+}
+
+/// Logs every panic into `buffer` as an ERROR under [`PANIC_TARGET`], then runs the hook it
+/// replaced, so stderr and `RUST_BACKTRACE` behave as before. Std only prints panics to stderr.
+///
+/// Pushed directly rather than through `error!`, which would print the panic to stderr twice.
+/// Must be installed after Bevy's `PanicHandlerPlugin`: Bevy's hook returns without calling the
+/// one it wraps for panics from its default error handler. `LogBufferPlugin` builds after
+/// `DefaultPlugins`, which gives that order.
+fn install_panic_hook(buffer: LogBuffer) {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let report = PanicReport::of(info);
+        buffer.push(
+            buffer.elapsed(),
+            Level::ERROR,
+            PANIC_TARGET,
+            report.to_string(),
+        );
+        previous(info);
+    }));
 }
 
 /// A level name a reader gave that is not one.
@@ -516,9 +650,11 @@ impl LogFilter {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
     use super::{
         CaptureLevel, DEFAULT_CAPACITY, DEFAULT_LEVEL, LogBuffer, LogFilter, MAX_LEVEL,
-        capture_layer, level_of_name,
+        PANIC_TARGET, capture_layer, install_panic_hook, level_of_name,
     };
     use bevy::{
         app::App,
@@ -635,6 +771,57 @@ mod tests {
         fill(&buffer, 1);
 
         buffer.read(|view| assert_eq!(view.sequence_range(), Some((5, 5))));
+    }
+
+    #[test]
+    fn the_tally_survives_wrapping_clearing_and_dropping() {
+        let buffer = LogBuffer::default();
+        buffer.set_capacity(2);
+        buffer.push(0., Level::ERROR, "a", "first".to_owned());
+        buffer.push(1., Level::WARN, "b", "careful".to_owned());
+        fill(&buffer, 5);
+        buffer.clear();
+        buffer.read(|_| buffer.push(2., Level::ERROR, "c", "dropped".to_owned()));
+
+        let tally = buffer.tally();
+        assert_eq!((tally.errors, tally.warnings), (2, 1));
+        assert_eq!(tally.last_sequence, Some(6));
+        let last_error = tally.last_error.unwrap();
+        assert_eq!(
+            (last_error.sequence, last_error.message.as_str()),
+            (0, "first")
+        );
+        assert_eq!(tally.last_warning.unwrap().target, "b");
+    }
+
+    #[test]
+    fn a_panic_becomes_one_error_entry_and_the_previous_hook_still_runs() {
+        static PREVIOUS_RAN: AtomicBool = AtomicBool::new(false);
+        let original = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            PREVIOUS_RAN.store(true, Ordering::SeqCst);
+            original(info);
+        }));
+        let buffer = LogBuffer::default();
+        install_panic_hook(buffer.clone());
+
+        let caught = std::panic::catch_unwind(|| panic!("log-test boom"));
+        assert!(caught.is_err());
+        assert!(PREVIOUS_RAN.load(Ordering::SeqCst));
+        // Other tests panic too, and the hook is process-wide: look for this one only.
+        let ours: Vec<String> = buffer.read(|view| {
+            view.iter()
+                .filter(|entry| entry.message.contains("log-test boom"))
+                .map(|entry| {
+                    assert_eq!(entry.level, Level::ERROR);
+                    assert_eq!(entry.target_name, PANIC_TARGET);
+                    entry.message.to_owned()
+                })
+                .collect()
+        });
+        assert_eq!(ours.len(), 1, "{ours:?}");
+        assert!(ours[0].contains("panicked at "), "{}", ours[0]);
+        assert!(ours[0].contains("log.rs"), "{}", ours[0]);
     }
 
     #[test]

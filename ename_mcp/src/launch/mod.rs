@@ -14,7 +14,7 @@ pub mod cli;
 mod control;
 mod crash;
 mod port;
-mod process;
+pub(crate) mod process;
 mod settle;
 mod spawn;
 mod state;

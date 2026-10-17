@@ -16,7 +16,7 @@ use ename_engine::command::{
     Reply, RunId,
 };
 use serde::{Deserialize, de::DeserializeOwned};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 pub const LIST_METHOD: &str = "game.command.list";
 pub const CALL_METHOD: &str = "game.command.call";
@@ -55,7 +55,7 @@ pub(crate) fn list(In(_): In<Option<Value>>, world: &mut World) -> BrpResult {
         .get_resource::<CommandRegistry>()
         .map(|registry| registry.iter().cloned().collect())
         .unwrap_or_default();
-    crate::to_value(json!({ "run": run(world), "commands": commands }))
+    answer(world, "commands", json!(commands))
 }
 
 pub(crate) fn call(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
@@ -77,51 +77,47 @@ pub(crate) fn call(In(params): In<Option<Value>>, world: &mut World) -> BrpResul
                      restarted, so nothing was run"
                 ),
             ),
-            &run,
+            world,
         ));
     }
     let caller = Caller { scope: SCOPE, cwd };
     match world.call_command(&command, params, caller) {
-        Ok(Reply::Done(result)) => crate::to_value(json!({ "run": run, "result": result })),
+        Ok(Reply::Done(result)) => answer(world, "result", result),
         Ok(Reply::Job(job)) => {
             let jobs = world.resource::<Jobs>();
-            let status = jobs.status(&job, SCOPE).ok_or_else(|| jobs.unknown(&job));
-            match status {
-                Ok(status) => crate::to_value(json!({ "run": run, "job": status })),
-                Err(err) => Err(brp_error(err, &run)),
+            match jobs.status(&job, SCOPE).ok_or_else(|| jobs.unknown(&job)) {
+                Ok(status) => answer(world, "job", json!(status)),
+                Err(err) => Err(brp_error(err, world)),
             }
         }
-        Err(err) => Err(brp_error(err, &run)),
+        Err(err) => Err(brp_error(err, world)),
     }
 }
 
 pub(crate) fn job_status(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
     let JobParams { job } = parse(params, world)?;
-    let run = run(world);
     let Some(jobs) = world.get_resource::<Jobs>() else {
-        return Err(no_jobs(&run));
+        return Err(no_jobs(world));
     };
     match jobs.status(&job, SCOPE) {
-        Some(status) => crate::to_value(json!({ "run": run, "job": status })),
-        None => Err(brp_error(jobs.unknown(&job), &run)),
+        Some(status) => answer(world, "job", json!(status)),
+        None => Err(brp_error(jobs.unknown(&job), world)),
     }
 }
 
 pub(crate) fn job_list(In(_): In<Option<Value>>, world: &mut World) -> BrpResult {
-    let run = run(world);
     let jobs = world
         .get_resource::<Jobs>()
         .map(|jobs| jobs.list(SCOPE))
         .unwrap_or_default();
-    crate::to_value(json!({ "run": run, "jobs": jobs }))
+    answer(world, "jobs", json!(jobs))
 }
 
 pub(crate) fn job_cancel(In(params): In<Option<Value>>, world: &mut World) -> BrpResult {
     let JobParams { job } = parse(params, world)?;
-    let run = run(world);
     match world.cancel_job(&job, SCOPE) {
-        Ok(status) => crate::to_value(json!({ "run": run, "job": status })),
-        Err(err) => Err(brp_error(err, &run)),
+        Ok(status) => answer(world, "job", json!(status)),
+        Err(err) => Err(brp_error(err, world)),
     }
 }
 
@@ -132,7 +128,7 @@ fn parse<T: DeserializeOwned>(params: Option<Value>, world: &World) -> Result<T,
     serde_json::from_value(params).map_err(|err| {
         brp_error(
             CommandError::invalid("invalid_params", format!("invalid params: {err}")),
-            &run(world),
+            world,
         )
     })
 }
@@ -143,28 +139,48 @@ fn run(world: &World) -> String {
         .map_or_else(String::new, |run| run.as_str().to_owned())
 }
 
-fn no_jobs(run: &str) -> BrpError {
+/// What every answer and every error carries: the run, and the log tally read in the same
+/// handler, after the work.
+fn stamp(world: &World) -> Map<String, Value> {
+    let mut stamp = Map::new();
+    stamp.insert("run".into(), json!(run(world)));
+    if let Some(tally) = crate::logs::tally(world) {
+        stamp.insert("log".into(), json!(tally));
+    }
+    stamp
+}
+
+/// `{run, log, <key>: value}`.
+fn answer(world: &World, key: &str, value: Value) -> BrpResult {
+    let mut answer = stamp(world);
+    answer.insert(key.into(), value);
+    Ok(Value::Object(answer))
+}
+
+fn no_jobs(world: &World) -> BrpError {
     brp_error(
         CommandError::invalid("unknown_job", "this game has no command registry"),
-        run,
+        world,
     )
 }
 
 /// A command error on the wire: the class picks the code, and `data` keeps what a client
 /// branches on.
-pub(crate) fn brp_error(error: CommandError, run: &str) -> BrpError {
+pub(crate) fn brp_error(error: CommandError, world: &World) -> BrpError {
     let code = match error.class {
         ErrorClass::Invalid => error_codes::INVALID_PARAMS,
         ErrorClass::Failed => COMMAND_FAILED,
     };
-    let mut data = json!({ "kind": error.kind, "class": error.class, "run": run });
+    let mut data = stamp(world);
+    data.insert("kind".into(), json!(error.kind));
+    data.insert("class".into(), json!(error.class));
     if let Some(hint) = &error.hint {
-        data["hint"] = json!(hint);
+        data.insert("hint".into(), json!(hint));
     }
     BrpError {
         code,
         message: error.message,
-        data: Some(data),
+        data: Some(Value::Object(data)),
     }
 }
 
@@ -315,6 +331,19 @@ mod tests {
                 "{params}"
             );
         }
+    }
+
+    #[test]
+    fn answers_and_errors_carry_the_log_tally() {
+        let mut app = app();
+        app.insert_resource(ename_engine::log::LogBuffer::default());
+        let answer = method(&mut app, call, json!({ "command": "test.start" })).unwrap();
+        assert_eq!(answer["log"], json!({ "errors": 0, "warnings": 0 }));
+        let err = method(&mut app, call, json!({ "command": "test.fail" })).unwrap_err();
+        assert_eq!(
+            err.data.unwrap()["log"],
+            json!({ "errors": 0, "warnings": 0 })
+        );
     }
 
     #[test]

@@ -21,6 +21,9 @@ struct PidResponse {
     /// The operating system's id for this process, so a launcher can tell its own game from
     /// another one holding the port.
     os_pid: u32,
+    /// What the run has logged at ERROR and WARN, so a client notices errors it did not look for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    log: Option<crate::logs::Tally>,
 }
 
 pub(crate) fn get(In(_): In<Option<Value>>, world: &mut World) -> BrpResult {
@@ -32,5 +35,6 @@ pub(crate) fn get(In(_): In<Option<Value>>, world: &mut World) -> BrpResult {
     crate::to_value(PidResponse {
         pid: run.as_str().to_owned(),
         os_pid: std::process::id(),
+        log: crate::logs::tally(world),
     })
 }

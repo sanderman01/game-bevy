@@ -19,7 +19,7 @@
 //! | `game.position.get` / `.set` | Position is a `CellCoord` plus a `Transform`, relative to a moving origin. A bare `Transform` is wrong everywhere but one cell. |
 //! | `game.time.get` / `.set` | Nothing in BRP can freeze the world, and reading a world that is still advancing answers a different question. |
 //! | `game.logs.get` | Bevy's logs go to stderr, which a JSON-RPC client cannot see. |
-//! | `game.pid.get` | Nothing in BRP says which run of the process answered, so a restart between two calls is invisible. Also answers the OS process id (`os_pid`), so a launcher can tell its game from another one on the port. |
+//! | `game.pid.get` | Nothing in BRP says which run of the process answered, so a restart between two calls is invisible. Also answers the OS process id (`os_pid`), so a launcher can tell its game from another one on the port, and the run's log tally (`log`), so a client notices errors it did not look for. Every command and job answer carries the same `run` and `log`. |
 //! | `game.exit` | A graceful stop with exit code 0 on every platform; Ctrl+C cannot reach a detached Windows process. |
 //! | `game.command.list` / `.call` | The commands any crate registered in `ename_engine::command`, listed with their schemas and called by name. This crate never learns what they are. |
 //! | `game.job.status` / `.list` / `.cancel` | The jobs those commands start. |
@@ -32,6 +32,11 @@
 //! port. A taken port exits the game with code 3 instead of leaving it silently unreachable. See
 //! [`port`].
 //!
+//! # Run record
+//!
+//! A small file per port says which run holds it, its latest panic and how it exited, so a client
+//! that can no longer reach the game can say how it died. See [`run_record`].
+//!
 //! Screenshots, video and the editor's views are not here. Their crates register them as commands,
 //! and they arrive through `game.command.*` like any other.
 
@@ -43,6 +48,7 @@ mod mutate;
 mod port;
 mod position;
 mod run_id;
+mod run_record;
 mod time;
 
 use bevy::{
@@ -95,6 +101,11 @@ impl PluginGroup for RemotePlugins {
             .add(RemoteHttpPlugin::default().with_port(port))
             // After the HTTP plugin, so its render-world port replaces the default one.
             .add(port::BrpPortPlugin { port })
+            // After the port check, which exits first when another game holds the port, so the
+            // record of that game is left alone.
+            .add(run_record::RunRecordPlugin {
+                path: run_record::record_path(port),
+            })
             .add(exit::ExitPlugin)
     }
 }

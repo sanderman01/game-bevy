@@ -25,6 +25,7 @@ use super::{
     },
     supervise::DEFAULT_GRACE,
 };
+use crate::crash::RunRecord;
 
 const POLL: Duration = Duration::from_millis(250);
 /// How long a caller waits for a requested stop past its grace.
@@ -817,7 +818,7 @@ impl Launcher {
                 self.describe_live(state, run, game, status).await
             }
             Phase::Starting | Phase::Ready | Phase::Exited => {
-                self.describe_exit(instance, run, supervisor_alive, status);
+                self.describe_exit(instance, state.port, run, supervisor_alive, status);
                 status.state
             }
         };
@@ -881,6 +882,7 @@ impl Launcher {
     fn describe_exit(
         &self,
         instance: &Instance,
+        port: u16,
         run: &Run,
         supervisor_alive: bool,
         status: &mut Status,
@@ -907,7 +909,9 @@ impl Launcher {
         };
         status.graceful = exit.graceful;
         if exit.is_failure() {
-            let mut crash = Crash::new(&exit, &instance.path(GAME_LOG));
+            let record = RunRecord::read(&crate::crash::record_dir(), port);
+            let game = run.game.map(|game| game.pid);
+            let mut crash = Crash::new(&exit, &instance.path(GAME_LOG), record, game);
             // A supervisor that killed the game says why; "killed by SIGKILL" would not.
             if let Some(error) = &run.error {
                 crash.cause.clone_from(error);
