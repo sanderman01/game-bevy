@@ -87,9 +87,13 @@ impl RunRecord {
 }
 
 /// The sentence for a call to the game on `port` that got no answer, or `None` without a record.
-/// `last_error` is the newest error this session saw the game log.
-pub fn unreachable(dir: &Path, port: u16, last_error: Option<&str>) -> Option<String> {
+/// `last_error` is the newest error this session saw a game log, with its run; it is used only
+/// when that run is the record's.
+pub fn unreachable(dir: &Path, port: u16, last_error: Option<&(String, String)>) -> Option<String> {
     let record = RunRecord::read(dir, port)?;
+    let last_error = last_error
+        .filter(|(run, _)| *run == record.run)
+        .map(|(_, error)| error.as_str());
     Some(describe(&record, port, record.is_alive(), last_error))
 }
 
@@ -138,7 +142,7 @@ fn describe(record: &RunRecord, port: u16, alive: bool, last_error: Option<&str>
              native code."
         );
         if let Some(error) = last_error {
-            text += &format!(" Last error this session saw: {error}");
+            text += &format!(" Its last error: {}.", error.trim_end_matches('.'));
             if let Some(link) = known_crash(&[error]) {
                 text += &format!(" Known crash: {link}.");
             }
@@ -299,6 +303,25 @@ mod tests {
         let text = describe(&record, 15702, false, Some("render: device lost"));
         assert!(text.contains("killed, or crashed in native code"), "{text}");
         assert!(text.contains("device lost"), "{text}");
+    }
+
+    #[test]
+    fn another_runs_error_is_not_blamed_for_a_kill() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut record: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(FIXTURE).unwrap()).unwrap();
+        let object = record.as_object_mut().unwrap();
+        object.remove("exit");
+        object.remove("panic");
+        object.insert("os_pid".into(), u32::MAX.into());
+        std::fs::write(dir.path().join("brp-1.json"), record.to_string()).unwrap();
+
+        let earlier = ("zzzzzzzz".to_owned(), "panic: boom".to_owned());
+        let text = unreachable(dir.path(), 1, Some(&earlier)).unwrap();
+        assert!(text.contains("killed") && !text.contains("boom"), "{text}");
+        let same = ("kqvzmbta".to_owned(), "panic: boom".to_owned());
+        let text = unreachable(dir.path(), 1, Some(&same)).unwrap();
+        assert!(text.contains("Its last error: panic: boom."), "{text}");
     }
 
     #[test]

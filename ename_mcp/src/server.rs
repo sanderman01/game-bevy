@@ -129,7 +129,7 @@ impl GameServer {
     fn notice(&self, run: &str, tally: Option<&Tally>) -> Option<LogNotice> {
         let tally = tally?;
         if let Some(error) = &tally.last_error {
-            self.brp.remember_error(error);
+            self.brp.remember_error(run, error);
         }
         self.notices.notice(run, tally)
     }

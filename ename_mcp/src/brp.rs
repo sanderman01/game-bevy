@@ -17,7 +17,8 @@ pub struct BrpClient {
     url: String,
     next_id: std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// The newest error the game's log tally named, for when the game is gone and cannot say.
-    last_error: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+    /// Kept with its run, so a later run's death is never blamed on it.
+    last_error: std::sync::Arc<std::sync::Mutex<Option<(String, String)>>>,
     /// Where the game keeps its run record (`ename_remote::run_record`).
     record_dir: std::sync::Arc<std::path::Path>,
 }
@@ -58,8 +59,8 @@ impl BrpClient {
     }
 
     /// Keeps `error` as the newest the game logged.
-    pub fn remember_error(&self, error: &str) {
-        *self.last_error.lock().unwrap() = Some(error.to_owned());
+    pub fn remember_error(&self, run: &str, error: &str) {
+        *self.last_error.lock().unwrap() = Some((run.to_owned(), error.to_owned()));
     }
 
     /// Calls `method` and deserializes the `result` field.
@@ -77,7 +78,7 @@ impl BrpClient {
     pub fn unreachable(&self) -> Option<String> {
         let port = port_of(&self.url)?;
         let last_error = self.last_error.lock().unwrap().clone();
-        crate::crash::unreachable(&self.record_dir, port, last_error.as_deref())
+        crate::crash::unreachable(&self.record_dir, port, last_error.as_ref())
     }
 
     /// Calls `method` and returns the raw `result` field.
