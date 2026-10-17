@@ -1,0 +1,28 @@
+ename_editor/src/capture_sequence/tests.rs
+  s_67b8126579ad2d::t_4a97f783cf4f8a 300-305,514-690
+ename_editor/src/capture_sequence/fly.rs
+  s_67b8126579ad2d::t_c5430627a65d41 381-387,491-501
+ename_editor/src/camera_commands.rs
+  s_67b8126579ad2d::t_5f091184bd3fbc 60,314-329
+ename_editor/src/capture_sequence/mod.rs
+  s_67b8126579ad2d::t_84b44e2f3483f2 311,314-316,343-346,348,393-425,456-457,463-466,468,470-473,518-519,532,549,677-683,685-692,695-698,702-717,719,721-723,729-732,737-738,741,748-750,755-783,786,789,791,921,925-928
+  s_67b8126579ad2d::t_c5430627a65d41 80-81,458-462,733-736,743-747,751-754,924,1303-1306,1323,1354-1361,1363-1369,1372,1374-1377,1454-1455
+  s_67b8126579ad2d::t_0a59dd79094f10 36,68-70,929-939,945,947-954,957-979,1041-1059,1128,1144-1159,1177-1178,1248-1249,1409
+  s_67b8126579ad2d::t_1d1c92201b6044 123-131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d02a745c111d2e81b54690646a785168463e35a4",
+  "prompts": {},
+  "sessions": {
+    "s_67b8126579ad2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f8609ac4-10b1-417b-8047-fdf9b3191298",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
