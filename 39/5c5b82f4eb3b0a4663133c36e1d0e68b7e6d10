@@ -1,0 +1,28 @@
+ename_editor/Cargo.toml
+  s_51349e13722b35::t_73d4cded778e97 21-23
+ename_editor/src/camera_memory.rs
+  s_51349e13722b35::t_9405d744efc345 308,311
+  s_51349e13722b35::t_6c5404913b2ce4 358,393,405,421,444,474
+ename_editor/src/viewpoints.rs
+  s_51349e13722b35::t_2326ef1935b895 299
+  s_51349e13722b35::t_7fd1aa1f1cae87 323
+  s_51349e13722b35::t_4594d060d322be 349,385,428,451
+Cargo.lock
+  s_51349e13722b35::t_0efee4152e60e8 3038
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "395c5b82f4eb3b0a4663133c36e1d0e68b7e6d10",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
