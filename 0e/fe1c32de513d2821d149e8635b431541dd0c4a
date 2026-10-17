@@ -1,0 +1,37 @@
+ename_engine/src/camera/ground/meshes/tests.rs
+  s_51349e13722b35::t_1377c1e36dc730 1-448
+ename_engine/src/camera/ground/colliders.rs
+  s_51349e13722b35::t_0aaa7f9ef89297 66
+  s_51349e13722b35::t_2bed41ffd3f06e 40,58,60-62
+  s_51349e13722b35::t_71787d5ba92814 226-230
+  s_51349e13722b35::t_f11686c894fea2 253-257
+  s_51349e13722b35::t_b427619f28ac39 44-57,59,68
+ename_engine/src/camera/ground/mod.rs
+  s_51349e13722b35::t_2008d9467ec1a1 4-6
+  s_51349e13722b35::t_1d177ea39e126e 240
+  s_51349e13722b35::t_3f58eface5ab87 65-100,578,606,614,654,673,681,728,733,738,743,755
+  s_51349e13722b35::t_c440a38e13a5d6 18-22
+ename_engine/src/camera/ground/meshes.rs
+  s_51349e13722b35::t_7db59def6697c3 3,58,312-337
+  s_51349e13722b35::t_f0a3e2d901a062 49
+  s_51349e13722b35::t_0aaa7f9ef89297 75
+  s_51349e13722b35::t_2bed41ffd3f06e 30-41
+ename_engine/src/camera/ground/colliders/tests.rs
+  s_51349e13722b35::t_1377c1e36dc730 1-656
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0efe1c32de513d2821d149e8635b431541dd0c4a",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
