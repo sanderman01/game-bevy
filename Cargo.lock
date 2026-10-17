@@ -2957,6 +2957,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ename_application"
+version = "0.0.0"
+dependencies = [
+ "dirs",
+ "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "ename_asset_alias"
 version = "0.0.0"
 dependencies = [
@@ -3045,6 +3054,7 @@ dependencies = [
  "avian3d",
  "bevy",
  "big_space",
+ "ename_application",
  "ename_asset_alias",
  "ename_asset_content",
  "ename_asset_vfs",
@@ -3094,7 +3104,7 @@ dependencies = [
 name = "ename_xtask"
 version = "0.0.0"
 dependencies = [
- "dirs",
+ "ename_application",
  "ename_asset_alias",
  "ename_asset_package",
  "ename_asset_vfs",
@@ -3244,7 +3254,6 @@ name = "example_game_bin"
 version = "0.0.0"
 dependencies = [
  "bevy",
- "dirs",
  "ename_engine",
  "example_game_lib",
 ]
@@ -3254,7 +3263,6 @@ name = "example_game_editor_bin"
 version = "0.0.0"
 dependencies = [
  "bevy",
- "dirs",
  "ename_editor",
  "ename_engine",
  "ename_remote",

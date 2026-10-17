@@ -56,10 +56,11 @@ a full sequence, because a total order over the installed set goes stale the mom
 added.
 
 It lives outside the asset tree. `ename_asset_package` reads whatever path it's handed;
-each example binary's `main` computes the default from `dirs::config_dir()`, because
-platform config policy
-belongs to the target that owns platform policy. Most players never write the file, so a missing
-one isn't a problem.
+`EnginePlugins` defaults it to `load_order.toml` in the project's persistent data directory (see
+"Per-user directories" in [conventions](conventions.md)), and `with_load_order_file` overrides
+that. `ename_xtask` computes the same path through `ename_application`. The file used to live in
+`dirs::config_dir()/ename/` (`~/.config/ename/` on Linux); that location is no longer read, so
+move an existing file by hand. Most players never write the file, so a missing one isn't a problem.
 
 ## Load order
 

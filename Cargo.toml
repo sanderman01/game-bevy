@@ -45,6 +45,7 @@ crc32fast = "1.5.1"
 dirs = "7.0.0"
 egui = "0.34"
 egui_dock = "0.19"
+ename_application = { path = "ename_application", version = "0.0.0" }
 # `default-features = false` here so `ename_asset_package` can take it without Bevy. Every
 # consumer that wants the `alias://` source and the scan plugin asks for `features = ["bevy"]`.
 ename_asset_alias = { path = "ename_asset_alias", version = "0.0.0", default-features = false }

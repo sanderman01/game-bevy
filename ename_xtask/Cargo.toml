@@ -8,7 +8,7 @@ license.workspace = true
 description = "Command line tooling for the content pipeline (check, fix, list, move) and workspace helpers (dependency source)."
 
 [dependencies]
-dirs = { workspace = true }
+ename_application = { workspace = true }
 ename_asset_alias = { workspace = true, default-features = false }
 ename_asset_package = { workspace = true, default-features = false }
 ename_asset_vfs = { workspace = true, features = ["tar", "zip"] }

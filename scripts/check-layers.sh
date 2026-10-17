@@ -46,10 +46,12 @@ check ename_remote 'ename_editor|example_game_lib'
 # The sidecar is a separate process. A first-party dependency here would mean it had started
 # linking the engine it is supposed to talk to over a socket.
 check ename_mcp 'ename_.*'
+# Per-user directories, shared by the engine and `ename_xtask`: a leaf with no first-party deps.
+check ename_application 'ename_.*|example_.*|bevy|bevy_.*'
 # The tooling binary. It reads the asset crates with StdVfs and must never link the renderer,
 # the editor, the game, or `ename_asset_content` (which always links Bevy) -- if it did,
 # `cargo xtask ename_check` would rebuild half the engine.
-check ename_xtask 'ename_asset_content|ename_engine|ename_editor|example_game_lib|ename_remote|ename_mcp'
+check ename_xtask 'ename_asset_content|ename_engine|ename_editor|example_game_lib|ename_remote|ename_mcp|bevy|bevy_.*'
 # `example_game_editor_bin` is the top of the graph -- it links the editor and `ename_remote` on
 # purpose -- so there is nothing above it to forbid and no check for it here.
 # The minimal binary is the one that has to stay clean: it must never name the editor, and never

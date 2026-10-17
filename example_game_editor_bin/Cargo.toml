@@ -13,7 +13,6 @@ dev = ["bevy/dynamic_linking", "bevy/dev"]
 
 [dependencies]
 bevy = { workspace = true }
-dirs.workspace = true
 ename_editor = { workspace = true }
 ename_engine = { workspace = true, features = ["tar", "zip"] }
 ename_remote = { workspace = true }

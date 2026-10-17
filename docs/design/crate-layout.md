@@ -7,8 +7,8 @@ The long-form analysis behind this is in `scratch/crate-structure-review.md`.
 ## Naming
 
 Project codename is `ename`. Every engine-side crate is prefixed with it: `ename_engine`,
-`ename_asset_vfs`, `ename_asset_alias`, `ename_asset_package`, `ename_asset_content`,
-`ename_editor`, `ename_remote`, `ename_mcp`, `ename_xtask`. Bare names like `engine` and `editor` collide with anything and
+`ename_application`, `ename_asset_vfs`, `ename_asset_alias`, `ename_asset_package`,
+`ename_asset_content`, `ename_editor`, `ename_remote`, `ename_mcp`, `ename_xtask`. Bare names like `engine` and `editor` collide with anything and
 resolve independently once there is more than one workspace.
 
 `example_` crates are the exception: these are demo crates showing how a game project consumes
@@ -21,12 +21,14 @@ lists both prefixes.
 ## Layer graph
 
 ```
-example_game_bin (bin)        -> ename_engine, example_game_lib, dirs
-example_game_editor_bin (bin) -> ename_engine, example_game_lib, ename_editor, ename_remote, dirs
+example_game_bin (bin)        -> ename_engine, example_game_lib
+example_game_editor_bin (bin) -> ename_engine, example_game_lib, ename_editor, ename_remote
 ename_remote                  -> ename_engine
 example_game_lib              -> ename_engine, ename_asset_alias
 ename_editor                  -> ename_engine
-ename_engine                  -> ename_asset_content, bevy, avian3d, big_space, serde, schemars
+ename_engine                  -> ename_application, ename_asset_content, bevy, avian3d, big_space,
+                                 serde, schemars
+ename_application             -> dirs, thiserror   (no first-party deps, no bevy)
 ename_asset_content           -> ename_asset_alias, ename_asset_package, ename_asset_vfs, async-lock, bevy
 ename_asset_package           -> ename_asset_alias, ename_asset_vfs, semver, serde, toml, thiserror, tracing
                                  + bevy, behind the default `bevy` feature
@@ -39,10 +41,15 @@ ename_asset_vfs               -> thiserror, tracing   (no first-party deps)
 ename_mcp (bin)               -> rmcp, reqwest, tokio, serde_json, sysinfo, process-wrap,
                                  windows (Windows only)
                                  (no first-party deps, no bevy)
-ename_xtask (bin)             -> ename_asset_alias, ename_asset_package, ename_asset_vfs (zip, tar),
-                                 dirs, futures-lite, serde, serde_json, toml, uuid
+ename_xtask (bin)             -> ename_application, ename_asset_alias, ename_asset_package,
+                                 ename_asset_vfs (zip, tar), futures-lite, serde, serde_json,
+                                 toml, uuid
                                  (no bevy; no other first-party crate)
 ```
+
+`ename_application` resolves the project's per-user directories (persistent data and cache) from
+an organisation and project name. It is its own crate, re-exported as `ename_engine::application`,
+because `ename_xtask` computes the same load order path and must not link the engine.
 
 `ename_mcp` and `ename_xtask` hang off the bottom with no arrow to anything because they are not
 layers. `ename_mcp` is a separate process that talks to the game over a socket. See

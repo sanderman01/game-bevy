@@ -8,6 +8,7 @@
 //! to be registered before `AssetPlugin` builds and this group owns `AssetPlugin`.
 //! See `docs/design/crate-layout.md`.
 
+pub mod application;
 pub mod bigspace;
 pub mod camera;
 pub mod capture;
@@ -22,6 +23,7 @@ pub mod time;
 pub mod video;
 pub mod wait;
 
+use application::{ApplicationPaths, ApplicationPlugin, OrganisationName, Paths, ProjectName};
 use bevy::{
     app::PluginGroupBuilder, asset::AssetPlugin, log::LogPlugin, prelude::*,
     transform::TransformPlugin,
@@ -32,7 +34,7 @@ use std::path::PathBuf;
 
 pub use ename_asset_content::DEFAULT_ASSET_ROOT;
 /// Re-exported so a target can name the user's load order file without depending on the asset
-/// crates itself. Where that file lives is the binary's decision; what it is called is not.
+/// crates itself. It defaults to the persistent data directory; `with_load_order_file` moves it.
 pub use ename_asset_content::LOAD_ORDER_FILE;
 
 /// Everything a target needs to run on this engine, `DefaultPlugins` included.
@@ -52,20 +54,26 @@ pub struct EnginePlugins {
     log_capacity: usize,
     content_search_paths: Vec<String>,
     load_order_file: Option<PathBuf>,
+    organisation_name: OrganisationName,
+    project_name: ProjectName,
+    paths_override: Option<Paths>,
 }
 
-impl Default for EnginePlugins {
-    fn default() -> Self {
+impl EnginePlugins {
+    /// The names place the per-user directories ([`application::ApplicationPaths`]), so every
+    /// target has to give them; there is no sensible default.
+    pub fn new(organisation_name: OrganisationName, project_name: ProjectName) -> Self {
         Self {
             window: Window::default(),
             log_capacity: log::DEFAULT_CAPACITY,
             content_search_paths: Vec::new(),
             load_order_file: None,
+            organisation_name,
+            project_name,
+            paths_override: None,
         }
     }
-}
 
-impl EnginePlugins {
     /// Sets the primary window. This is the part of `DefaultPlugins` a target legitimately
     /// configures.
     pub fn with_window(mut self, window: Window) -> Self {
@@ -91,15 +99,44 @@ impl EnginePlugins {
     }
 
     /// Sets the user's load order file, the one place a player rather than an author orders
-    /// packages. `None` by default: where a config file lives is the binary's decision.
+    /// packages. Defaults to [`LOAD_ORDER_FILE`] in the persistent data directory; without one,
+    /// there is no load order file.
     pub fn with_load_order_file(mut self, path: impl Into<PathBuf>) -> Self {
         self.load_order_file = Some(path.into());
         self
+    }
+
+    /// Uses these directories instead of resolving them from the names, for tests and throwaway
+    /// sessions.
+    pub fn with_application_paths(mut self, paths: Paths) -> Self {
+        self.paths_override = Some(paths);
+        self
+    }
+
+    /// Resolved from the names, unless `with_application_paths` gave them.
+    fn application_paths(&self) -> ApplicationPaths {
+        ApplicationPaths::new(
+            self.organisation_name.clone(),
+            self.project_name.clone(),
+            self.paths_override.clone(),
+        )
+    }
+
+    /// `with_load_order_file` wins; otherwise the file lives in the persistent data directory.
+    /// `None` when neither exists.
+    fn load_order_file(&self, paths: &ApplicationPaths) -> Option<PathBuf> {
+        self.load_order_file.clone().or_else(|| {
+            paths
+                .persistent_data_path()
+                .map(|dir| dir.join(LOAD_ORDER_FILE))
+        })
     }
 }
 
 impl PluginGroup for EnginePlugins {
     fn build(self) -> PluginGroupBuilder {
+        let application_paths = self.application_paths();
+        let load_order_file = self.load_order_file(&application_paths);
         let group = DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(self.window),
@@ -122,10 +159,14 @@ impl PluginGroup for EnginePlugins {
             .add_before::<AssetPlugin>({
                 let mut plugin =
                     AssetContentPlugin::default().with_search_paths(self.content_search_paths);
-                if let Some(path) = self.load_order_file {
+                if let Some(path) = load_order_file {
                     plugin = plugin.with_load_order_file(path);
                 }
                 plugin
+            })
+            // After `LogPlugin`, which installs the logger its lines go to.
+            .add_after::<LogPlugin>(ApplicationPlugin {
+                paths: application_paths,
             })
             .disable::<TransformPlugin>()
             .add_group(BigSpaceDefaultPlugins)
@@ -147,5 +188,52 @@ impl PluginGroup for EnginePlugins {
         group.add(log::LogBufferPlugin {
             capacity: self.log_capacity,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ORG: OrganisationName = OrganisationName::from_static("ename");
+    const PROJECT: ProjectName = ProjectName::from_static("engine-plugins-test");
+
+    fn engine_in(root: &std::path::Path) -> EnginePlugins {
+        EnginePlugins::new(ORG, PROJECT)
+            .with_application_paths(Paths::from_paths(root.join("data"), root.join("cache")))
+    }
+
+    #[test]
+    fn builders_reach_the_application_paths() {
+        let root = std::env::temp_dir();
+        let paths = engine_in(&root).application_paths();
+        assert_eq!(paths.organisation(), &ORG);
+        assert_eq!(paths.project(), &PROJECT);
+        assert_eq!(
+            paths.persistent_data_path(),
+            Some(root.join("data").as_path())
+        );
+        assert_eq!(paths.cache_path(), Some(root.join("cache").as_path()));
+    }
+
+    #[test]
+    fn load_order_file_defaults_to_the_persistent_data_directory() {
+        let root = std::env::temp_dir();
+        let engine = engine_in(&root);
+        assert_eq!(
+            engine.load_order_file(&engine.application_paths()),
+            Some(root.join("data").join(LOAD_ORDER_FILE))
+        );
+    }
+
+    #[test]
+    fn explicit_load_order_file_wins() {
+        let root = std::env::temp_dir();
+        let explicit = root.join("elsewhere.toml");
+        let engine = engine_in(&root).with_load_order_file(explicit.clone());
+        assert_eq!(
+            engine.load_order_file(&engine.application_paths()),
+            Some(explicit)
+        );
     }
 }

@@ -9,7 +9,16 @@ pub mod airship;
 pub mod sky;
 
 use bevy::{app::PluginGroupBuilder, prelude::*};
-use ename_engine::{camera::ground::GroundSurface, stage::open_stage};
+use ename_engine::{
+    application::{OrganisationName, ProjectName},
+    camera::ground::GroundSurface,
+    stage::open_stage,
+};
+
+/// Names the game's per-user directories. Shared by the game and the editor binary so both use one
+/// data directory. `ename_xtask`'s `policy.rs` mirrors them.
+pub const ORGANISATION_NAME: OrganisationName = OrganisationName::from_static("ename");
+pub const PROJECT_NAME: ProjectName = ProjectName::from_static("example-game");
 
 /// A group of plugins comprising your game functionality.
 /// Add this plugin group to the app in your game binary crate.
