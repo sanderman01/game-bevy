@@ -1,0 +1,22 @@
+docs/known-crashes.md
+  s_67b8126579ad2d::t_73574b1308aee4 1-22
+docs/agent-tools.md
+  s_67b8126579ad2d::t_c3c3a094a213af 97-98
+  s_67b8126579ad2d::t_3450a36cc006ce 253-289
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5c47c5421521483ebed3f4d2a0d8d6dbd9401975",
+  "prompts": {},
+  "sessions": {
+    "s_67b8126579ad2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f8609ac4-10b1-417b-8047-fdf9b3191298",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
