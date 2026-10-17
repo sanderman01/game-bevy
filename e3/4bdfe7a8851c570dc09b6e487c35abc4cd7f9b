@@ -1,0 +1,14 @@
+ename_engine/src/application.rs
+  h_72decab43bbb75 69-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e34bdfe7a8851c570dc09b6e487c35abc4cd7f9b",
+  "prompts": {},
+  "humans": {
+    "h_72decab43bbb75": {
+      "author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
