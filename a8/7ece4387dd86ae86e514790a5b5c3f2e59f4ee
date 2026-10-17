@@ -1,0 +1,24 @@
+ename_editor/src/camera.rs
+  s_51349e13722b35::t_291797e947faca 890-901
+  s_51349e13722b35::t_7585ad3a5705cb 859-865
+  s_51349e13722b35::t_954da88340a11a 922-935
+  s_51349e13722b35::t_2cebb17723afc0 195
+ename_editor/src/camera_commands/tests.rs
+  s_51349e13722b35::t_f32bcd0a6bb224 501-549
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a87ece4387dd86ae86e514790a5b5c3f2e59f4ee",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
