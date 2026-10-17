@@ -1,0 +1,26 @@
+docs/conventions.md
+  s_21d283d4e8f139::t_3c2459946f9fa2 39-40
+ename_engine/tests/application_paths.rs
+  s_21d283d4e8f139::t_5bff0748b4f3e9 1
+  s_21d283d4e8f139::t_a9488f991e3987 34-35,55-58
+  s_21d283d4e8f139::t_52ee7371da73b9 37-38,40-54
+ename_engine/src/application.rs
+  s_21d283d4e8f139::t_dff2825280620d 97-106
+  s_21d283d4e8f139::t_4d3501bd3a0b0b 66-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b5bd8bf3f9a5107a8c7c5b95a558774bff2b95e0",
+  "prompts": {},
+  "sessions": {
+    "s_21d283d4e8f139": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "624eef6a-b338-4761-aef9-757af59b5da4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
