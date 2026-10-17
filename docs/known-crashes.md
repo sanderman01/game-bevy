@@ -19,4 +19,12 @@ The sidecar reads `ENAME_KNOWN_CRASHES`, a path list (`:` on Unix, `;` on Window
 its working directory, defaulting to this file. A game built on the engine lists its own file and
 this one.
 
-No engine crash is confirmed yet.
+## Sun shadow maps toggled back on
+
+Signature: `Failed to get directional light visible entities for cascade`
+
+Setting `DirectionalLight::shadow_maps_enabled` to `false` and then back to `true` on a running
+game panics in Bevy's render world (`bevy_pbr` `render/light.rs`, `specialize_shadows`) and the
+game exits with code 1. Reproduced on the example stage's light with two
+`world_mutate_component` calls. Leave shadows on, or restart the game after turning them back on
+in the stage file instead.
