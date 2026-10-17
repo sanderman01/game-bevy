@@ -1,0 +1,51 @@
+ename_editor/src/input_commands.rs
+  s_36d39a2464f61e::t_a8ff50199115a2 19-20,204-207
+  s_36d39a2464f61e::t_95cbd2e354a334 26-29
+  s_36d39a2464f61e::t_c8fc424944fae6 230
+  s_36d39a2464f61e::t_e761370c2e7ea1 356-366
+  s_36d39a2464f61e::t_7f224465c8ab9d 256-260,285,302,306-307,313
+  s_36d39a2464f61e::t_23dbdab4942024 195,211-212,215
+ename_editor/src/input_inject/geometry.rs
+  s_36d39a2464f61e::t_20cbdd858ebd49 141-164
+docs/agent-tools.md
+  s_36d39a2464f61e::t_5f581e40c1f8fd 756-760
+ename_editor/src/input_inject/script.rs
+  s_36d39a2464f61e::t_276df46b55c628 105-106,204-205
+  s_36d39a2464f61e::t_572ef5465448eb 62-75
+ename_editor/src/input_inject/mod.rs
+  s_36d39a2464f61e::t_276df46b55c628 601
+  s_36d39a2464f61e::t_fb40d97338b78d 564-569
+  s_36d39a2464f61e::t_fb8d345f180328 440,633-646,650-657
+  s_36d39a2464f61e::t_3e823c0f476fc7 319,323-325,327-333,335-350
+  s_36d39a2464f61e::t_a8ff50199115a2 364-372,374
+  s_36d39a2464f61e::t_ecc0f28fe59bc2 376,381,384-417,420,427-439
+  s_36d39a2464f61e::t_dc1c88adf13a5e 191,195
+  s_36d39a2464f61e::t_11ef74088b2346 547
+  s_36d39a2464f61e::t_f2a3a55c11c4ac 174-175,218,291
+  s_36d39a2464f61e::t_917c358f4a2614 28
+  s_36d39a2464f61e::t_07e14010048f5d 83-88
+  s_36d39a2464f61e::t_9af7a81792e0b5 355,360-363
+  s_36d39a2464f61e::t_4b01f3012e5488 441
+ename_editor/src/input_inject/keymap.rs
+  s_36d39a2464f61e::t_8c39e408dc23e6 125-142
+ename_editor/src/input_inject/tests.rs
+  s_36d39a2464f61e::t_e217c4a233315e 340,342
+  s_36d39a2464f61e::t_f9c2c0547071d9 355-356,362-509,511,513,515,517,521,523,527,529
+  s_36d39a2464f61e::t_5d8cf724e0191e 510,512,514,516,518-520,522,524-526,528,530-533
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1def5aa116375a8b8efbc73ce28c1c4f54c4d001",
+  "prompts": {},
+  "sessions": {
+    "s_36d39a2464f61e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "06788778-3756-4e70-98fa-9e678be2c257",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
