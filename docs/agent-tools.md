@@ -94,7 +94,8 @@ runs `wait_settled` once the game is ready, within the same wait, and says how i
 
 **States.** `stopped`, `building`, `build_failed` (with `errors` in `path:line:col: error[...]`
 form), `starting`, `ready`, `exited` (with `exit` and, for an error code or a crash, `crash` with
-the cause and the last lines of the log), `external` and `port_in_use` (with `holder`). `ready`
+the cause, the panic that killed it from the run record (message, location, thread and how many
+panics the run had), and the last lines of the log), `external` and `port_in_use` (with `holder`). `ready`
 means the game process is alive, `game.pid.get` answers on its port from that process, and the main
 schedule has run two frames. It does not mean a frame was presented. A launch that ends in
 `build_failed`, `port_in_use` or a crash is a tool error, and so is one whose supervisor died
@@ -249,10 +250,43 @@ earlier run is recognisably stale. A command result's `pid` comes from the same 
 result, so it cannot belong to a different run than the result does.
 
 A dead game is a different signal: the call fails with "cannot reach the game's remote server",
-and `game_status` says why.
-"Connection refused" means the process is gone. "Connection closed before message completed"
-means a handler panicked mid-request, and the game may still be running in an unknown state, so
-read `log_get_entries` before trusting it.
+and the failure says how it died. The game keeps a run record per port (`brp-<port>.json` in
+`$XDG_RUNTIME_DIR/ename`, or the temp dir on macOS and Windows), so this works for a game you did
+not start too. The sentence is one of:
+
+- it exited, with `AppExit::Success` (a closed window, `game_stop`) or `AppExit::Error(n)`;
+- its process is running but not answering on the port: still starting, or hung;
+- it panicked, with the message and `file:line`, and a link into
+  [known-crashes.md](known-crashes.md) when the panic is a known one;
+- it ended with neither: killed, or a native crash, with the last error this session saw.
+
+With no record (a game older than the record, or none ever ran on the port) it says only that
+the game is unreachable, and `game_status` says why. A call that times out on a live game gets
+the "not answering" sentence.
+
+## Noticing errors
+
+A failure that shows only in the game's log is one nobody looks for: a shader that did not
+compile still produces screenshots. So a result carries `log` when the game logged new errors or
+warnings since the last result that said so:
+
+```json
+{"pid": "kqvzmbta",
+ "log": {"new_errors": 1, "new_warnings": 0,
+         "last_error": "bevy_render::render_resource::pipeline_cache: failed to process shader ...",
+         "after_sequence": 4180},
+ "view": "game"}
+```
+
+`log_get_entries` with `min_level: "WARN"` and that `after_sequence` lists exactly the new lines;
+no `after_sequence` means read from the start of the run. `last_warning` replaces `last_error`
+when only warnings are new. The first call after a start reports everything since the start, so
+it doubles as "did the launch log anything". A failed result carries the same notice as a
+sentence after its message. Panics, including those the game survives (a task's, a handler's),
+are in the log as ERROR entries with target `panic`.
+
+`log` on a lifecycle result (`game_start`, `game_status`, ...) is something else: the path of
+`game.log`.
 
 ## Working with a frozen world
 
