@@ -19,7 +19,7 @@
 //! | `game.position.get` / `.set` | Position is a `CellCoord` plus a `Transform`, relative to a moving origin. A bare `Transform` is wrong everywhere but one cell. |
 //! | `game.time.get` / `.set` | Nothing in BRP can freeze the world, and reading a world that is still advancing answers a different question. |
 //! | `game.logs.get` | Bevy's logs go to stderr, which a JSON-RPC client cannot see. |
-//! | `game.pid.get` | Nothing in BRP says which run of the process answered, so a restart between two calls is invisible. Also answers the OS process id (`os_pid`), so a launcher can tell its game from another one on the port. |
+//! | `game.pid.get` | Nothing in BRP says which run of the process answered, so a restart between two calls is invisible. Also answers the OS process id (`os_pid`), so a launcher can tell its game from another one on the port, and the run's log tally (`log`), so a client notices errors it did not look for. Every command and job answer carries the same `run` and `log`. |
 //! | `game.exit` | A graceful stop with exit code 0 on every platform; Ctrl+C cannot reach a detached Windows process. |
 //! | `game.command.list` / `.call` | The commands any crate registered in `ename_engine::command`, listed with their schemas and called by name. This crate never learns what they are. |
 //! | `game.job.status` / `.list` / `.cancel` | The jobs those commands start. |
