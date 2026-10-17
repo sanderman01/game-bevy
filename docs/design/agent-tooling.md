@@ -131,6 +131,50 @@ fresh as the last build, so a reviewer could test old code without knowing it. T
 runs `cargo dev-test --no-fail-fast` after its last change and puts the result in the reviewer's
 brief; a reviewer that needs another run asks the parent.
 
+**A camera pose is position plus yaw and pitch in degrees.** Agents hand-computed quaternions
+for every pose and kept helper scripts to do it. Degrees can be read, typed and diffed, and roll
+is meaningless for the editor camera, which strips it every frame. Yaw 0 looks along -Z, 90 along
++X, pitch positive up: the mapping the editor's orbit already used. At the poles yaw comes from
+the up vector, so a straight-down pose keeps its heading.
+
+**Saved poses are viewpoints, not views.** "View" already names Scene View and Game View
+(`editor_set_view`); `viewpoint_goto` next to it cannot be mistaken for it.
+
+**Camera commands live in the editor; the pieces a game needs live in the engine.** The commands
+need the editor camera and the shown view, and the viewpoints file is development configuration,
+so `ename_editor` registers them and no shipping binary links them. The engine holds pose
+conversion, absolute pose reads and writes, the ground probe registry and the facet registry,
+which a game crate fills.
+
+**Ground is optional and the game says where it is.** Not every game has open terrain: indoor
+levels, multi-storey buildings, caves and space have no heightfield. So the guard only acts on
+what the game has: `CameraGroundGuard` (default `both`, 2 m) picks which probes a placement asks,
+and each call can override it with `ground`: `none`, `colliders`, `meshes` or `both`. Where no
+probe finds ground, nothing is lifted or waited for.
+
+- **Probes.** The engine always has two: one over static colliders and one over render meshes the
+  game marks as terrain (`GroundSurface`), for terrain without a collider. A game can add its own,
+  asked in every mode but `none`. A probe answers the support surface below a 3D point, with "no
+  ground" and "not loaded" kept apart, so only data that is still streaming makes a placement wait.
+  A probe may also answer rays (walls, ceilings, overhangs); probes that answer heights only are
+  ray-marched, refining only between a known-above and a known-below sample.
+- **Rules.** The built-in probes answer only what one ray each way says reliably, plus
+  containment in convex solids. Being under terrain is opt-in through the marker, so a camera
+  under an unmarked roof stays under it.
+- **Lift.** The guard lifts instead of refusing, since a lift is what the agent would do next, and
+  never lifts through a ceiling.
+
+**Viewpoints are a versioned RON file in the repo, read on every call.** One `viewpoints.ron` at
+the workspace root, path set by the editor binary. Not under `assets/`, which is outside the
+repo's history. Re-read on every call so a hand edit or another agent's save takes effect without
+a restart. A newer version is refused, never reinterpreted. Saves drop comments, so each viewpoint
+has a `note`.
+
+**A viewpoint can carry facets.** Typed state a crate registers with a capture and an apply
+function, stored as raw RON and shown as JSON. `viewpoint_save` captures only the facets it is
+told to, so a viewpoint never silently resets state a comparison depends on. An unregistered
+facet fails before anything is applied.
+
 ## What the agent can actually see
 
 Type registration is a correctness requirement for MCP, not a convenience for the inspector. An

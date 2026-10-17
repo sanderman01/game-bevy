@@ -33,6 +33,12 @@ screenshot_capture { "path": "scratch/shots/scene.png", "source": "editor_camera
 | `game_camera` | What the stage's `MainCamera` rendered: the Game View. |
 | `editor_camera` | The Scene View, gizmos and grid included. |
 
+- Pose the camera before capturing with `camera_look_at` (`position` plus `look_at`,
+  `look_at_entity` or `yaw`/`pitch` in degrees) or `viewpoint_goto` (a named pose from
+  `viewpoints.ron`; `viewpoint_list` shows them). Never `world_set_position` plus a quaternion:
+  it keeps the camera's leftover fly velocity, which drifts it forever while time is paused.
+  The result's `ground` and `center_hit` say whether the view faces the ground or the sky
+  before you look at a picture. `camera_look_at` defaults to the shown view's camera.
 - A camera source needs its view shown. If a call fails with a hint naming `editor_set_view`,
   switch with `editor_set_view` (`view: "game"` or `"scene"`) and capture again. Switching changes
   what the user sees, so switch back afterwards if they were looking at the other view.

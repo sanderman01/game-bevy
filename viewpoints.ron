@@ -1,0 +1,28 @@
+// Named camera viewpoints. Read by `viewpoint.list` / `viewpoint.goto`; `viewpoint.save` rewrites
+// this file and drops comments, so describe a viewpoint in its `note`.
+(
+    version: 1,
+    viewpoints: [
+        (
+            name: "airship side",
+            note: "The airship from the side at hull height, mountains below.",
+            position: (90.0, 1505.0, 30.0),
+            yaw: -71.57,
+            pitch: -3.02,
+        ),
+        (
+            name: "airship above",
+            note: "Looking down on the airship from behind and above, terrain in the background.",
+            position: (-60.0, 1620.0, 160.0),
+            yaw: 20.56,
+            pitch: -35.08,
+        ),
+        (
+            name: "terrain overview",
+            note: "High over the south edge of the map looking north across the whole terrain.",
+            position: (0.0, 2400.0, 1400.0),
+            yaw: 0.0,
+            pitch: -40.0,
+        ),
+    ],
+)

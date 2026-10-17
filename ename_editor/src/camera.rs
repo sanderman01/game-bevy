@@ -192,6 +192,7 @@ impl Plugin for EditorCameraPlugin {
                 (
                     apply_camera_settings.run_if(resource_changed::<EditorCameraSettings>),
                     follow_shown_view,
+                    replace_lost_orbit_focus,
                 ),
             )
             .add_systems(
@@ -841,6 +842,107 @@ fn apply_focus_on_f_key(
         None => focus_entity.remove::<CellCoord>(),
     };
 }
+
+/// Clears whatever would move `camera` after a pose was written from outside the input path:
+/// free-flight and big_space velocity, and the orbit pivot. The pivot moves to `focus` (absolute
+/// metres in the camera's grid), or `distance` ahead of the camera when `None`, and the orbit
+/// distance becomes the camera's distance to it, so the next Alt+RMB orbit does not jump.
+pub(crate) fn reset_editor_camera_motion(world: &mut World, camera: Entity, focus: Option<DVec3>) {
+    if let Some(mut state) = world.get_mut::<FreeFlightState>(camera)
+        && (state.vel_translation != Vec3::ZERO || state.vel_rotation != Quat::IDENTITY)
+    {
+        *state = FreeFlightState::default();
+    }
+    if let Some(mut controller) = world.get_mut::<BigSpaceCameraController>(camera) {
+        ename_engine::camera::pose::reset_controller_motion(&mut controller);
+    }
+    move_orbit_focus(world, camera, focus);
+}
+
+/// Moves `camera`'s orbit pivot to `focus`, or `distance` ahead when `None`, and sets the orbit
+/// distance to match. Spawns a new pivot when the old one is gone: it lives in a stage's grid,
+/// so unloading the stage despawns it.
+fn move_orbit_focus(world: &mut World, camera: Entity, focus: Option<DVec3>) {
+    let Some(orbit) = world.get::<OrbitFocus>(camera).copied() else {
+        return;
+    };
+    let Some(transform) = world.get::<Transform>(camera).copied() else {
+        return;
+    };
+    let parent = world.get::<ChildOf>(camera).map(ChildOf::parent);
+    let grid = parent.and_then(|parent| world.get::<Grid>(parent).map(|grid| (parent, grid)));
+    let camera_position = match (grid, world.get::<CellCoord>(camera)) {
+        (Some((_, grid)), Some(cell)) => grid.grid_position_double(cell, &transform),
+        _ => transform.translation.as_dvec3(),
+    };
+    let focus = focus.unwrap_or_else(|| {
+        camera_position + transform.forward().as_dvec3() * f64::from(orbit.distance)
+    });
+    let distance = (focus.distance(camera_position) as f32).max(MIN_ORBIT_DISTANCE);
+    // The pivot lives in the camera's grid, as F-focus would leave it for a target there.
+    let placed = match grid {
+        Some((grid_entity, grid)) => {
+            let (cell, translation) = grid.translation_to_grid(focus);
+            (Some((grid_entity, cell)), translation)
+        }
+        None => (None, focus.as_vec3()),
+    };
+    let pivot = if world.get_entity(orbit.entity).is_ok() {
+        orbit.entity
+    } else {
+        let pivot = world
+            .spawn((EditorCameraFocus, Name::new("Editor Camera Focus")))
+            .id();
+        if let Some(mut orbit) = world.get_mut::<OrbitFocus>(camera) {
+            orbit.entity = pivot;
+        }
+        pivot
+    };
+    let mut focus_entity = world.entity_mut(pivot);
+    match placed {
+        (Some((grid_entity, cell)), translation) => {
+            focus_entity.insert((
+                ChildOf(grid_entity),
+                cell,
+                Transform::from_translation(translation),
+            ));
+        }
+        (None, translation) => {
+            focus_entity.remove::<(ChildOf, CellCoord)>();
+            focus_entity.insert(Transform::from_translation(translation));
+        }
+    }
+    if let Some(mut orbit) = world.get_mut::<OrbitFocus>(camera)
+        && orbit.distance != distance
+    {
+        orbit.distance = distance;
+    }
+}
+
+/// Puts a new orbit pivot ahead of the editor camera when its pivot was despawned with the stage
+/// grid it lived in, so orbiting and F-focus keep working after a stage is closed or reopened.
+fn replace_lost_orbit_focus(world: &mut World) {
+    let lost: Vec<Entity> = world
+        .query_filtered::<(Entity, &OrbitFocus), With<EditorCamera>>()
+        .iter(world)
+        .filter(|(_, orbit)| world.get_entity(orbit.entity).is_err())
+        .map(|(camera, _)| camera)
+        .collect();
+    for camera in lost {
+        move_orbit_focus(world, camera, None);
+    }
+}
+
+/// The orbit pivot entity and distance of `camera`, for tests outside this module.
+#[cfg(test)]
+pub(crate) fn orbit_focus(world: &World, camera: Entity) -> Option<(Entity, f32)> {
+    world
+        .get::<OrbitFocus>(camera)
+        .map(|orbit| (orbit.entity, orbit.distance))
+}
+
+/// The pitch the editor camera can hold, in degrees: [`correct_camera_roll`] clamps to it.
+pub(crate) const MAX_EDITOR_PITCH_DEGREES: f64 = 89.0;
 
 /// Ranks the editor camera's floating-origin candidacy, and its frozen anchor's if it has one, by
 /// whether its view is the one shown. The anchor copied the camera's priority when it was frozen,

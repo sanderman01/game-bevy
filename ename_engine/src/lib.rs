@@ -134,6 +134,7 @@ impl PluginGroup for EnginePlugins {
             .add(bigspace::BigSpacePlugin)
             .add(debug_overlay::DebugOverlayPlugin)
             .add(camera::VirtualCameraPlugin)
+            .add(camera::ground::CameraGroundPlugin)
             .add(stage::StagePlugin)
             .add(physics::PhysicsIntegrationPlugin)
             .add(time::TimeControlPlugin)

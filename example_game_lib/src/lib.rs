@@ -9,7 +9,7 @@ pub mod airship;
 pub mod sky;
 
 use bevy::{app::PluginGroupBuilder, prelude::*};
-use ename_engine::stage::open_stage;
+use ename_engine::{camera::ground::GroundSurface, stage::open_stage};
 
 /// A group of plugins comprising your game functionality.
 /// Add this plugin group to the app in your game binary crate.
@@ -30,10 +30,24 @@ pub struct StartPlugin;
 
 impl Plugin for StartPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, open_start_stage);
+        app.add_systems(Startup, open_start_stage)
+            .add_systems(Update, mark_terrain);
     }
 }
 
+/// The start stage's terrain: a static body whose mesh colliders are the ground.
+const TERRAIN: &str = "examples::map";
+
 fn open_start_stage(world: &mut World) {
     open_stage(world, "alias://examples::stage");
+}
+
+/// Marks the stage's terrain as [`GroundSurface`]: its collider for the physics probe, and the
+/// render meshes under it for the mesh probe. A camera placed under it is lifted onto it.
+fn mark_terrain(mut commands: Commands, named: Query<(Entity, &Name), Added<Name>>) {
+    for (entity, name) in &named {
+        if name.as_str() == TERRAIN {
+            commands.entity(entity).insert(GroundSurface);
+        }
+    }
 }

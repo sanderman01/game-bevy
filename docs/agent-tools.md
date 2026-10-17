@@ -180,6 +180,8 @@ cannot become a crate that ships by accident.
 | `job_list` / `job_wait` / `job_cancel` | Follow, collect or end the work a command started. |
 | one tool per game command | Present while the game runs; see "Commands and jobs". Today: |
 | `editor_get_view` / `editor_set_view` | Which editor view is shown, Scene View or Game View; switch it as clicking its tab would. |
+| `camera_look_at` / `camera_get_pose` | Place a camera with a position and a point, an entity or yaw/pitch in degrees, kept above the ground; read a pose back in the same shape. See "Placing the camera". |
+| `viewpoint_list` / `viewpoint_goto` / `viewpoint_save` | Named camera poses in the project's `viewpoints.ron`. |
 | `screenshot_capture` | Write the game window, the game camera or the editor camera to a PNG file. |
 | `video_record` | Record the game window, the game camera or the editor camera to an `.mp4` or `.mkv` file. |
 | `wait_settled` | Wait until loading, pipeline compiles and streaming have finished and stayed finished. See "Waiting". |
@@ -374,6 +376,120 @@ Cancelling it with `job_cancel` only stops the wait: the view has already change
 
 These are editor commands, so a binary without the editor has no `editor_*` tools, and
 `command_call` reports `unknown_command`.
+
+## Placing the camera
+
+`camera_look_at` places a camera in one call and returns the pose read back from it:
+
+```json
+{"position": [90, 1505, 30], "look_at_entity": {"name": "examples::airship"}}
+{"position": [0, 2400, 1400], "yaw": 0, "pitch": -40}
+{"look_at": [0, 1200, 0]}
+{"advance": 50}
+```
+
+**The pose.** `position` is absolute metres, Y up. Orientation is one of `look_at` (a point),
+`look_at_entity` (`{"name"}` or `{"entity"}`, faced at its absolute position), `yaw`/`pitch`
+(degrees; either alone keeps the other) or `rotation` (a quaternion copied from a `Transform`; its
+roll is dropped and a note says so). None keeps the current orientation. Yaw 0 looks along -Z and
+yaw 90 along +X; pitch is positive up. There is no roll. The editor camera holds at most ±89°
+pitch, so -90 lands at -89 with a note. `advance` then moves the camera that many metres along its
+view. Two orientation forms, a non-finite value or a point equal to the position fail
+`invalid_pose`.
+
+**Which camera.** `camera` is `editor_camera` or `game_camera`; left out, it is the one the shown
+view renders, which is what the next `screenshot_capture` sees. `active` in the result says
+whether that camera renders now; when false a note names the `editor_set_view` call. The game
+camera needs exactly one `MainCamera` (`no_game_camera` otherwise). A game camera that follows a
+virtual camera through an enabled `CameraDriver` fails `camera_driven`, because the driver would
+overwrite the pose next frame; the hint names the virtual camera to move instead. The example
+Main Camera hangs under `examples::airship`; it is placed at the absolute pose all the same.
+
+**Motion is cleared.** Placing a camera zeroes its leftover fly velocity and moves the orbit pivot
+to what it looks at, so an Alt+RMB orbit afterwards pivots there. `world_set_position` clears
+nothing: a camera flown a moment ago keeps drifting for half a second, and while the world is
+paused (`time_set pause`) it drifts forever, because the velocity decay is scaled by virtual time.
+
+**The ground guard.** `ground` picks which ground keeps the camera clear of it:
+
+| `ground` | Probes asked |
+| --- | --- |
+| `"none"` | None: no wait, no lift, `ground` and `center_hit` are `null` and not computed. A deliberate shot from below. |
+| `"colliders"` | The built-in probe over static colliders, plus any probe the game registered. |
+| `"meshes"` | The built-in probe over marked render meshes, plus any probe the game registered. |
+| `"both"` | Both built-in probes, plus the game's. |
+
+Left out, `ground` and `min_clearance` come from the game's `CameraGroundGuard` resource
+(`ename_engine::camera::ground`), which defaults to `both` and 2 m. In a game without colliders
+or marked meshes the probes find no ground, so nothing is lifted or waited for. Pass
+`"ground": "none"` for a deliberate shot from below. The result's `ground` says which mode was
+used (`mode`) and which probe gave the ground (`from`: `"colliders"`, `"meshes"` or `"custom"`).
+The probes:
+
+- The colliders probe answers from static colliders. With no physics in the app it answers
+  nothing.
+- The mesh probe answers from render meshes, for terrain that is drawn but has no collider. It
+  sees only meshes marked `ename_engine::camera::ground::GroundSurface`, on the mesh entity or any
+  ancestor (a glTF scene root covers its meshes). Everything else (sky, water, foliage, gizmos,
+  characters) is ignored. In `both`, a marked mesh with a `Collider` on itself or an ancestor is
+  left to the colliders probe, which also sees the unmarked colliders around it, such as a
+  tunnel's ceiling under the terrain. In `meshes` the mesh probe answers for it.
+  - The mesh must keep its data on the CPU (`RenderAssetUsages::MAIN_WORLD`). A marked mesh
+    without it is ignored, with one warning naming the entity.
+  - Terrain displaced on the GPU (in a shader) is not seen.
+  - While a marked mesh's asset is still loading, the ground counts as not loaded.
+
+The example game marks its map. Its map mesh is also its collider, so in `both` the colliders
+probe answers for it, and in `meshes` the mesh probe does. When several probes are asked, the highest ground and the lowest ceiling win, and
+`center_hit` is the nearest hit. With a probe:
+
+- A camera less than `min_clearance` (default 2 m) above the ground is lifted to that clearance,
+  and `ground.lifted_by` says by how much. For the physics probe the ground is the first static
+  surface straight down from the camera, so a camera in a room stays in the room and one on an
+  upper floor keeps to that floor.
+- A lift never goes through a ceiling, the first static surface straight up: it stops 0.1 m
+  below it, and a note says so. With less than 0.1 m free above the ground, the camera goes onto
+  the ground and no further.
+- A camera inside or exactly on a convex solid (a cuboid wall or slab, a sphere, a capsule, a
+  cylinder, a cone, a convex hull, a half-space, or a convex part of a compound) is lifted out of
+  it. Its ground is where a ray straight up leaves that part, or the top of a flush stack of
+  such solids.
+- Under the terrain: a game marks its terrain with `GroundSurface` (colliders or their bodies
+  for the physics probe, meshes or their ancestors for the mesh probe). When the first surface
+  straight up from the camera is marked terrain, the camera is under it and is lifted onto it.
+  Unmarked geometry is a plain surface: a camera under a roof, a deck or an upper floor stays
+  under it.
+- Not detected: a camera inside a closed triangle mesh or a non-convex solid (it is treated as
+  being in free space between that mesh's faces), and a camera under unmarked terrain (it stays
+  under it; the note says a surface is above).
+- "No ground here" (space, a void, off the map) is not waited for: `ground` is `null` with a short
+  note. When a surface is above the camera but none below, the note says the camera may be under
+  the ground.
+- Ground a probe has not loaded yet is polled every frame for up to 10 s, then the call goes on.
+- `settle` takes `wait_settled`'s params and settles after the lift; the guard then checks again
+  (finer streamed ground can be higher) for up to 3 rounds. Without `settle`, `ground` carries
+  `"provisional": true`.
+
+`center_hit` is where the view centre meets a surface (`null` above the horizon), so "facing the
+ground" or "facing the sky" shows without a screenshot. The job finishes once a frame has run with
+the final pose, so a screenshot right after shows it. A newer placement of the same camera while
+one still waits wins: the older job fails `superseded` and writes nothing more. `job_cancel` stops
+only the wait; the pose is already written. Positions in results are rounded to 0.01 m and angles
+to 0.01°.
+
+`camera_get_pose` returns the same shape; its `position`, `yaw` and `pitch` paste into
+`camera_look_at` as they are.
+
+**Viewpoints.** Named poses live in `viewpoints.ron` at the workspace root, versioned in git and
+read on every call, so a hand edit takes effect without a restart. `viewpoint_list` shows them,
+`viewpoint_goto {"name": ...}` places a camera there as `camera_look_at` does (same
+`camera`, `ground`, `min_clearance`, `settle`), and `viewpoint_save {"name", "note"}` adds
+the current pose at the end of the file, or replaces one in place with `replace: true`
+(`viewpoint_exists` otherwise). Names are ASCII letters, digits, space, `.`, `_` and `-`. A save
+rewrites the file and drops comments, so describe a viewpoint in its `note`. A viewpoint can also
+carry facets, state a game crate registers (a sun direction, say): `include` names the ones to
+save, and `goto` applies them unless `facets: false`. The example game registers none. A file of
+a newer version fails `unsupported_version`, a parse error names the line and column.
 
 ## Screenshots
 
