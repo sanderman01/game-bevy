@@ -1,0 +1,37 @@
+ename_engine/src/camera/ground.rs
+  s_51349e13722b35::t_c1b5d40ae8a046 12,64,95,109,167-177,181-198,213,225,255-258,274
+ename_engine/src/physics/mod.rs
+  s_51349e13722b35::t_5b835dc4a0494d 7
+ename_editor/src/camera_commands.rs
+  s_51349e13722b35::t_a6c54d174ca04f 586
+ename_engine/src/physics/ground_probe/tests.rs
+  s_51349e13722b35::t_a7454318b8466b 1-464
+ename_editor/src/camera_commands/tests.rs
+  s_51349e13722b35::t_b8faeef8881069 38-41,44-46
+  s_51349e13722b35::t_b608669a6ee1db 8,107,559
+  s_51349e13722b35::t_1b72114191e483 645-649,652
+docs/agent-tools.md
+  s_51349e13722b35::t_f47424e2d084af 419-436,439-440
+example_game_lib/src/lib.rs
+  s_51349e13722b35::t_3ea62c8be9552e 12,35-36,40-42,46-53
+  s_51349e13722b35::t_14d84df2091169 54
+ename_engine/src/physics/ground_probe.rs
+  s_51349e13722b35::t_2b55b8595601dd 31-33
+  s_51349e13722b35::t_c1b5d40ae8a046 13,15,17-26,28-29,41,43-46,48-55,60-65,126-136,160-173,176-178,181,183,190,194-214,218-220,223-227,229-232,237-238,241-242,245,247,250,252-260,262-264,268,283
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "72209de3af7145c67eb0ea1e5c486e20af2a84dd",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
