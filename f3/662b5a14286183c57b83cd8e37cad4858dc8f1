@@ -1,0 +1,19 @@
+ename_engine/src/camera/mesh_ground/tests.rs
+  s_51349e13722b35::t_1c86cbc8cdebdc 416,418
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f3662b5a14286183c57b83cd8e37cad4858dc8f1",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
