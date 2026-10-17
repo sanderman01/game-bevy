@@ -1,0 +1,29 @@
+ename_editor/src/camera_commands.rs
+  s_51349e13722b35::t_14a938a8ec3091 892
+ename_editor/src/camera_memory.rs
+  s_51349e13722b35::t_410e7a71fbc341 1-59,61,63-96,98-105,107-180,182-190,192-425,427-440
+  s_51349e13722b35::t_6540bedd20e040 60,62,97,106,181,191,426
+example_game_editor_bin/src/main.rs
+  s_51349e13722b35::t_1b80b7f8a6da39 44-50
+  s_51349e13722b35::t_e0bc47d4241bbf 26-30
+ename_editor/src/lib.rs
+  s_51349e13722b35::t_6a82ff67eb0502 49,53-60
+  s_51349e13722b35::t_18e792888838fc 94-96
+  s_51349e13722b35::t_a8aa51e064ab7e 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "21bab967bd9f5b35c8b35671fa1c3b6398461002",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
