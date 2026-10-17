@@ -1,0 +1,28 @@
+docs/agent-tools.md
+  s_51349e13722b35::t_ad6367c3d0beb5 380-460
+  s_51349e13722b35::t_7b19dadade429a 183-184
+ename_editor/src/lib.rs
+  s_51349e13722b35::t_105d2c3a978066 2-4
+ename_mcp/src/server.rs
+  s_51349e13722b35::t_b12a29a718dd29 1059-1062
+.claude/skills/game-capture/SKILL.md
+  s_51349e13722b35::t_e415d4b6799d1f 36-41
+docs/design/agent-tooling.md
+  s_51349e13722b35::t_94ec3c71ba8637 134-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "80c62c330b949453c475e71f24381dd73d0c8751",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
