@@ -1,0 +1,32 @@
+ename_mcp/tests/fixtures/run_record.json
+  s_67b8126579ad2d::t_656ebefef0637f 1-17
+ename_remote/Cargo.toml
+  s_67b8126579ad2d::t_6c58535db4b5a1 11
+  s_67b8126579ad2d::t_da3e8461a136ff 18
+ename_remote/src/run_record.rs
+  s_67b8126579ad2d::t_83cf1e3b24f326 1-217
+ename_remote/src/lib.rs
+  s_67b8126579ad2d::t_4effeeca6113cf 35-39
+  s_67b8126579ad2d::t_b767c6cfbe5263 104-108
+  s_67b8126579ad2d::t_5ef77ea1f9222d 51
+ename_remote/src/exit.rs
+  s_67b8126579ad2d::t_5734a6794fd171 26-32
+Cargo.lock
+  s_67b8126579ad2d::t_79cf4913dd789d 3078,3098,3103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4a258cd48c558660e748a7cbf8716fc93cfaf7bf",
+  "prompts": {},
+  "sessions": {
+    "s_67b8126579ad2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f8609ac4-10b1-417b-8047-fdf9b3191298",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
