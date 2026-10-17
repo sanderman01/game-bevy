@@ -1,0 +1,42 @@
+docs/assets-packages.md
+  s_21d283d4e8f139::t_c61c859edb091a 61-63
+ename_engine/src/lib.rs
+  s_21d283d4e8f139::t_2062c15da5d2ab 37
+  s_21d283d4e8f139::t_8df4fdf6634033 130-144
+  s_21d283d4e8f139::t_05889f75d8ffc4 148-149
+  s_21d283d4e8f139::t_ead241d6b4a94a 208-223,228,234,236,245-248,252-255
+  s_21d283d4e8f139::t_626c83e77b0e42 224-227
+ename_application/src/paths.rs
+  s_21d283d4e8f139::t_fecbb11dd73bd8 116-120,126-134
+  s_21d283d4e8f139::t_6caadc9d997656 83-91,93-97
+  s_21d283d4e8f139::t_626c83e77b0e42 51-55,121-125
+  s_21d283d4e8f139::t_525899706b2795 4,45,214
+  s_21d283d4e8f139::t_6f090cc100134e 294-311
+ename_application/src/name.rs
+  s_21d283d4e8f139::t_ca62f5ed695a00 211-215
+ename_engine/src/application.rs
+  s_21d283d4e8f139::t_d630ad254c8f04 81-87
+  s_21d283d4e8f139::t_626c83e77b0e42 78-80
+scripts/check-layers.sh
+  s_21d283d4e8f139::t_578575dfaabf8c 50
+  s_21d283d4e8f139::t_626c83e77b0e42 54
+docs/conventions.md
+  s_21d283d4e8f139::t_95b24428865bc8 24
+  s_21d283d4e8f139::t_c6adfca003174f 46-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "416ad45ec2acf88b5804885594fa765468e61f44",
+  "prompts": {},
+  "sessions": {
+    "s_21d283d4e8f139": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "624eef6a-b338-4761-aef9-757af59b5da4",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
