@@ -3,6 +3,7 @@
 
 pub mod camera;
 pub mod grid;
+pub(crate) mod render_frame;
 
 use bevy::{prelude::*, transform::TransformSystems};
 use big_space::prelude::BigSpaceSystems;

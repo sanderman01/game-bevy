@@ -24,6 +24,9 @@
 //!    by which virtual cameras.
 
 mod driver;
+pub mod ground;
+pub mod pose;
+pub mod viewpoint;
 mod virtual_camera;
 
 pub use driver::{

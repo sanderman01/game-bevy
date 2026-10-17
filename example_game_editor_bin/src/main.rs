@@ -23,10 +23,18 @@ fn main() -> AppExit {
     app.add_plugins(engine)
         .add_plugins(example_game_lib::GamePlugins);
 
-    app.add_plugins(ename_editor::EditorPlugins::default());
+    app.add_plugins(ename_editor::EditorPlugins::default().with_viewpoints_file(viewpoints_path()));
     app.add_plugins(ename_remote::RemotePlugins);
 
     app.run()
+}
+
+/// The project's named camera viewpoints, versioned in git at the workspace root.
+fn viewpoints_path() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("the binary's package sits in the workspace")
+        .join("viewpoints.ron")
 }
 
 /// Where the user's load order file lives.

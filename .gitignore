@@ -33,3 +33,6 @@ rust-project.json
 /*-todo.md
 
 *.bak
+
+# Lock file of the viewpoints file's locked read-modify-write.
+/viewpoints.ron.lock

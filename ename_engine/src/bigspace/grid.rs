@@ -1,7 +1,7 @@
 //! Helper functions for working with big_space grids.
 
 use bevy::{
-    math::{Affine3A, DVec3},
+    math::{Affine3A, DQuat, DVec3},
     prelude::*,
 };
 
@@ -134,6 +134,41 @@ pub fn set_absolute_position(
     Ok(AbsolutePosition { grid, position })
 }
 
+/// The entity's absolute position and rotation in its grid's frame, over the same parent chain as
+/// [`absolute_position`].
+pub fn absolute_pose(world: &World, entity: Entity) -> Result<(DVec3, DQuat), PositionError> {
+    let frame = grid_frame(world, entity)?;
+    let (_, rotation, _) = frame.affine.to_scale_rotation_translation();
+    Ok((frame.position(), rotation.as_dquat().normalize()))
+}
+
+/// Moves and turns the entity to an absolute pose in its grid's frame. Under a non-grid parent the
+/// rotation is written local to the parent's absolute rotation, like the position in
+/// [`set_absolute_position`].
+pub fn set_absolute_pose(
+    world: &mut World,
+    entity: Entity,
+    position: DVec3,
+    rotation: DQuat,
+) -> Result<(), PositionError> {
+    set_absolute_position(world, entity, position)?;
+    let parent = world.get::<ChildOf>(entity).map(ChildOf::parent);
+    let parent_rotation = match parent {
+        Some(parent)
+            if world.get::<Grid>(entity).is_none() && world.get::<Grid>(parent).is_none() =>
+        {
+            let frame = grid_frame(world, parent)?;
+            frame.affine.to_scale_rotation_translation().1
+        }
+        _ => Quat::IDENTITY,
+    };
+    let local = (parent_rotation.inverse() * rotation.as_quat()).normalize();
+    if let Some(mut transform) = world.get_mut::<Transform>(entity) {
+        transform.rotation = local;
+    }
+    Ok(())
+}
+
 fn grid_frame(world: &World, entity: Entity) -> Result<GridFrame, PositionError> {
     if world.get_entity(entity).is_err() {
         return Err(PositionError::NoEntity(entity));
@@ -233,6 +268,42 @@ mod tests {
         assert_near(set.position, target);
         assert_near(absolute_position(&world, child).unwrap().position, target);
         assert!(world.get::<CellCoord>(child).is_none());
+    }
+
+    #[test]
+    fn a_pose_round_trips_under_a_rotated_parent_outside_cell_zero() {
+        let (mut world, grid) = world_with_grid();
+        let parent = world
+            .spawn((
+                ChildOf(grid),
+                CellCoord::new(-4, 1, 7),
+                Transform::from_xyz(20.0, -3.0, 11.0).with_rotation(Quat::from_euler(
+                    EulerRot::YXZ,
+                    1.1,
+                    0.3,
+                    -0.2,
+                )),
+            ))
+            .id();
+        let child = world
+            .spawn((ChildOf(parent), Transform::from_xyz(0.0, 30.0, 65.0)))
+            .id();
+        let position = DVec3::new(-380.0, 140.0, 690.5);
+        let rotation = DQuat::from_euler(EulerRot::YXZ, -0.6, -0.25, 0.0);
+        set_absolute_pose(&mut world, child, position, rotation).unwrap();
+        let (read, read_rotation) = absolute_pose(&world, child).unwrap();
+        assert_near(read, position);
+        assert!(
+            read_rotation.abs_diff_eq(rotation, 1e-5),
+            "{read_rotation} != {rotation}"
+        );
+        assert!(world.get::<CellCoord>(child).is_none());
+
+        // A direct grid child gets the rotation as is.
+        let direct = world.spawn((ChildOf(grid), Transform::default())).id();
+        set_absolute_pose(&mut world, direct, position, rotation).unwrap();
+        let local = world.get::<Transform>(direct).unwrap().rotation;
+        assert!(local.abs_diff_eq(rotation.as_quat(), 1e-6));
     }
 
     #[test]

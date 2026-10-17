@@ -1056,8 +1056,10 @@ impl ServerHandler for GameServer {
              rebuilds it after a code change. Never start or kill the game by hand. Before you \
              finish, stop the games you started (game_status lists them under `yours`), unless \
              you are leaving one running for the user to inspect; then say so in your final \
-             message. The game's own commands (screenshots, video, editor views) appear as tools \
-             while it runs; command_list and command_call reach them at any time. If a result \
+             message. The game's own commands (screenshots, video, editor views, camera poses \
+             and named viewpoints) appear as tools while it runs; command_list and command_call \
+             reach them at any time. Pose a camera with camera_look_at or viewpoint_goto, not \
+             world_set_position plus a quaternion. If a result \
              says ename_mcp is out of date, do what it says and tell the user in your reply what \
              it asks of them, and why; if you may not build, ask the user to."
                 .to_owned(),
