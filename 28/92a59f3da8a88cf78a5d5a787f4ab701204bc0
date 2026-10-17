@@ -1,0 +1,25 @@
+ename_mcp/src/launch/cli.rs
+  s_67b8126579ad2d::t_2bfc19a8f08dc9 23
+docs/agent-tools.md
+  s_67b8126579ad2d::t_7c84c4a1238aa1 91-93
+ename_mcp/src/launch/mod.rs
+  s_67b8126579ad2d::t_b8fae72e4c8081 234,264-265
+ename_mcp/src/launch/control.rs
+  s_67b8126579ad2d::t_7c84c4a1238aa1 213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2892a59f3da8a88cf78a5d5a787f4ab701204bc0",
+  "prompts": {},
+  "sessions": {
+    "s_67b8126579ad2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f8609ac4-10b1-417b-8047-fdf9b3191298",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
