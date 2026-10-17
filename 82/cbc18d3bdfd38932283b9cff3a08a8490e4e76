@@ -1,0 +1,29 @@
+ename_engine/src/camera/ground/meshes/tests.rs
+  s_51349e13722b35::t_88939246169371 68-74
+ename_engine/src/camera/ground/colliders/tests.rs
+  s_51349e13722b35::t_cb7b721282ef53 8
+  s_51349e13722b35::t_6191ba02dc30c1 67-73
+  s_51349e13722b35::t_7269fa529e5c11 355-368
+  s_51349e13722b35::t_8a0fd5d756492e 3
+ename_editor/src/camera_commands/tests.rs
+  s_51349e13722b35::t_b005501a4f4e7a 3,6
+ename_engine/src/camera/viewpoint.rs
+  s_51349e13722b35::t_84c5c951526026 600
+  s_51349e13722b35::t_1e0cd495c2dafa 624-629
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "82cbc18d3bdfd38932283b9cff3a08a8490e4e76",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
