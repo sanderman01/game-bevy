@@ -8,6 +8,7 @@ use ename_engine::bigspace::GridSystems;
 use crate::{
     EditorSystems,
     camera::EditorCamera,
+    capture_sequence::OverlaysHidden,
     panels::{ActiveViewport, UiState},
 };
 
@@ -112,14 +113,18 @@ fn gizmo_keyboard_shortcuts(
 /// holds exactly one transformable entity, and cleared otherwise. Deriving focus from the
 /// selection every frame, instead of bookkeeping it wherever something selects, is what
 /// makes a hierarchy-panel click move the gizmo without a viewport click after it.
+///
+/// A capture sequence that hides overlays clears the focus for its duration, which hides the
+/// gizmo without touching the selection.
 fn sync_gizmo_focus(
     ui_state: Res<UiState>,
+    hidden: Option<Res<OverlaysHidden>>,
     transformable: Query<(), With<Transform>>,
     focused: Query<Entity, With<TransformGizmoFocus>>,
     mut commands: Commands,
 ) {
     let target = match *ui_state.selected_entities.as_slice() {
-        [entity] if transformable.contains(entity) => Some(entity),
+        [entity] if hidden.is_none() && transformable.contains(entity) => Some(entity),
         _ => None,
     };
 

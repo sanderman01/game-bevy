@@ -175,6 +175,18 @@ function, stored as raw RON and shown as JSON. `viewpoint_save` captures only th
 told to, so a viewpoint never silently resets state a comparison depends on. An unregistered
 facet fails before anything is applied.
 
+**Capture sequences run in the game; image work stays outside.** `capture.viewpoints` and
+`capture.fly_through` are editor job commands on one driver: show the view, then per step place,
+settle if asked, capture, and finally write a manifest and restore what the run changed. In the
+game because each step needs frame-exact order (the pose a frame before its capture, the next pose
+after the readback), and the job model already gives progress, `job_wait` past 50 s and cancel. A
+sidecar loop would cost a round trip per step and could not order them. In the editor, because the
+viewpoints file, the editor camera and switching views are editor state. One sequence at a time,
+since two would save and restore each other's state. Capture size is recorded, not pinned: a fixed
+render size needs the Scene View drawn offscreen, which was rejected. Cropping, diffing and contact
+sheets are external tools (ImageMagick, PIL, ffmpeg) on the files, which work everywhere and cost
+this project no code.
+
 ## Early failure detection
 
 **Errors ride on every result.** The game sends a cumulative log tally (ERROR and WARN counts,

@@ -133,6 +133,10 @@ pub struct VideoProgress {
     pub phase: VideoPhase,
     /// Frames accepted so far.
     pub frames: u32,
+    /// Frames requested from the GPU so far, which is also the index the next requested frame
+    /// gets. Updated in `Last` as each request is made, so a system that poses the source per
+    /// frame reads it in the next frame's `PreUpdate`.
+    pub requested: u32,
     pub dropped_frames: u32,
     /// Real time since the first frame was requested.
     pub elapsed: Duration,
@@ -577,7 +581,7 @@ fn advance_starting(
 /// render rate the chosen frame can be up to half a tick early. A frame that is never delivered
 /// leaves its tick to the previous frame.
 fn request_frames(
-    mut requests: Query<(&VideoRequest, &mut RecordingStage)>,
+    mut requests: Query<(&VideoRequest, &mut RecordingStage, &mut VideoProgress)>,
     cameras: Query<(&Camera, &RenderTarget)>,
     windows: Query<(Entity, &Window), With<PrimaryWindow>>,
     screenshots: Res<ReadbackQueue>,
@@ -589,7 +593,7 @@ fn request_frames(
     pending.warm = false;
     let now = time.elapsed();
     let primary_window = windows.single().ok();
-    for (request, mut stage) in &mut requests {
+    for (request, mut stage, mut progress) in &mut requests {
         let recorder = match &mut *stage {
             RecordingStage::Recording(recorder) => recorder,
             RecordingStage::Starting { .. } => {
@@ -697,7 +701,8 @@ fn request_frames(
             recorder.last_tick =
                 Some(encoder::ticks_until(stamp, recorder.frame_rate, 0, u64::MAX).end);
         }
-        recorder.capture.requested.fetch_add(1, Ordering::AcqRel);
+        let requested = recorder.capture.requested.fetch_add(1, Ordering::AcqRel) + 1;
+        progress.requested = requested as u32;
         pending.jobs.push(CaptureJob {
             shared: recorder.capture.clone(),
             key: source.key,
@@ -882,6 +887,7 @@ fn update_progress(
             RecordingStage::Recording(recorder) => VideoProgress {
                 phase: VideoPhase::Recording,
                 frames: recorder.writer.0.accepted.load(Ordering::Acquire) as u32,
+                requested: recorder.capture.requested.load(Ordering::Acquire) as u32,
                 dropped_frames: recorder.dropped() as u32,
                 elapsed: recorder.t0.map(|t0| now - t0).unwrap_or_default(),
             },

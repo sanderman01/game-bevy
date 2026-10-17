@@ -32,6 +32,11 @@
 //! port. A taken port exits the game with code 3 instead of leaving it silently unreachable. See
 //! [`port`].
 //!
+//! # Window size
+//!
+//! `ENAME_WINDOW_SIZE` (`WIDTHxHEIGHT`, physical pixels) sizes the primary window, so two launches
+//! give the same view sizes. See [`window_size`].
+//!
 //! # Run record
 //!
 //! A small file per port says which run holds it, its latest panic and how it exited, so a client
@@ -50,6 +55,7 @@ mod position;
 mod run_id;
 mod run_record;
 mod time;
+mod window_size;
 
 use bevy::{
     app::PluginGroupBuilder,
@@ -107,5 +113,6 @@ impl PluginGroup for RemotePlugins {
                 path: run_record::record_path(port),
             })
             .add(exit::ExitPlugin)
+            .add(window_size::WindowSizePlugin)
     }
 }

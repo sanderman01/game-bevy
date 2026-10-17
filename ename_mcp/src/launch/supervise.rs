@@ -325,9 +325,6 @@ impl Supervisor {
         if let Some([width, height]) = run.launch.window_size {
             command.env("ENAME_WINDOW_SIZE", format!("{width}x{height}"));
         }
-        if let Some([width, height]) = run.launch.render_size {
-            command.env("ENAME_RENDER_SIZE", format!("{width}x{height}"));
-        }
         command.envs(&run.launch.env);
 
         let mut child = spawn::grouped(command).context("cannot start the game")?;

@@ -57,7 +57,7 @@ use crate::{
 };
 
 /// How long a placement polls a probe whose ground has not loaded yet, in real time.
-const GROUND_WAIT: Duration = Duration::from_secs(10);
+pub(crate) const GROUND_WAIT: Duration = Duration::from_secs(10);
 /// Rounds of settle and re-lift after the first lift, at most.
 const MAX_SETTLE_ROUNDS: u32 = 3;
 
@@ -293,6 +293,40 @@ impl CameraPlacements {
 enum Target {
     Point(DVec3),
     Entity(Entity),
+}
+
+/// The newest placement generation of `camera`. A sequence that placed it compares this with
+/// [`Placed::generation`] to see whether another call placed it since.
+pub(crate) fn placement_generation(world: &World, camera: Entity) -> u64 {
+    world
+        .get_resource::<CameraPlacements>()
+        .map_or(0, |placements| placements.current(camera))
+}
+
+impl Placed {
+    pub(crate) fn camera(&self) -> Entity {
+        self.camera
+    }
+
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// A ground probe had not loaded the ground below the camera at the last guard.
+    pub(crate) fn ground_pending(&self) -> bool {
+        self.ground_pending
+    }
+
+    /// Metres the guard has lifted the camera by so far.
+    pub(crate) fn lifted_by(&self) -> f64 {
+        self.lifted_by
+    }
+}
+
+/// Runs the ground guard again on a placement, as `camera.look_at` does while the ground loads
+/// and after it settles.
+pub(crate) fn guard_placed(world: &mut World, placed: &mut Placed) -> Result<(), CommandError> {
+    guard(world, placed)
 }
 
 /// A placement after its first write: what the job carries on with.

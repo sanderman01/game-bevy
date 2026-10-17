@@ -131,7 +131,8 @@ struct SaveResult {
     facets: Map<String, Value>,
 }
 
-fn file_path(world: &World) -> Result<PathBuf, CommandError> {
+/// The configured viewpoints file, or `no_viewpoints_file`.
+pub(crate) fn viewpoints_file(world: &World) -> Result<PathBuf, CommandError> {
     world
         .get_resource::<ViewpointsFile>()
         .and_then(|file| file.0.clone())
@@ -148,7 +149,7 @@ fn list(
     In(_): In<Call<ename_engine::command::NoParams>>,
     world: &mut World,
 ) -> Result<ListResult, CommandError> {
-    let path = file_path(world)?;
+    let path = viewpoints_file(world)?;
     let (file, notes) = match viewpoint::load(&path)? {
         Some(file) => (file, Vec::new()),
         None => (
@@ -179,7 +180,8 @@ fn goto(
     In(call): In<Call<GotoParams>>,
     world: &mut World,
 ) -> Result<JobHandle<PoseReport>, CommandError> {
-    let path = file_path(world)?;
+    crate::capture_sequence::check_not_busy(world)?;
+    let path = viewpoints_file(world)?;
     let params = &call.params;
     let found = find_viewpoint(&path, &params.name)?;
     let options = PlaceOptions::new(
@@ -261,7 +263,7 @@ fn find_viewpoint(path: &Path, name: &str) -> Result<Viewpoint, CommandError> {
 }
 
 fn save(In(call): In<Call<SaveParams>>, world: &mut World) -> Result<SaveResult, CommandError> {
-    let path = file_path(world)?;
+    let path = viewpoints_file(world)?;
     let params = call.params;
     let name = viewpoint::validate_name(&params.name)?;
     let choice = params.camera.unwrap_or_else(|| CameraChoice::shown(world));

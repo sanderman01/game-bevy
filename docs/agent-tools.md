@@ -88,7 +88,9 @@ them to confirm, then build, then the user enables it again. The warning says so
 | `game_status` | `cargo game status` | Report the state; `wait_seconds` waits out a build or startup. |
 
 Launch params: `instance`, `port`, `env` (e.g. `{"AIRSHIP_DIAGNOSTICS": "1"}`), `features`,
-`window_size`, `render_size`, `wait_seconds` (0 to 50, default 50). `settle: true` (`--settle`)
+`window_size`, `wait_seconds` (0 to 50, default 50). `window_size` sets the editor window's size in
+physical pixels (`ENAME_WINDOW_SIZE`); with the same dock layout it gives the same view sizes, so
+captures from two launches compare. A window manager that refuses the size wins. `settle: true` (`--settle`)
 runs `wait_settled` once the game is ready, within the same wait, and says how it went in the
 `note`; a game that does not settle in time still counts as started.
 
@@ -185,6 +187,8 @@ cannot become a crate that ships by accident.
 | `viewpoint_list` / `viewpoint_goto` / `viewpoint_save` | Named camera poses in the project's `viewpoints.ron`. |
 | `screenshot_capture` | Write the game window, the game camera or the editor camera to a PNG file. |
 | `video_record` | Record the game window, the game camera or the editor camera to an `.mp4` or `.mkv` file. |
+| `capture_viewpoints` | Capture several named viewpoints into one directory with a `manifest.json`, as one job. See "Capture sequences". |
+| `capture_fly_through` | Move a camera along a path in N steps and capture each step as a still or a video frame. See "Capture sequences". |
 | `wait_settled` | Wait until loading, pipeline compiles and streaming have finished and stayed finished. See "Waiting". |
 | `wait_until` | Wait until one condition holds: frames, virtual seconds, a log line, a component or resource value, a position, a body at rest. |
 | `wait_activity` | What is still loading or building, right now. |
@@ -611,6 +615,89 @@ output tick. When a recording ends with drops, the game logs them by reason (`no
 
 Video needs `ffmpeg` on PATH at runtime. Game code uses the same recorder through
 `ename_engine::video`: spawn a `VideoRequest` and observe `VideoFinished`.
+
+## Capture sequences
+
+Two commands capture several poses in one job, for A/B comparisons and for bugs that only show in
+motion. The game sequences the steps itself: each pose is placed a frame before it is captured,
+and the next waits for the capture, which a loop of tool calls cannot guarantee.
+
+`capture_viewpoints` takes `viewpoints` (names from `viewpoint_list`), `dir` and `source`
+(`editor_camera` or `game_camera`; a window has no pose to move). It writes `<name>.png` per
+viewpoint (characters outside `[A-Za-z0-9._-]` become `_`) and `manifest.json`. `facets` (default
+true) applies each viewpoint's facets, which are not put back. `ground` is the guard
+`viewpoint_goto` uses.
+
+`capture_fly_through` takes `source`, `steps` (1 to 10000, both ends included), a `path`, and
+`record`:
+
+| `path` | Moves |
+| --- | --- |
+| `{"from": vp, "to": vp}` | In a straight line; yaw turns the short way, pitch linearly. |
+| `{"from": vp, "along": "forward", "distance": 400}` | Along the camera's `forward` or `right`, the world's `up`, or an `[x, y, z]` direction, orientation fixed. |
+| `{"poses": [pose, pose, ...]}` | Through the poses, steps spaced evenly by distance. |
+
+A `vp` is a viewpoint name or an inline pose `{"position": [x, y, z], "yaw": deg, "pitch": deg}`.
+`record` is `{"stills": {"dir": ...}}` (`0.png` ... zero-padded to the last index) or
+`{"video": {"path": "fly.mp4", "frame_rate": 30}}`, one frame per step, with the manifest beside
+it as `fly.mp4.manifest.json`. Pose `i` is video frame `i` at any frame rate; a dropped frame shows
+as a jump, and `dropped_frames` counts them. `ground` defaults to `none`, so the camera follows the
+path exactly.
+
+Both commands, for the run:
+
+- show the source's view, and switch back after;
+- pause virtual time (`freeze_time`, default true), so water and wind do not change between
+  steps, and restore it. Two runs still freeze at different clock ages: `virtual_time` in the
+  manifest says when they differ;
+- hide the editor's debug overlays, transform gizmo and pick marker (`overlays: false`); egui
+  drawn over the Scene View (a tooltip, a menu) still shows;
+- disable a `CameraDriver` on the game camera;
+- put the camera back where it was (`restore`, default true).
+
+`settle` is `wait_settled`'s params, before each still, or once before a video starts. A step that
+does not settle in time is not captured and is listed under `failed`, with what was still busy;
+the run goes on. Left out, nothing waits, so streaming shows as a moving camera would see it. A
+probe whose work runs on virtual time cannot finish while the world is paused; pass
+`freeze_time: false` if settling times out with nothing busy.
+
+One sequence runs at a time: a second one, `editor_set_view` and `viewpoint_goto` are `busy`
+until it ends. `time_set` is not refused, but changing time during a run is not supported. A
+`camera_look_at` on the same camera ends the run `superseded`, with the frames that landed in the
+manifest, and leaves the camera where that call put it. `job_cancel` waits for a capture in
+flight, keeps a partial video, writes the manifest and restores.
+
+`dir` must be absent or empty. `replace: true` deletes the files the old `manifest.json` lists,
+and the manifest, and nothing else; a file the new run would write that the old manifest does not
+list is `file_exists`. The manifest is authoritative for its directory:
+
+```json
+{"run": "kqvzmbta", "source": "editor_camera", "width": 815, "height": 489, "virtual_time": 9.91,
+ "frames": [{"file": "start.png", "viewpoint": "start", "position": [10, 5, 0], "yaw": 0,
+             "pitch": 0, "frame": 585, "width": 815, "height": 489},
+            {"viewpoint": "shore", "position": [50, 8, 20], "yaw": 90, "pitch": 0, "frame": 0,
+             "error": "not_settled", "busy": {"assets": {"meshes_loading": 3}}}]}
+```
+
+The capture size is the size of the view's tab in physical pixels, which depends on the window
+size, the dock layout and the display scale. Every result and manifest records it, and
+`size_changed: true` says a frame differs from the first (a splitter dragged mid-run). Comparing
+two runs is only valid at the same size: check both manifests first, and launch with the same
+`window_size`.
+
+### Visual check recipe
+
+Image work is left to ImageMagick, PIL or ffmpeg on the files.
+
+1. `capture_viewpoints` into `scratch/shots/base` (`settle: {}`).
+2. Make the change, `game_restart` if it needs one, and capture into `scratch/shots/new`.
+3. Check that `width` and `height` match in both manifests.
+4. Per pair: `magick compare -metric AE -fuzz 2% base/x.png new/x.png diff-x.png` prints the
+   count of changed pixels. Read the diff image of the worst pair only.
+5. To know the noise floor, capture the baseline twice, once after a `game_restart`.
+
+For motion: `magick montage scratch/shots/fly/*.png -tile 9x -geometry 300x+2+2 sheet.png` makes
+a contact sheet, and `magick compare -metric AE` over consecutive stills finds a pop as a spike.
 
 ## Commands and jobs
 

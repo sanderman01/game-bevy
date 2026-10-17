@@ -116,6 +116,15 @@ ffprobe -v error -count_frames -show_entries stream=width,height,nb_read_frames,
 The `scale` options decode the left-sited chroma correctly; a plain `ffmpeg -i clip.mp4 f.png` can
 show a sub-pixel colour fringe at sharp edges that is not in the file.
 
+### More than one view, or motion
+
+- For more than one view, use `capture_viewpoints` (named viewpoints into one directory with a
+  `manifest.json`), not a loop of pose, settle and capture calls.
+- For motion, use `capture_fly_through`: a path in N steps, as stills or one video frame per step.
+- Before comparing two runs, check that `width` / `height` match in both manifests.
+- Crop, zoom, diff and contact sheets are `magick` on the PNGs (`magick compare -metric AE`,
+  `magick montage`); docs/agent-tools.md has the recipe.
+
 ### Minimized windows
 
 Rarely relevant, but worth knowing: a minimized game window runs at about half its frame rate

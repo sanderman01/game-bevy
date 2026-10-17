@@ -231,12 +231,9 @@ pub struct LaunchParams {
     /// Extra cargo features for the editor package, e.g. ["trace"], added to the workspace's.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub features: Vec<String>,
-    /// Window size in physical pixels, [width, height]. Passed as ENAME_WINDOW_SIZE.
+    /// The editor window's size in physical pixels, [width, height]. Passed as ENAME_WINDOW_SIZE.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window_size: Option<[u32; 2]>,
-    /// Render size, [width, height]. Passed as ENAME_RENDER_SIZE.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub render_size: Option<[u32; 2]>,
     /// Wait for the game to settle (`wait.settled`) after it is ready.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub settle: bool,
@@ -249,7 +246,6 @@ impl LaunchParams {
             env: update.env.unwrap_or_else(|| self.env.clone()),
             features: update.features.unwrap_or_else(|| self.features.clone()),
             window_size: update.window_size.or(self.window_size),
-            render_size: update.render_size.or(self.render_size),
             settle: update.settle.unwrap_or(self.settle),
         }
     }
@@ -265,12 +261,10 @@ pub struct LaunchUpdate {
     /// Extra cargo features for the editor package, e.g. ["trace"].
     #[serde(default)]
     pub features: Option<Vec<String>>,
-    /// Window size in physical pixels, [width, height].
+    /// The editor window's size in physical pixels, [width, height]. With the same dock layout,
+    /// the same size gives the same view sizes, so captures from two launches compare.
     #[serde(default)]
     pub window_size: Option<[u32; 2]>,
-    /// Render size, [width, height].
-    #[serde(default)]
-    pub render_size: Option<[u32; 2]>,
     /// After ready, wait for loading and streaming to finish (`wait.settled`) within the same
     /// wait. Defaults to false.
     #[serde(default)]

@@ -210,11 +210,7 @@ impl Launcher {
             status.add_note("joined the launch in progress.");
         }
         let update = &request.update;
-        if update.env.is_some()
-            || update.features.is_some()
-            || update.window_size.is_some()
-            || update.render_size.is_some()
-        {
+        if update.env.is_some() || update.features.is_some() || update.window_size.is_some() {
             status
                 .add_note("launch params do not change a running game; game_restart applies them.");
         }

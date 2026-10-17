@@ -141,9 +141,11 @@ pub(crate) struct FrameReadBack {
     pub tag: ReadbackTag,
 }
 
-/// Where readbacks are asked for, then spawned. Both in `Last`.
+/// Where readbacks are asked for, then spawned. Both in `Last`. Public as
+/// `crate::capture::CaptureSystems`: a screenshot or video request spawned before `Request`
+/// starts this frame.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum ReadbackSystems {
+pub enum ReadbackSystems {
     Request,
     Spawn,
 }

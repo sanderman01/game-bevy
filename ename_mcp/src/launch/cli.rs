@@ -20,7 +20,7 @@ const USAGE: &str = "\
 usage: cargo game <verb> [flags]
 
   start    [--instance NAME] [--port N] [--env K=V]... [--features F]...
-           [--window-size WxH] [--render-size WxH] [--settle] [--wait SECONDS]
+           [--window-size WxH] [--settle] [--wait SECONDS]
   restart  [same as start] [--take-over]
   stop     [--instance NAME] [--take-over] [--grace SECONDS]
   status   [--instance NAME] [--wait SECONDS]
@@ -68,7 +68,6 @@ pub struct LaunchOptions {
     pub env: BTreeMap<String, String>,
     pub features: Vec<String>,
     pub window_size: Option<[u32; 2]>,
-    pub render_size: Option<[u32; 2]>,
     pub settle: bool,
     pub wait: f64,
     pub take_over: bool,
@@ -84,7 +83,6 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Invocation, Strin
     let mut env = BTreeMap::new();
     let mut features = Vec::new();
     let mut window_size = None;
-    let mut render_size = None;
     let mut settle = false;
     let mut wait = None;
     let mut take_over = false;
@@ -124,7 +122,6 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Invocation, Strin
                     .map(str::to_owned),
             ),
             "--window-size" => window_size = Some(size(&flag, &value()?)?),
-            "--render-size" => render_size = Some(size(&flag, &value()?)?),
             "--settle" => settle = true,
             "--wait" => wait = Some(seconds_arg(&flag, &value()?)?),
             "--take-over" => take_over = true,
@@ -141,7 +138,6 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Invocation, Strin
         env: env.clone(),
         features: features.clone(),
         window_size,
-        render_size,
         settle,
         wait: wait.unwrap_or(DEFAULT_LAUNCH_WAIT),
         take_over,
@@ -267,7 +263,6 @@ fn request(options: LaunchOptions) -> LaunchRequest {
             env: given(!options.env.is_empty()).map(|()| options.env),
             features: given(!options.features.is_empty()).map(|()| options.features),
             window_size: options.window_size,
-            render_size: options.render_size,
             settle: given(options.settle).map(|()| true),
         },
         take_over: options.take_over,

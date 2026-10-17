@@ -1,7 +1,8 @@
 //! `ename_editor` -- the egui editor: dock layout, selection, viewport, console, gizmo
 //! integration, the `editor.get_view` / `editor.set_view` commands that switch between Scene
-//! and Game View, the `camera.*` and `viewpoint.*` commands that pose a camera, and the editor
-//! camera's memory across restarts.
+//! and Game View, the `camera.*` and `viewpoint.*` commands that pose a camera, the `capture.*`
+//! sequences that capture several poses in one job, and the editor camera's memory across
+//! restarts.
 //!
 //! Sits above `ename_engine` and links into a target only when that target asks for it. A
 //! shipping build does not contain this crate, and it must never depend on `example_game_lib`. See
@@ -12,6 +13,7 @@
 
 mod camera;
 mod camera_commands;
+mod capture_sequence;
 mod console;
 mod game_view;
 mod gizmo;
@@ -82,6 +84,7 @@ impl PluginGroup for EditorPlugins {
             .add(viewpoints::ViewpointsPlugin {
                 file: self.viewpoints_file,
             })
+            .add(capture_sequence::CaptureSequencePlugin)
     }
 }
 

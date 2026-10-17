@@ -17,6 +17,7 @@ use crate::{
 };
 
 pub use crate::readback::CaptureSource;
+pub use crate::readback::ReadbackSystems as CaptureSystems;
 
 /// Finds the source a name stands for, at the moment a command runs.
 pub type ResolveSource = fn(&mut World) -> Result<CaptureSource, CommandError>;

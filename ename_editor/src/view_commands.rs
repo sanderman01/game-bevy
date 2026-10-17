@@ -130,6 +130,7 @@ fn set_view(
     In(call): In<Call<SetViewParams>>,
     world: &mut World,
 ) -> Result<JobHandle<ViewState>, CommandError> {
+    crate::capture_sequence::check_not_busy(world)?;
     let target = ActiveViewport::from(call.params.view);
     world
         .resource_mut::<UiState>()
