@@ -1,0 +1,32 @@
+ename_editor/src/camera_memory.rs
+  s_51349e13722b35::t_712c26c7a0cd06 123
+  s_51349e13722b35::t_56a34aeaf4fd75 418
+  s_51349e13722b35::t_37627e95dada09 92
+  s_51349e13722b35::t_9f604ef7164458 180
+  s_51349e13722b35::t_713e236d2e1ddd 250,259
+  s_51349e13722b35::t_4617f6f6d074b9 81
+  s_51349e13722b35::t_c8fc39bfbb0765 72
+  s_51349e13722b35::t_6aaa8b4a762816 284,287
+  s_51349e13722b35::t_758fae56a93163 18
+  s_51349e13722b35::t_0dd70c46727aa1 275-277
+  s_51349e13722b35::t_8126bafff0684a 99
+  s_51349e13722b35::t_4554c4cfb9ac8d 213
+ename_editor/src/panels.rs
+  s_51349e13722b35::t_5474b423c9a514 49-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b541364454d9828a6176f87a1cee3f15657b35b9",
+  "prompts": {},
+  "sessions": {
+    "s_51349e13722b35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b584cdd-8697-46d9-833d-5116b29bb9aa",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
