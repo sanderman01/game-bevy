@@ -1,0 +1,21 @@
+docs/design/perf-sampling.md
+  s_e330b98cbebc97::t_3d6aa379d5b472 92-103
+docs/agent-tools.md
+  s_e330b98cbebc97::t_8a57b9ddf88208 904-943
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b9ddb0d07da878401f0c285bd2741789a4e7a5a2",
+  "prompts": {},
+  "sessions": {
+    "s_e330b98cbebc97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17f2c035-9b9b-4c57-8fb6-463dc39f045f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
