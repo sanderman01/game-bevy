@@ -9,6 +9,7 @@
 //! See `docs/design/crate-layout.md`.
 
 pub mod application;
+pub mod asset_info;
 pub mod bigspace;
 pub mod camera;
 pub mod capture;
@@ -185,6 +186,7 @@ impl PluginGroup for EnginePlugins {
             .add(physics::PhysicsIntegrationPlugin)
             .add(time::TimeControlPlugin)
             .add(command::CommandPlugin)
+            .add(asset_info::AssetInfoPlugin)
             .add(wait::WaitPlugin)
             .add(capture::CapturePlugin)
             .add(screenshot::ScreenshotPlugin)
