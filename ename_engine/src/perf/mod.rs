@@ -5,15 +5,12 @@
 //! render world's extraction check run.
 
 mod gpu_timer;
-#[cfg_attr(not(test), expect(dead_code, reason = "used by perf.sample"))]
 mod load;
 mod panel;
 mod passes;
 mod records;
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "used by perf.sample and perf.compare")
-)]
+mod report;
+mod sample;
 mod stats;
 
 #[cfg(test)]
@@ -125,7 +122,9 @@ pub(crate) struct PerfSystems;
 pub struct PerfCommandsPlugin;
 
 impl Plugin for PerfCommandsPlugin {
-    fn build(&self, _app: &mut App) {}
+    fn build(&self, app: &mut App) {
+        sample::register(app);
+    }
 
     fn finish(&self, app: &mut App) {
         assert!(

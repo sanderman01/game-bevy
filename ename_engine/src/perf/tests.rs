@@ -515,3 +515,89 @@ mod load {
         }
     }
 }
+
+mod report {
+    use serde_json::json;
+
+    use super::super::report::*;
+
+    fn run(frame_ms: &[f64]) -> Run {
+        Run {
+            seconds: frame_ms.iter().sum::<f64>() / 1000.0,
+            frame_ms: frame_ms.to_vec(),
+            cpu_main_ms: frame_ms.iter().map(|ms| ms / 2.0).collect(),
+            render_wall_ms: frame_ms.to_vec(),
+            gpu_ms: frame_ms.iter().map(|ms| ms * 0.95).collect(),
+            ..Default::default()
+        }
+    }
+
+    fn sampled(runs: Vec<Run>) -> Sampled {
+        Sampled {
+            runs,
+            context: Context {
+                gpu_available: true,
+                ..Default::default()
+            },
+        }
+    }
+
+    #[test]
+    fn hitches_leave_the_statistics_and_keep_their_time() {
+        let (result, _) = report(
+            &sampled(vec![run(&[10.0, 10.0, 50.0, 10.0]), run(&[12.0; 4])]),
+            Detail::Summary,
+        );
+        let value = serde_json::to_value(&result).unwrap();
+        assert_eq!(value["frame_ms"]["max"], json!(12.0));
+        assert_eq!(value["frame_ms"]["noise"], json!(2.0));
+        assert_eq!(value["hitches"]["count"], json!(1));
+        assert_eq!(value["hitches"]["worst_ms"], json!([50.0]));
+        assert_eq!(value["hitches"]["at_seconds"], json!([0.02]));
+        assert_eq!(value["passes"], json!("unavailable"));
+        assert_eq!(value["bound"], json!("gpu"));
+    }
+
+    #[test]
+    fn one_run_reports_null_noise() {
+        let (result, _) = report(&sampled(vec![run(&[10.0; 5])]), Detail::Summary);
+        let value = serde_json::to_value(&result).unwrap();
+        assert_eq!(value["frame_ms"]["noise"], json!(null));
+    }
+
+    #[test]
+    fn no_timestamps_reports_gpu_unavailable() {
+        let mut sampled = sampled(vec![run(&[10.0; 5])]);
+        sampled.context.gpu_available = false;
+        let (result, _) = report(&sampled, Detail::Summary);
+        assert_eq!(
+            serde_json::to_value(&result).unwrap()["gpu_ms"],
+            "unavailable"
+        );
+    }
+
+    #[test]
+    fn vsync_cap_needs_one_of_the_first_multiples() {
+        assert!(vsync_capped(16.7, Some(16.67)));
+        assert!(vsync_capped(33.0, Some(16.67)));
+        assert!(!vsync_capped(25.0, Some(16.67)));
+        assert!(!vsync_capped(150.0, Some(16.67)));
+        assert!(!vsync_capped(16.7, None));
+    }
+
+    #[test]
+    fn a_changing_counter_reports_its_range() {
+        let mut steady = run(&[10.0; 3]);
+        steady
+            .counters
+            .insert("entity_count".into(), vec![5.0, 5.0, 5.0]);
+        steady.counters.insert("tiles".into(), vec![1.0, 2.0, 3.0]);
+        let (result, _) = report(&sampled(vec![steady]), Detail::Summary);
+        let value = serde_json::to_value(&result).unwrap();
+        assert_eq!(value["counters"]["entity_count"], json!(5.0));
+        assert_eq!(
+            value["counters"]["tiles"],
+            json!({"median": 2.0, "min": 1.0, "max": 3.0})
+        );
+    }
+}

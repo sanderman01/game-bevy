@@ -41,7 +41,6 @@ pub(crate) struct PassGroup {
 }
 
 /// Why a pass has CPU but not GPU times.
-#[cfg_attr(not(test), expect(dead_code, reason = "read by perf.sample"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PassWarning {
     /// The device has the timestamp features, so Bevy's 256 queries ran out.
@@ -52,7 +51,6 @@ pub(crate) enum PassWarning {
 
 impl PassGroup {
     /// `None` when every run has a GPU time, or before the device's features are known.
-    #[cfg_attr(not(test), expect(dead_code, reason = "read by perf.sample"))]
     pub(crate) fn warning(&self, timestamps: Option<Timestamps>) -> Option<PassWarning> {
         let missing = self.passes.iter().any(|pass| pass.gpu_runs < pass.runs);
         match timestamps? {

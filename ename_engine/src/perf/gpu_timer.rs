@@ -133,7 +133,6 @@ impl TimestampSupport {
     }
 
     /// `None` until the render device exists.
-    #[expect(dead_code, reason = "read by perf.sample")]
     pub(crate) fn get(&self) -> Option<Timestamps> {
         let bits = self.0.load(Ordering::Relaxed);
         (bits & Self::KNOWN != 0).then_some(Timestamps {
@@ -143,7 +142,6 @@ impl TimestampSupport {
     }
 }
 
-#[cfg_attr(not(test), expect(dead_code, reason = "read by perf.sample"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Timestamps {
     /// This timer's per-view and frame times.
@@ -426,15 +424,7 @@ fn extract_sampling(
         if !camera.is_active {
             continue;
         }
-        let label: Cow<str> = if let Some(PerfViewLabel(label)) = perf_label {
-            Cow::Borrowed(label)
-        } else if main_camera == Some(entity) {
-            Cow::Borrowed(MAIN_CAMERA_LABEL)
-        } else if let Some(name) = name {
-            Cow::Borrowed(name.as_str())
-        } else {
-            Cow::Owned(format!("camera {}", camera.order))
-        };
+        let label = view_label(entity, camera, perf_label, name, main_camera);
         // Reuses last frame's string, so a steady camera set allocates nothing.
         let label = match previous.remove(&render_entity) {
             Some(old) if *old.label == *label => old.label,
@@ -447,6 +437,26 @@ fn extract_sampling(
                 label,
             },
         );
+    }
+}
+
+/// A camera's label in perf results: its [`PerfViewLabel`], else `main_camera` for the
+/// `MainCameraFilter` camera, else its `Name`, else `camera <order>`.
+pub(super) fn view_label<'a>(
+    entity: Entity,
+    camera: &Camera,
+    perf_label: Option<&'a PerfViewLabel>,
+    name: Option<&'a Name>,
+    main_camera: Option<Entity>,
+) -> Cow<'a, str> {
+    if let Some(PerfViewLabel(label)) = perf_label {
+        Cow::Borrowed(label)
+    } else if main_camera == Some(entity) {
+        Cow::Borrowed(MAIN_CAMERA_LABEL)
+    } else if let Some(name) = name {
+        Cow::Borrowed(name.as_str())
+    } else {
+        Cow::Owned(format!("camera {}", camera.order))
     }
 }
 

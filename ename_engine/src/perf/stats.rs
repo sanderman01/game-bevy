@@ -2,6 +2,7 @@
 //!
 //! Values are times in ms, so lower is faster.
 
+use schemars::JsonSchema;
 use serde::Serialize;
 
 /// One window's series, hitches already removed.
@@ -42,7 +43,8 @@ pub(crate) struct Metric {
 }
 
 /// How arm B compares with arm A.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(not(test), expect(dead_code, reason = "used by perf.compare"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Verdict {
     BFaster,
@@ -86,6 +88,7 @@ pub(crate) fn aggregate_runs(runs: &[Summary]) -> Option<Metric> {
 
 /// B against A: within noise when the difference of medians is at most the larger noise of the
 /// two. An unknown noise counts as zero.
+#[cfg_attr(not(test), expect(dead_code, reason = "used by perf.compare"))]
 pub(crate) fn verdict(a: Metric, b: Metric) -> Verdict {
     let diff = b.median - a.median;
     let noise = a.noise.unwrap_or(0.0).max(b.noise.unwrap_or(0.0));

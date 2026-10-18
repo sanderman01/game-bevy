@@ -10,6 +10,7 @@ use std::{
     time::Duration,
 };
 
+use schemars::JsonSchema;
 use serde::Serialize;
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
@@ -183,7 +184,7 @@ impl LoadSnapshot {
 
 /// Other processes' use of the machine over a sample window. A part the platform cannot read is
 /// `None`, never 0.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, JsonSchema)]
 pub(crate) struct Load {
     pub loadavg_1m: Option<f64>,
     pub cpus: usize,
@@ -198,7 +199,7 @@ pub(crate) struct Load {
     pub machine_busy: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, JsonSchema)]
 pub(crate) struct BusyProcess {
     pub name: String,
     pub pid: u32,
@@ -207,7 +208,7 @@ pub(crate) struct BusyProcess {
     pub child: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, JsonSchema)]
 pub(crate) struct GpuProcess {
     pub name: String,
     pub pid: u32,
