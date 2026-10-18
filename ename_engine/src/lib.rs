@@ -17,6 +17,7 @@ pub mod debug_overlay;
 pub mod debug_switch;
 pub mod diagnostics;
 pub mod log;
+pub mod perf;
 pub mod physics;
 mod readback;
 pub mod screenshot;
