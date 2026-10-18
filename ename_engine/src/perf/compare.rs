@@ -413,6 +413,16 @@ fn end(world: &mut World, entity: Entity, mut compare: CompareJob, outcome: Outc
 
 fn compared(compare: &CompareJob, mut warnings: Warnings) -> Compared {
     let [a, b] = &compare.sampled;
+    // Arms may change cameras on purpose, but not the window.
+    let window = |sampled: &Sampled| sampled.context.layout.as_ref().map(|l| l.window);
+    if let (Some(a_window), Some(b_window)) = (window(a), window(b))
+        && a_window != b_window
+    {
+        warnings.add(
+            "unstable_view",
+            "arms a and b ran at different window sizes; see each arm's `window`",
+        );
+    }
     warnings.extend(&a.context.warnings);
     warnings.extend(&b.context.warnings);
     let detail = compare.plan.detail;

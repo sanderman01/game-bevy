@@ -5,7 +5,7 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use bevy::{math::UVec2, window::PresentMode};
+use bevy::{ecs::entity::Entity, math::UVec2, window::PresentMode};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -110,8 +110,8 @@ impl Warnings {
 /// What a sample saw besides its runs.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Context {
-    /// Primary window, physical pixels, at the first window.
-    pub window: Option<UVec2>,
+    /// The layout the runs were sampled under; the latest one after `unstable_view`.
+    pub layout: Option<Layout>,
     /// Focused through every window.
     pub focused: bool,
     /// Occluded at some point of a window.
@@ -135,14 +135,25 @@ pub(crate) struct Sampled {
 impl Sampled {
     /// Adds a later sample of the same arm: its runs count as more runs.
     pub fn merge(&mut self, other: Sampled) {
-        if self.runs.is_empty() && self.context.window.is_none() {
+        if self.runs.is_empty() && self.context.layout.is_none() {
             *self = other;
             return;
         }
         self.runs.extend(other.runs);
         let context = &mut self.context;
         let other = other.context;
-        context.window = context.window.or(other.window);
+        if let (Some(layout), Some(new)) = (&context.layout, &other.layout)
+            && !layout.same_sizes(new)
+        {
+            context.warnings.add(
+                "unstable_view",
+                format!(
+                    "steps of one arm ran under different layouts, merged anyway: {}",
+                    layout.change(new)
+                ),
+            );
+        }
+        context.layout = context.layout.take().or(other.layout);
         context.focused &= other.focused;
         context.occluded |= other.occluded;
         context.present_mode = context.present_mode.or(other.present_mode);
@@ -155,10 +166,94 @@ impl Sampled {
     }
 }
 
-/// A run dropped and sampled again because the view changed during it.
+/// The view a window measures. A change during a window invalidates it.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Layout {
+    pub window: Option<UVec2>,
+    /// Active cameras by entity.
+    pub views: Vec<LayoutView>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct LayoutView {
+    pub camera: Entity,
+    pub label: String,
+    pub viewport: Option<UVec2>,
+    pub target: Option<UVec2>,
+}
+
+impl Layout {
+    /// Why `self` and `new` differ.
+    pub fn change(&self, new: &Layout) -> String {
+        let size = |size: Option<UVec2>| size.map_or("none".into(), |s| format!("{}x{}", s.x, s.y));
+        if self.window != new.window {
+            return format!(
+                "the window resized from {} to {}",
+                size(self.window),
+                size(new.window)
+            );
+        }
+        let cameras = |layout: &Layout| {
+            layout
+                .views
+                .iter()
+                .map(|view| (view.camera, view.label.clone()))
+                .collect::<Vec<_>>()
+        };
+        if cameras(self) != cameras(new) {
+            let labels = |layout: &Layout| {
+                layout
+                    .views
+                    .iter()
+                    .map(|view| view.label.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            return format!(
+                "the cameras changed from [{}] to [{}]",
+                labels(self),
+                labels(new)
+            );
+        }
+        self.views
+            .iter()
+            .zip(&new.views)
+            .find(|(old, new)| old != new)
+            .map_or_else(
+                || "a view changed".to_owned(),
+                |(old, new)| {
+                    format!(
+                        "`{}` resized from {} to {}",
+                        old.label,
+                        size(old.viewport.or(old.target)),
+                        size(new.viewport.or(new.target))
+                    )
+                },
+            )
+    }
+
+    /// The same window and view sizes per label. Camera entities may differ, as when a step of
+    /// `perf.compare` respawns a camera.
+    pub fn same_sizes(&self, other: &Layout) -> bool {
+        type Sizes<'a> = Vec<(&'a str, Option<[u32; 2]>, Option<[u32; 2]>)>;
+        fn sizes(layout: &Layout) -> Sizes<'_> {
+            let size = |size: Option<UVec2>| size.map(|size| size.to_array());
+            let mut views: Sizes = layout
+                .views
+                .iter()
+                .map(|view| (view.label.as_str(), size(view.viewport), size(view.target)))
+                .collect();
+            views.sort();
+            views
+        }
+        self.window == other.window && sizes(self) == sizes(other)
+    }
+}
+
+/// A view change that dropped the runs so far and restarted the sample.
 #[derive(Serialize, JsonSchema, Clone, Debug, PartialEq)]
 pub(crate) struct Rerun {
-    /// 1-based.
+    /// The run being sampled when the view changed, 1-based.
     pub run: usize,
     pub reason: String,
 }
@@ -416,7 +511,11 @@ pub(crate) fn report(sampled: &Sampled, detail: Detail) -> (SampleResult, Aggreg
         runs: runs.len(),
         frames,
         seconds: round2(runs.iter().map(|run| run.seconds).sum()),
-        window: context.window.map(|size| [size.x, size.y]),
+        window: context
+            .layout
+            .as_ref()
+            .and_then(|layout| layout.window)
+            .map(|size| [size.x, size.y]),
         focused: context.focused,
         occluded: context.occluded,
         present_mode: context.present_mode.map(present_mode_name),

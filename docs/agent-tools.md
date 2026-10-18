@@ -760,8 +760,8 @@ every diagnostic instead of the top 10 passes by GPU time and the registered cou
 It is a job. Settle plus three 5 s windows can pass the 50 s tool wait; call `job_wait` again.
 Progress says `phase` (`settling`, `sampling`, `waiting_gpu`), `run` and `of`, and while settling
 the probes still `busy`. `job_cancel` returns the runs finished so far, or `cancelled` with none.
-It fails `perf_busy` while another `perf.sample` or `perf.compare` runs, and `no_frames` when a
-window rendered nothing (a minimized window).
+It fails `perf_busy` while another `perf.sample` or `perf.compare` runs, and `no_frames` when no
+frame of a window rendered a camera or the window is 0x0 (a minimized window).
 
 ### The result
 
@@ -784,7 +784,7 @@ one run. A difference smaller than `noise` means nothing.
 | `load` | Other processes over the busiest window: `loadavg_1m`, `cpus`, `other_cpu_cores`, `top` (above 0.25 cores, children of the game marked `child`), `gpu_others_ms`, `gpu_others_measured_ms` and `gpu_top`. |
 | `window`, `focused`, `occluded`, `present_mode`, `refresh_ms` | The primary window's physical size and state, and the monitor's refresh interval. |
 | `gpu_frames_missing`, `gpu_frames_skipped` | Frames whose GPU times never came back, or were not recorded because every timer slot was in flight. |
-| `reruns` | Runs dropped and sampled again because the view changed mid-window. |
+| `reruns` | View changes (window size, view size, camera set or label) that dropped the runs so far and restarted the sample, during a window or between two. Every run in the result shares one layout. |
 | `warnings` | `{kind, message}` each; see below. |
 
 Other processes' GPU time comes from the kernel's DRM fdinfo on Linux. On Windows and macOS
@@ -805,7 +805,7 @@ only `cpu_main` can be named.
 | `not_settled` | Settling timed out; sampled anyway, with what was busy. |
 | `not_steady` | The frame time was still drifting after 5 s. |
 | `hitchy` | Over 5 % of frames were hitches. The hitches are the finding. |
-| `unstable_view` | The view changed again in a re-run. |
+| `unstable_view` | The view changed again after a restart, or (in `perf_compare`) an arm's steps or the two arms ran at different sizes; the runs are kept anyway. |
 | `window_occluded` | The window was covered or minimized; the compositor may throttle it. |
 | `stats_panel_on` | The statistics panel was on, so its cost is in the numbers. |
 | `video_recording` | A `video_record` ran during the sample, so readback and encoder cost is in the numbers. |

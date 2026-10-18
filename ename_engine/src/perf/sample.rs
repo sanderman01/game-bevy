@@ -2,9 +2,10 @@
 //!
 //! A [`Sampler`] on a work entity is driven once a frame in `Last`: settling (a [`SettleGate`],
 //! then a steady frame time), warm-up, each window, and the wait for the window's GPU frames. A
-//! window is a range of [`PerfFrame`] ids. A window during which the primary window's size, the
-//! active cameras' labels or a view's size changed is dropped and sampled again once; a second
-//! change keeps it with an `unstable_view` warning. Load snapshots run on the IO task pool before
+//! window is a range of [`PerfFrame`] ids. When the primary window's size, the active cameras'
+//! labels or a view's size differ from the runs sampled so far, those runs and the current window
+//! are dropped and the sample restarts, once; a second change keeps them with an
+//! `unstable_view` warning. Load snapshots run on the IO task pool before
 //! the first window and after each one, never during a window. `perf.compare` drives a
 //! [`Sampler`] per step.
 
@@ -31,8 +32,8 @@ use super::{
     passes::{PassRecords, PassWarning},
     records::{PerfCounters, PerfRecordAge, PerfRecords},
     report::{
-        Context, Detail, PassSeries, Rerun, Run, SampleResult, Sampled, ViewSeries, Warnings,
-        report,
+        Context, Detail, Layout, LayoutView, PassSeries, Rerun, Run, SampleResult, Sampled,
+        ViewSeries, Warnings, report,
     },
     stats::median,
 };
@@ -211,8 +212,8 @@ pub(crate) struct Sampler {
     phase: Phase,
     runs: Vec<Run>,
     context: Context,
-    /// The run that was already sampled again after a view change.
-    rerun: Option<usize>,
+    /// A view change already restarted the sample once.
+    rerun: bool,
     stop: bool,
     /// The latest load snapshot: before the first window, then after each one.
     last_load: Option<LoadStamp>,
@@ -284,7 +285,7 @@ impl Sampler {
                 gpu_available: true,
                 ..default()
             },
-            rerun: None,
+            rerun: false,
             stop: false,
             last_load: None,
             loads: Vec::new(),
@@ -474,73 +475,6 @@ fn track_occlusion(
     }
 }
 
-/// The view a window measures. A change during a window invalidates it.
-#[derive(Clone, Debug, PartialEq)]
-struct Layout {
-    window: Option<UVec2>,
-    /// Active cameras by entity.
-    views: Vec<LayoutView>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct LayoutView {
-    camera: Entity,
-    label: String,
-    viewport: Option<UVec2>,
-    target: Option<UVec2>,
-}
-
-impl Layout {
-    /// Why `self` and `new` differ.
-    fn change(&self, new: &Layout) -> String {
-        let size = |size: Option<UVec2>| size.map_or("none".into(), |s| format!("{}x{}", s.x, s.y));
-        if self.window != new.window {
-            return format!(
-                "the window resized from {} to {}",
-                size(self.window),
-                size(new.window)
-            );
-        }
-        let cameras = |layout: &Layout| {
-            layout
-                .views
-                .iter()
-                .map(|view| (view.camera, view.label.clone()))
-                .collect::<Vec<_>>()
-        };
-        if cameras(self) != cameras(new) {
-            let labels = |layout: &Layout| {
-                layout
-                    .views
-                    .iter()
-                    .map(|view| view.label.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            };
-            return format!(
-                "the cameras changed from [{}] to [{}]",
-                labels(self),
-                labels(new)
-            );
-        }
-        self.views
-            .iter()
-            .zip(&new.views)
-            .find(|(old, new)| old != new)
-            .map_or_else(
-                || "a view changed".to_owned(),
-                |(old, new)| {
-                    format!(
-                        "`{}` resized from {} to {}",
-                        old.label,
-                        size(old.viewport.or(old.target)),
-                        size(new.viewport.or(new.target))
-                    )
-                },
-            )
-    }
-}
-
 #[derive(SystemParam)]
 struct ViewState<'w, 's> {
     window: Query<'w, 's, &'static Window, With<PrimaryWindow>>,
@@ -717,36 +651,39 @@ fn drive(
             if frame < window.start {
                 return;
             }
-            match &window.layout {
+            // Against this window's first frame, or on that frame against the accepted runs'.
+            let base = window.layout.as_ref().or(sampler.context.layout.as_ref());
+            match base {
                 None => {
-                    window.layout = Some(layout.clone());
                     let context = &mut sampler.context;
-                    if context.window.is_none() {
-                        context.window = layout.window;
-                        context.present_mode = view.window.single().ok().map(|w| w.present_mode);
-                        context.refresh_ms = view.refresh_ms();
-                    }
+                    context.layout = Some(layout.clone());
+                    context.present_mode = view.window.single().ok().map(|w| w.present_mode);
+                    context.refresh_ms = view.refresh_ms();
                 }
                 Some(base) if base != layout => {
                     let reason = base.change(layout);
-                    let run = sampler.runs.len();
-                    if sampler.rerun == Some(run) {
+                    let run = sampler.runs.len() + 1;
+                    if sampler.rerun {
                         sampler.context.warnings.add(
                             "unstable_view",
-                            format!("run {} changed again after a re-run: {reason}", run + 1),
+                            format!("run {run} changed again after a re-run: {reason}"),
                         );
-                        window.layout = Some(layout.clone());
+                        sampler.context.layout = Some(layout.clone());
                     } else {
-                        sampler.rerun = Some(run);
-                        sampler.context.reruns.push(Rerun {
-                            run: run + 1,
-                            reason,
-                        });
+                        // The runs so far measured the old layout, so they go too.
+                        sampler.rerun = true;
+                        sampler.runs.clear();
+                        sampler.loads.clear();
+                        sampler.context.layout = None;
+                        sampler.context.reruns.push(Rerun { run, reason });
                         restart(sampler, entity, frame, commands);
                         return;
                     }
                 }
                 Some(_) => {}
+            }
+            if window.layout.as_ref() != Some(layout) {
+                window.layout = Some(layout.clone());
             }
             for view in &layout.views {
                 let Some(size) = view.viewport else {
@@ -809,10 +746,11 @@ fn drive(
                 return;
             }
             let run = collect_run(window, inputs, &mut sampler.context.warnings);
-            if run.render_wall_ms.is_empty() {
+            let size = sampler.context.layout.as_ref().and_then(|l| l.window);
+            if rendered_nothing(&run, size) {
                 sampler.finish(Err(CommandError::failed(
                     "no_frames",
-                    "the window rendered no frames, as when it is minimized",
+                    "the window rendered no camera, as when it is minimized",
                 )
                 .with_hint("Show the game window and sample again.")));
                 return;
@@ -828,6 +766,13 @@ fn drive(
             }
         }
     }
+}
+
+/// No frame in the run rendered a camera, or the window is 0x0. Render frames still run then,
+/// with no views, as when Windows minimizes the window.
+pub(crate) fn rendered_nothing(run: &Run, window: Option<UVec2>) -> bool {
+    run.views.values().all(|view| view.cpu_ms.is_empty())
+        || window.is_some_and(|size| size.x == 0 || size.y == 0)
 }
 
 /// After a view change: settle again (or warm up again with `skip_settle`), then re-sample.

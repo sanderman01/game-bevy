@@ -54,8 +54,10 @@ replaces that with two job commands, `perf.sample` and `perf.compare`, and a sta
 11. **`vsync_capped` under any present mode.** A compositor caps a window under `Immediate` too,
     so the check looks only at the frame median against the refresh interval.
 12. **A view change invalidates a run.** A change of window size, view size, camera set or label
-    mid-window drops the run and samples it once more; a second change returns it with
-    `unstable_view`. Nothing pins the render size, so results record every size.
+    mid-window, or between windows, drops every run so far and restarts the sample once, so all
+    runs share one layout; a second change returns them with `unstable_view`. `perf.compare`
+    warns the same when an arm's steps, or the two arms' windows, differ in size. Nothing pins
+    the render size, so results record every size.
 13. **`perf.compare` runs `A B B A` per round**, so linear drift cancels. Arms are command calls,
     usually `debug.set`, so any switch or game command is an arm and the plan adds no toggle of
     its own. Each step samples one window by default; the steps are the runs. Verdicts are

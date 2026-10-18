@@ -593,6 +593,7 @@ mod load {
 }
 
 mod report {
+    use bevy::prelude::{Entity, UVec2};
     use serde_json::json;
 
     use super::super::report::*;
@@ -659,6 +660,66 @@ mod report {
         assert!(!vsync_capped(25.0, Some(16.67)));
         assert!(!vsync_capped(150.0, Some(16.67)));
         assert!(!vsync_capped(16.7, None));
+    }
+
+    fn layout(window: [u32; 2], camera: u32, viewport: [u32; 2]) -> Layout {
+        Layout {
+            window: Some(window.into()),
+            views: vec![LayoutView {
+                camera: Entity::from_raw_u32(camera).unwrap(),
+                label: "main_camera".into(),
+                viewport: Some(viewport.into()),
+                target: Some(window.into()),
+            }],
+        }
+    }
+
+    fn with_layout(layout: Layout) -> Sampled {
+        let mut sampled = sampled(vec![run(&[10.0; 3])]);
+        sampled.context.layout = Some(layout);
+        sampled
+    }
+
+    fn warning_kinds(sampled: &Sampled) -> Vec<&'static str> {
+        sampled
+            .context
+            .warnings
+            .list()
+            .iter()
+            .map(|w| w.kind)
+            .collect()
+    }
+
+    #[test]
+    fn steps_under_another_layout_merge_with_a_warning() {
+        let mut arm = Sampled::default();
+        arm.merge(with_layout(layout([800, 600], 1, [800, 600])));
+        // A respawned camera with the same sizes is the same layout.
+        arm.merge(with_layout(layout([800, 600], 2, [800, 600])));
+        assert!(warning_kinds(&arm).is_empty());
+        arm.merge(with_layout(layout([1024, 768], 1, [1024, 768])));
+        assert_eq!(arm.runs.len(), 3);
+        assert_eq!(warning_kinds(&arm), ["unstable_view"]);
+        let (result, _) = report(&arm, Detail::Summary);
+        assert_eq!(result.window, Some([800, 600]));
+    }
+
+    #[test]
+    fn a_run_without_views_or_a_zero_window_rendered_nothing() {
+        use crate::perf::sample::rendered_nothing;
+
+        let mut drawn = run(&[10.0; 3]);
+        assert!(rendered_nothing(&drawn, Some(UVec2::new(800, 600))));
+        drawn.views.insert(
+            "main_camera".into(),
+            ViewSeries {
+                cpu_ms: vec![1.0; 3],
+                ..Default::default()
+            },
+        );
+        assert!(!rendered_nothing(&drawn, Some(UVec2::new(800, 600))));
+        assert!(!rendered_nothing(&drawn, None));
+        assert!(rendered_nothing(&drawn, Some(UVec2::new(0, 0))));
     }
 
     #[test]
