@@ -1,0 +1,31 @@
+docs/agent-tools.md
+  s_73f100acbee58a::t_6d765c38562c74 203-206
+  s_73f100acbee58a::t_42b490aaefe62f 339-342
+  s_73f100acbee58a::t_d10331d0527e25 971-1005
+docs/assets-packages.md
+  s_73f100acbee58a::t_8c84945e61a491 103-119
+docs/design/agent-tooling.md
+  s_73f100acbee58a::t_83e4f7c567f820 365-382
+AGENTS.md
+  s_73f100acbee58a::t_5605bd15328c44 76-79
+ename_xtask/Cargo.toml
+  s_73f100acbee58a::t_a5298312f2a22f 8
+ename_xtask/src/lib.rs
+  s_73f100acbee58a::t_6538a70fe0c33c 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6fe69f4526e4c97d51fb0f55137262178cf2c448",
+  "prompts": {},
+  "sessions": {
+    "s_73f100acbee58a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c819127-4325-4a80-b7e5-047d2832ae98",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
