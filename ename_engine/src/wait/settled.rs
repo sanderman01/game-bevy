@@ -228,7 +228,8 @@ pub(super) fn register(app: &mut App) {
              finished for a few frames. Use before a capture or measurement instead of a sleep.",
         )
         .scope(CommandScope::Safe)
-        .read_only(),
+        .read_only()
+        .always_load(),
         settled,
     )
     .register_command(

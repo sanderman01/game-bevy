@@ -24,6 +24,7 @@ mod error;
 mod jobs;
 mod registry;
 mod run_id;
+mod type_name;
 
 use bevy::prelude::*;
 
@@ -39,6 +40,7 @@ pub use registry::{
 pub use run_id::RunId;
 use schemars::JsonSchema;
 use serde::Deserialize;
+pub use type_name::{ResolvedType, TypeSet, resolve_type};
 
 /// The params of a command that takes none. `{}` or `null`.
 #[derive(Deserialize, JsonSchema, Debug, Default, Clone, Copy)]

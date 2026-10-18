@@ -41,15 +41,11 @@ pub struct ResolvedEntity {
 pub struct Summary {
     pub entity: u64,
     pub name: Option<String>,
-    #[serde(default)]
-    pub position: Option<[f64; 3]>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct ListResponse {
     pub entities: Vec<Summary>,
-    #[serde(default)]
-    pub truncated: usize,
 }
 
 impl From<Summary> for ResolvedEntity {

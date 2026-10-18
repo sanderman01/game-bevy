@@ -46,6 +46,10 @@ pub struct CommandInfo {
     pub scope: String,
     #[serde(default)]
     pub read_only: bool,
+    /// Offered with `_meta` asking the client to load it upfront. Defaulted, so an older game
+    /// still lists.
+    #[serde(default)]
+    pub always_load: bool,
     pub params: Value,
     #[serde(default)]
     pub result: Value,
@@ -301,8 +305,13 @@ fn to_tool(command: &CommandInfo) -> Tool {
              returns a job id for job_wait.",
         );
     }
-    Tool::new(command.tool_name(), description, Arc::new(schema))
-        .annotate(ToolAnnotations::new().read_only(command.read_only))
+    let tool = Tool::new(command.tool_name(), description, Arc::new(schema))
+        .annotate(ToolAnnotations::new().read_only(command.read_only));
+    if command.always_load {
+        tool.with_meta(super::always_load())
+    } else {
+        tool
+    }
 }
 
 /// A hash of every emitted tool, whole, so a change in any of it (schema, description,

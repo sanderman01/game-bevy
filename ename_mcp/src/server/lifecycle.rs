@@ -91,7 +91,8 @@ impl GameServer {
         description = "Build and start the game editor, or report the one already running, and \
                        wait until it answers. Before you finish, stop the games you started \
                        (game_status lists them under `yours`) unless you leave one up for the \
-                       user, and then say so."
+                       user, and then say so.",
+        meta = super::always_load()
     )]
     async fn game_start(&self, Parameters(params): Parameters<StartParams>) -> LifecycleResult {
         let lifecycle = self.lifecycle()?;
@@ -149,7 +150,8 @@ impl GameServer {
     #[tool(
         description = "Where the game is: stopped, building, build_failed, starting, ready, \
                        exited (with crash details), external or port_in_use; `yours` lists the \
-                       games you started."
+                       games you started.",
+        meta = super::always_load()
     )]
     async fn game_status(&self, Parameters(params): Parameters<StatusParams>) -> LifecycleResult {
         let lifecycle = self.lifecycle()?;

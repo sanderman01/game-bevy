@@ -30,7 +30,8 @@ pub(crate) struct EditorCamera;
 /// configuration is deliberately *not* duplicated here -- both flight paths read that from the
 /// `BigSpaceCameraController` that [`GridFollowCamera`] keeps present on the same entity at all
 /// times.
-#[derive(Component, Debug, Default, Clone, Copy)]
+#[derive(Component, Reflect, Debug, Default, Clone, Copy)]
+#[reflect(Component, Default)]
 pub(crate) struct FreeFlightState {
     vel_translation: Vec3,
     vel_rotation: Quat,
@@ -45,14 +46,16 @@ pub(crate) struct FreeFlightState {
 /// against the camera's current attachment amounts to, and it breaks whenever the two disagree:
 /// the camera hasn't auto-attached to a grid yet, or (in a scene with more than one root `Grid`)
 /// attaches to a different one than the target sits in.
-#[derive(Component, Debug, Default, Clone, Copy)]
+#[derive(Component, Reflect, Debug, Default, Clone, Copy)]
+#[reflect(Component, Default)]
 pub(crate) struct EditorCameraFocus;
 
 /// The camera's current orbit pivot: which [`EditorCameraFocus`] entity orbiting rotates around,
 /// and how far the camera sits from it. Re-pointed at a fresh position by F-focus; `distance` is
 /// also read (and adjusted) while orbiting. Set at spawn to a focus entity placed some distance
 /// ahead of the camera, so orbiting works even before anything has ever been focused.
-#[derive(Component, Debug, Clone, Copy)]
+#[derive(Component, Reflect, Debug, Clone, Copy)]
+#[reflect(Component)]
 pub(crate) struct OrbitFocus {
     entity: Entity,
     distance: f32,
@@ -187,6 +190,9 @@ impl Plugin for EditorCameraPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<EditorCameraIntent>()
             .register_type::<EditorCameraSettings>()
+            .register_type::<FreeFlightState>()
+            .register_type::<EditorCameraFocus>()
+            .register_type::<OrbitFocus>()
             .insert_resource(self.settings)
             .add_systems(
                 Update,

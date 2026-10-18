@@ -3,8 +3,9 @@
 //! Design rules, in the order they matter:
 //!
 //! 1. Do not mirror BRP. A tool that is a one-to-one rename of a BRP method is a bad tool.
-//! 2. Never reimplement reflection. Component values come from `world.get_components` and go
-//!    back through `world.mutate_components`. No tool parses a property path itself.
+//! 2. Never reimplement reflection. Component and resource values are read and written by the
+//!    game's `game.components.*` and `game.resources.*` methods, which resolve names, types and
+//!    paths. No tool parses a property path or a type name itself.
 //! 3. Anything settable is gettable.
 //! 4. A tool returns data or it fails. There is no `{"success": false}` for the agent to
 //!    remember to check.
@@ -45,7 +46,7 @@ pub use lifecycle::Lifecycle;
 
 use crate::{
     brp::{BrpClient, Endpoint},
-    entity::{self, EntitySelector, ResolvedEntity},
+    entity::{EntitySelector, ResolvedEntity},
     notice::{LogNotice, NoticeState, Tally},
     staleness,
 };
@@ -209,8 +210,9 @@ pub struct QueryParams {
     /// Case-insensitive substring of the entity's name. Entities with no name never match.
     #[serde(default)]
     pub name_contains: Option<String>,
-    /// Case-insensitive substrings of component type paths, e.g. "RigidBody". An entity must
-    /// have a component matching every one of them.
+    /// Component types, e.g. "RigidBody". A short name matches only types with that short name
+    /// (any case); anything else is a case-insensitive substring of the type path. An entity
+    /// must have a component matching every one. `matched_types` says what each matched.
     #[serde(default)]
     pub with_components: Vec<String>,
     /// Restricts the result to descendants of this entity.
@@ -220,52 +222,49 @@ pub struct QueryParams {
     /// are most of the world and none of them are scene content.
     #[serde(default)]
     pub include_internal: bool,
-    /// Defaults to 100. A loaded glTF scene is hundreds of entities.
+    /// Defaults to 50. When cut, `name_counts` says which names fill the rest.
     #[serde(default)]
     pub limit: Option<usize>,
+    /// Extra columns per entity: "parent", "children" (a count), "components" (short names).
+    #[serde(default)]
+    pub fields: Vec<QueryField>,
 }
 
-/// One entity as world_query reports it.
-///
-/// Typed rather than passed straight through, so the response has a fixed shape independent of
-/// whatever `game.entities.list` happens to return.
-#[derive(Serialize, schemars::JsonSchema)]
-pub struct QueriedEntity {
-    entity: u64,
-    name: Option<String>,
-    /// Absolute metres. Absent when the entity is not under a grid.
-    position: Option<[f64; 3]>,
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum QueryField {
+    Parent,
+    Children,
+    Components,
 }
 
-#[derive(Serialize, schemars::JsonSchema)]
-pub struct QueryResult {
-    entities: Vec<QueriedEntity>,
-    /// Entities that matched but were cut by `limit`. Zero means the list is complete.
-    truncated: usize,
+// ---------------------------------------------------------------------------------------------
+// world_overview
+
+#[derive(Debug, Default, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct OverviewParams {
+    /// Show only this entity's subtree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root: Option<EntitySelector>,
+    /// How many named levels deep. Defaults to 3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depth: Option<u32>,
+    /// Most entities listed. Defaults to 80.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
 }
 
 // ---------------------------------------------------------------------------------------------
 // world_list_components
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+/// One entity by `name` or `entity`, or several under `entities`.
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct ListComponentsParams {
-    /// The entities to list. Each is addressed by `name` or by `entity`, and several may be
-    /// given in one call.
-    pub entities: Vec<EntitySelector>,
-}
-
-/// One entity's component type paths.
-#[derive(Serialize, schemars::JsonSchema)]
-pub struct EntityComponentTypes {
     #[serde(flatten)]
-    identity: ResolvedEntity,
-    /// Full type paths, sorted. Pass the ones you want to world_get_components.
-    components: Vec<String>,
-}
-
-#[derive(Serialize, schemars::JsonSchema)]
-pub struct ComponentTypes {
-    entities: Vec<EntityComponentTypes>,
+    pub selector: EntitySelector,
+    /// Several entities in one call, each by `name` or `entity`. Instead of `name`/`entity`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub entities: Vec<EntitySelector>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -278,30 +277,17 @@ pub struct EntityParams {
     pub selector: EntitySelector,
 }
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct GetComponentsParams {
     #[serde(flatten)]
     pub selector: EntitySelector,
-    /// Full component type paths, e.g. "bevy_transform::components::transform::Transform".
-    /// world_list_components lists the paths an entity has; registry_schema turns a partial
-    /// name into a full one.
+    /// Component types by short name ("Transform") or path; "Transform.rotation" reads one
+    /// field.
     pub components: Vec<String>,
-}
-
-#[derive(Serialize, schemars::JsonSchema)]
-pub struct EntityComponents {
-    #[serde(flatten)]
-    identity: ResolvedEntity,
-    /// Component type path to value.
-    components: HashMap<String, Value>,
-    /// Requested components the entity has but whose value could not be read, with the reason.
-    /// Usually an asset handle, which reflection cannot serialize.
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    unreadable: HashMap<String, Value>,
-    /// Requested paths the entity does not have. A misspelt path and a genuinely absent
-    /// component look the same here; registry_schema says which it was.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    absent: Vec<String>,
+    /// A value bigger than this, serialized, comes back as its size and field names, to read by
+    /// path. Defaults to 8000.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_bytes: Option<usize>,
 }
 
 /// The three components a position is made of. Hard-coded because the sidecar does not link
@@ -335,12 +321,14 @@ pub struct EntityPosition {
     unreadable: HashMap<String, Value>,
 }
 
-/// What `world.get_components` answers with when `strict` is off.
+/// What `game.components.get` answers.
 #[derive(Default, Deserialize)]
 #[serde(default)]
 struct ComponentValues {
+    entity: u64,
+    name: Option<String>,
     components: HashMap<String, Value>,
-    errors: HashMap<String, Value>,
+    unreadable: HashMap<String, Value>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -348,13 +336,13 @@ struct ComponentValues {
 
 /// Everything is optional, but a call with no filter at all returns whatever `limit` allows out
 /// of more than a thousand types. Name the types you actually need.
-#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Default, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct RegistrySchemaParams {
-    /// Full type paths, e.g. "bevy_transform::components::transform::Transform". The precise
-    /// way to ask, and the one to prefer.
+    /// Types by short name ("RigidBody"), path suffix ("grid::Grid") or full path. A short name
+    /// several types share returns them all.
     #[serde(default)]
     pub types: Vec<String>,
-    /// Case-insensitive substring of the type path, for when the exact path is not known yet.
+    /// Case-insensitive substring of the type path, for when the name is not known yet.
     #[serde(default)]
     pub contains: Option<String>,
     /// Only types from these crates, e.g. "avian3d" or "ename_engine".
@@ -363,68 +351,113 @@ pub struct RegistrySchemaParams {
     /// Exclude types from these crates.
     #[serde(default)]
     pub without_crates: Vec<String>,
-    /// Defaults to 100. Schemas are large; the whole registry is roughly 775 KB.
+    /// Only component types.
+    #[serde(default)]
+    pub components_only: bool,
+    /// Defaults to 25.
     #[serde(default)]
     pub limit: Option<usize>,
+    /// Also return the upstream JSON schema of each type. Large; describes reflection
+    /// structure, not the wire form.
+    #[serde(default)]
+    pub full_schema: bool,
 }
 
-#[derive(Serialize, schemars::JsonSchema)]
+/// What `game.registry.describe` answers, passed through.
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
 pub struct RegistrySchema {
-    /// Type path to its JSON schema, as the game's reflection registry describes it.
-    schemas: HashMap<String, Value>,
+    /// Each type: `type_path`, `short`, `kind`, `component`, `resource`, `shape` (how to write
+    /// it, one line) and `example` (a value the game accepts), plus `fields` or `variants`.
+    types: Vec<Value>,
     /// Types that matched but were cut by `limit`. Narrow the filters if this is not zero.
     truncated: usize,
-    /// Paths in `types` that are not registered. An unregistered type is one the agent cannot
-    /// read or write at all, so this is an answer rather than an oversight.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    /// Names in `types` that match no registered type: nothing can read or write them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     unregistered: Vec<String>,
+    /// Names in `types` that are components without reflection: they can be listed and removed,
+    /// not read or written.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    not_reflected: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------------------------
 // mutation params
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct SpawnEntityParams {
     /// The new entity's `Name`. Required: an unnamed entity can only ever be addressed by an id
     /// that expires when the game restarts.
     pub name: String,
-    /// Component type path to value. Get the exact paths from registry_schema.
+    /// Component type (short name or path) to value, e.g. {"RigidBody": "Dynamic", "NoAutoMass":
+    /// {}}.
     #[serde(default)]
-    pub components: HashMap<String, Value>,
+    pub components: serde_json::Map<String, Value>,
     /// Absolute metres. Placing the entity also parents it to the world grid.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<[f64; 3]>,
     /// Parent to attach to. Defaults to the world grid when `position` is given.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<EntitySelector>,
+    /// Refuse values that need fixing instead of fixing them.
+    #[serde(default)]
+    pub strict: bool,
 }
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct InsertComponentParams {
     #[serde(flatten)]
     pub selector: EntitySelector,
-    /// Component type path to value. Get the exact paths from registry_schema.
-    pub components: HashMap<String, Value>,
+    /// Component type (short name or path) to value, e.g. {"ConstantTorque": [0, 1, 0]}.
+    pub components: serde_json::Map<String, Value>,
+    /// Refuse values that need fixing instead of fixing them.
+    #[serde(default)]
+    pub strict: bool,
 }
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct RemoveComponentParams {
     #[serde(flatten)]
     pub selector: EntitySelector,
-    /// Full component type paths.
+    /// Component types, by short name or path.
     pub components: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 pub struct MutateComponentParams {
     #[serde(flatten)]
     pub selector: EntitySelector,
-    /// Full component type path, e.g. "bevy_transform::components::transform::Transform".
+    /// Component type by short name or path, e.g. "Transform" or "DirectionalLight".
     pub component: String,
-    /// Field path within the component, e.g. "scale.x". Empty replaces the whole component.
+    /// Field path within the component, e.g. "rotation" or "scale.x". Empty sets the whole
+    /// component.
+    #[serde(default)]
     pub path: String,
-    /// The new value, shaped like the field's schema.
+    /// The new value in the shape registry_schema shows, e.g. 0.5, "Hidden", [0, 1, 0], {}.
     pub value: Value,
+    /// Refuse values that need fixing instead of fixing them.
+    #[serde(default)]
+    pub strict: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct GetResourcesParams {
+    /// Resource types by short name or path, optionally with a field path: "DebugOverlays" or
+    /// "DebugOverlays.physics".
+    pub resources: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
+pub struct MutateResourceParams {
+    /// Resource type by short name or path.
+    pub resource: String,
+    /// Field path within the resource, e.g. "physics". Empty sets the whole resource.
+    #[serde(default)]
+    pub path: String,
+    /// The new value in the shape registry_schema shows, e.g. true, 0.5, "Hidden".
+    pub value: Value,
+    /// Refuse values that need fixing instead of fixing them.
+    #[serde(default)]
+    pub strict: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -499,97 +532,84 @@ impl GameServer {
     #[tool(
         description = "Find entities in the running game by name substring, component, or parent. \
                        Returns each entity's id, name and absolute world position, named entities \
-                       first. Start here, then world_list_components for what they carry."
+                       first. Start here, then world_list_components for what they carry.",
+        meta = always_load()
     )]
-    async fn world_query(
-        &self,
-        Parameters(params): Parameters<QueryParams>,
-    ) -> ToolResult<QueryResult> {
+    async fn world_query(&self, Parameters(params): Parameters<QueryParams>) -> ToolResult<Value> {
         let parent = match &params.parent {
             Some(selector) => Some(selector.resolve(&self.brp).await.map_err(fail)?.entity),
             None => None,
         };
-        let result: entity::ListResponse = self
-            .brp
-            .call(
-                "game.entities.list",
-                json!({
-                    "name_contains": params.name_contains,
-                    "with_components": params.with_components,
-                    "parent": parent,
-                    "include_internal": params.include_internal,
-                    "limit": params.limit,
-                }),
-            )
-            .await
-            .map_err(fail)?;
-        self.tag(QueryResult {
-            entities: result
-                .entities
-                .into_iter()
-                .map(|summary| QueriedEntity {
-                    entity: summary.entity,
-                    name: summary.name,
-                    position: summary.position,
-                })
-                .collect(),
-            truncated: result.truncated,
-        })
+        self.pass(
+            "game.entities.list",
+            &json!({
+                "name_contains": params.name_contains,
+                "with_components": params.with_components,
+                "parent": parent,
+                "include_internal": params.include_internal,
+                "limit": params.limit,
+                "fields": params.fields,
+            }),
+        )
         .await
     }
 
     #[tool(
-        description = "List the component type paths on one or more entities. The step between \
-                       world_query and world_get_components: it says what an entity has, without \
-                       the cost of reading any values."
+        description = "Start here. The named entities as a tree, each with its position and a few \
+                       tags such as Camera, DirectionalLight or RigidBody. Unnamed entities such as \
+                       the window are not listed; find them with world_query by component. Use \
+                       world_get_components to read values.",
+        meta = always_load()
+    )]
+    async fn world_overview(
+        &self,
+        Parameters(params): Parameters<OverviewParams>,
+    ) -> ToolResult<Value> {
+        self.pass("game.entities.overview", &params).await
+    }
+
+    #[tool(
+        description = "List the component types on one entity (`name` or `entity`) or several \
+                       (`entities`). `not_reflected` ones can only be removed, not read or written."
     )]
     async fn world_list_components(
         &self,
         Parameters(params): Parameters<ListComponentsParams>,
-    ) -> ToolResult<ComponentTypes> {
-        if params.entities.is_empty() {
-            return Err(ErrorData::invalid_params(
-                "name at least one entity, by `name` or by `entity`.",
-                None,
-            ));
-        }
-
-        let mut entities = Vec::with_capacity(params.entities.len());
-        for selector in &params.entities {
-            let identity = selector.resolve(&self.brp).await.map_err(fail)?;
-            let components = self.list_components(identity.entity).await?;
-            entities.push(EntityComponentTypes {
-                identity,
-                components,
-            });
-        }
-        self.tag(ComponentTypes { entities }).await
+    ) -> ToolResult<Value> {
+        let single = params.selector.entity.is_some() || params.selector.name.is_some();
+        let entities = match (single, params.entities.is_empty()) {
+            (true, true) => vec![params.selector],
+            (false, false) => params.entities,
+            _ => {
+                return Err(ErrorData::invalid_params(
+                    "give one entity by `name` or `entity`, or several under `entities`.",
+                    None,
+                ));
+            }
+        };
+        self.pass("game.components.list", &json!({ "entities": entities }))
+            .await
     }
 
-    #[tool(description = "Get specific components from an entity by ID or name.")]
+    #[tool(
+        description = "Read component values from one entity, by `name` or `entity`. Types may be \
+                       short names (\"Transform\"); \"Transform.rotation\" reads one field. \
+                       Transform is relative to a grid cell; world_get_position gives the world \
+                       position.",
+        meta = always_load()
+    )]
     async fn world_get_components(
         &self,
         Parameters(params): Parameters<GetComponentsParams>,
-    ) -> ToolResult<EntityComponents> {
+    ) -> ToolResult<Value> {
         if params.components.is_empty() {
             return Err(ErrorData::invalid_params(
-                "name the component type paths to read. world_list_components lists the paths an \
-                 entity has, and registry_schema turns a partial name into a full one.",
+                "name the component types to read. world_list_components lists what an entity \
+                 has.",
                 None,
             ));
         }
-        let identity = params.selector.resolve(&self.brp).await.map_err(fail)?;
-        let (values, absent) = self
-            .read_components(identity.entity, &params.components)
-            .await?;
-
-        self.tag(EntityComponents {
-            identity,
-            components: values.components,
-            unreadable: values.errors,
-            absent,
-        })
-        .await
+        self.pass("game.components.get", &params).await
     }
 
     #[tool(
@@ -601,16 +621,14 @@ impl GameServer {
         &self,
         Parameters(params): Parameters<EntityParams>,
     ) -> ToolResult<EntityPosition> {
-        let identity = params.selector.resolve(&self.brp).await.map_err(fail)?;
-
-        let paths = [
-            CELL_COORD.to_owned(),
-            TRANSFORM.to_owned(),
-            GLOBAL_TRANSFORM.to_owned(),
-        ];
-        // The absent ones need no report of their own here: a component the entity does not
-        // have is exactly the one whose field below is null.
-        let (mut values, _absent) = self.read_components(identity.entity, &paths).await?;
+        let mut request = serde_json::to_value(&params.selector).map_err(|err| fail(err.into()))?;
+        request["components"] = json!([CELL_COORD, TRANSFORM, GLOBAL_TRANSFORM]);
+        // A component the entity lacks is exactly the one whose field below is null.
+        let mut values: ComponentValues = self
+            .brp
+            .call("game.components.get", request)
+            .await
+            .map_err(fail)?;
 
         #[derive(Deserialize)]
         struct Position {
@@ -621,124 +639,41 @@ impl GameServer {
         // its Transform still exists and is still what the caller came to see.
         let placed = self
             .brp
-            .call::<Position>("game.position.get", json!({ "entity": identity.entity }))
+            .call::<Position>("game.position.get", json!({ "entity": values.entity }))
             .await
             .ok();
 
         self.tag(EntityPosition {
-            identity,
+            identity: ResolvedEntity {
+                entity: values.entity,
+                name: values.name,
+            },
             position: placed.as_ref().map(|p| p.position),
             grid: placed.map(|p| p.grid),
             cell: values.components.remove(CELL_COORD),
             transform: values.components.remove(TRANSFORM),
             global_transform: values.components.remove(GLOBAL_TRANSFORM),
-            unreadable: values.errors,
+            unreadable: values.unreadable,
         })
         .await
     }
 
-    /// The type paths of every component on one entity.
-    ///
-    /// BRP already sorts these, deliberately, so that no client comes to depend on archetype
-    /// order. Sorting again costs nothing and means the guarantee is held on this side too.
-    async fn list_components(&self, entity: u64) -> Result<Vec<String>, ErrorData> {
-        let mut paths: Vec<String> = self
-            .brp
-            .call("world.list_components", json!({ "entity": entity }))
-            .await
-            .map_err(fail)?;
-        paths.sort_unstable();
-        Ok(paths)
-    }
-
-    /// Reads named component values, and says which of the names the entity does not have.
-    ///
-    /// The split is the point. `world.get_components` with `strict` off reports an absent
-    /// component and one whose value will not serialize as the same kind of error, and those are
-    /// different answers: the first says the entity is not what the caller thought, the second
-    /// says reflection cannot show it. So membership is settled against `world.list_components`
-    /// first, and only what the entity actually has is read.
-    async fn read_components(
-        &self,
-        entity: u64,
-        paths: &[String],
-    ) -> Result<(ComponentValues, Vec<String>), ErrorData> {
-        let on_entity = self.list_components(entity).await?;
-        let (present, absent): (Vec<String>, Vec<String>) = paths
-            .iter()
-            .cloned()
-            .partition(|path| on_entity.contains(path));
-
-        if present.is_empty() {
-            return Ok((ComponentValues::default(), absent));
-        }
-        let values = self
-            .brp
-            .call(
-                "world.get_components",
-                json!({ "entity": entity, "components": present, "strict": false }),
-            )
-            .await
-            .map_err(fail)?;
-        Ok((values, absent))
-    }
-
     #[tool(
-        description = "Get the JSON schema of registered types: the fields a component has, their \
-                       names and their shapes. Read this before writing a component value. Name \
-                       the types you want; the whole registry is over a thousand of them."
+        description = "How to write a type: a one-line wire shape and an example value that the \
+                       game accepts. Ask by short name or path before inserting or mutating a \
+                       type for the first time.",
+        meta = always_load()
     )]
     async fn registry_schema(
         &self,
         Parameters(params): Parameters<RegistrySchemaParams>,
     ) -> ToolResult<RegistrySchema> {
-        let limit = params.limit.unwrap_or(100);
-
-        // The crate filters are the only ones BRP itself understands. Paths are matched here,
-        // because `registry.schema` has no notion of a type path filter.
-        let registry: HashMap<String, Value> = self
+        let described: RegistrySchema = self
             .brp
-            .call(
-                "registry.schema",
-                json!({
-                    "with_crates": params.with_crates,
-                    "without_crates": params.without_crates,
-                }),
-            )
+            .call("game.registry.describe", json!(params))
             .await
             .map_err(fail)?;
-
-        let unregistered: Vec<String> = params
-            .types
-            .iter()
-            .filter(|path| !registry.contains_key(*path))
-            .cloned()
-            .collect();
-
-        let needle = params.contains.as_ref().map(|c| c.to_lowercase());
-        let mut matched: Vec<(String, Value)> = registry
-            .into_iter()
-            .filter(|(path, _)| params.types.is_empty() || params.types.contains(path))
-            .filter(|(_, schema)| crate_matches(schema, &params.with_crates))
-            .filter(|(path, _)| {
-                needle
-                    .as_ref()
-                    .is_none_or(|n| path.to_lowercase().contains(n))
-            })
-            .collect();
-        // Sorted so a truncated result is the same one every call, rather than whichever the
-        // hash map happened to yield first.
-        matched.sort_by(|a, b| a.0.cmp(&b.0));
-
-        let truncated = matched.len().saturating_sub(limit);
-        matched.truncate(limit);
-
-        self.tag(RegistrySchema {
-            schemas: matched.into_iter().collect(),
-            truncated,
-            unregistered,
-        })
-        .await
+        self.tag(described).await
     }
 
     #[tool(
@@ -814,7 +749,8 @@ impl GameServer {
 
     #[tool(
         description = "Read the game's recent log events, filtered by level, emitting module and \
-                       message. The game's stderr is not otherwise visible."
+                       message. The game's stderr is not otherwise visible.",
+        meta = always_load()
     )]
     async fn log_get_entries(
         &self,
@@ -838,61 +774,15 @@ impl GameServer {
     }
 
     #[tool(
-        description = "Create an entity with a name, a set of components and an optional absolute \
-                       world position."
+        description = "Create an entity with a name, components and an optional absolute world \
+                       position. Types may be short names; values that needed fixing come back \
+                       under `coerced`."
     )]
     async fn world_spawn_entity(
         &self,
         Parameters(params): Parameters<SpawnEntityParams>,
-    ) -> ToolResult<PositionResult> {
-        let mut components = params.components;
-        components.insert("bevy_ecs::name::Name".to_owned(), json!(params.name));
-
-        #[derive(Deserialize)]
-        struct Spawned {
-            entity: u64,
-        }
-        let spawned: Spawned = self
-            .brp
-            .call("world.spawn_entity", json!({ "components": components }))
-            .await
-            .map_err(fail)?;
-
-        // Placement is two steps because an entity's position is only meaningful relative to the
-        // grid it hangs under, and `world.spawn_entity` cannot set a parent.
-        let parent = match (&params.parent, params.position) {
-            (Some(selector), _) => Some(selector.resolve(&self.brp).await.map_err(fail)?.entity),
-            (None, Some(_)) => Some(self.world_grid().await.map_err(fail)?),
-            (None, None) => None,
-        };
-        if let Some(parent) = parent {
-            self.brp
-                .call_raw(
-                    "world.reparent_entities",
-                    json!({ "entities": [spawned.entity], "parent": parent }),
-                )
-                .await
-                .map_err(fail)?;
-        }
-        if let Some(position) = params.position {
-            self.brp
-                .call_raw(
-                    "game.position.set",
-                    json!({ "entity": spawned.entity, "position": position }),
-                )
-                .await
-                .map_err(fail)?;
-        }
-
-        let identity = ResolvedEntity {
-            entity: spawned.entity,
-            name: Some(params.name),
-        };
-        self.tag(PositionResult {
-            identity,
-            position: params.position,
-        })
-        .await
+    ) -> ToolResult<Value> {
+        self.pass("game.entities.spawn", &params).await
     }
 
     #[tool(description = "Delete an entity and everything parented to it.")]
@@ -908,61 +798,69 @@ impl GameServer {
         self.tag(identity).await
     }
 
-    #[tool(description = "Add components to an existing entity, or replace them if present.")]
+    #[tool(
+        description = "Add or replace whole components on an entity. A unit struct is {}, a \
+                       newtype is its inner value."
+    )]
     async fn world_insert_component(
         &self,
         Parameters(params): Parameters<InsertComponentParams>,
-    ) -> ToolResult<ResolvedEntity> {
-        let identity = params.selector.resolve(&self.brp).await.map_err(fail)?;
-        self.brp
-            .call_raw(
-                "world.insert_components",
-                json!({ "entity": identity.entity, "components": params.components }),
-            )
-            .await
-            .map_err(fail)?;
-        self.tag(identity).await
-    }
-
-    #[tool(description = "Remove components from an entity by their full type paths.")]
-    async fn world_remove_component(
-        &self,
-        Parameters(params): Parameters<RemoveComponentParams>,
-    ) -> ToolResult<ResolvedEntity> {
-        let identity = params.selector.resolve(&self.brp).await.map_err(fail)?;
-        self.brp
-            .call_raw(
-                "world.remove_components",
-                json!({ "entity": identity.entity, "components": params.components }),
-            )
-            .await
-            .map_err(fail)?;
-        self.tag(identity).await
+    ) -> ToolResult<Value> {
+        self.pass("game.components.insert", &params).await
     }
 
     #[tool(
-        description = "Set one field of one component on an entity, addressed by field path. The \
-                       main write tool. Use world_set_position for position."
+        description = "Remove components by short name or path. Works on components reflection \
+                       cannot read."
+    )]
+    async fn world_remove_component(
+        &self,
+        Parameters(params): Parameters<RemoveComponentParams>,
+    ) -> ToolResult<Value> {
+        self.pass("game.components.remove", &params).await
+    }
+
+    #[tool(
+        description = "Set one field (`path`, e.g. \"rotation\" or \"shadow_depth_bias\"; empty \
+                       for the whole component) on one entity. Values use the shape \
+                       registry_schema shows. Use world_set_position for position.",
+        meta = always_load()
     )]
     async fn world_mutate_component(
         &self,
         Parameters(params): Parameters<MutateComponentParams>,
-    ) -> ToolResult<ResolvedEntity> {
-        reject_position_write(&params.component, &params.path)?;
-        let identity = params.selector.resolve(&self.brp).await.map_err(fail)?;
-        self.brp
-            .call_raw(
-                "world.mutate_components",
-                json!({
-                    "entity": identity.entity,
-                    "component": params.component,
-                    "path": params.path,
-                    "value": params.value,
-                }),
-            )
-            .await
-            .map_err(fail)?;
-        self.tag(identity).await
+    ) -> ToolResult<Value> {
+        self.pass("game.components.mutate", &params).await
+    }
+
+    #[tool(
+        description = "Read resource values (global state such as debug settings), by short name \
+                       or path; \"Type.field\" reads one field."
+    )]
+    async fn world_get_resources(
+        &self,
+        Parameters(params): Parameters<GetResourcesParams>,
+    ) -> ToolResult<Value> {
+        self.pass("game.resources.get", &params).await
+    }
+
+    #[tool(
+        description = "Set one field of a resource (`path` empty for the whole resource). Values \
+                       use the shape registry_schema shows."
+    )]
+    async fn world_mutate_resource(
+        &self,
+        Parameters(params): Parameters<MutateResourceParams>,
+    ) -> ToolResult<Value> {
+        self.pass("game.resources.mutate", &params).await
+    }
+
+    /// Sends the tool's params to a `game.*` method as they are and tags its answer. The game
+    /// resolves names and types itself.
+    async fn pass(&self, method: &str, params: &impl Serialize) -> ToolResult<Value> {
+        let params = serde_json::to_value(params).map_err(|err| fail(err.into()))?;
+        let answer = self.brp.call_raw(method, params).await.map_err(fail)?;
+        self.tag(answer).await
     }
 
     #[tool(
@@ -991,7 +889,8 @@ impl GameServer {
     #[tool(
         description = "Move an entity to an absolute world position in metres. The only correct \
                        way to place something: a raw Transform is relative to a grid cell and a \
-                       floating origin that both move."
+                       floating origin that both move.",
+        meta = always_load()
     )]
     async fn world_set_position(
         &self,
@@ -1016,71 +915,14 @@ impl GameServer {
         })
         .await
     }
-
-    /// The entity holding the world's root `Grid`, which is what a placed entity hangs under.
-    async fn world_grid(&self) -> anyhow::Result<u64> {
-        let response: entity::ListResponse = self
-            .brp
-            .call(
-                "game.entities.list",
-                json!({ "with_components": ["big_space::grid::Grid"], "limit": 100 }),
-            )
-            .await?;
-
-        match response.entities.as_slice() {
-            [] => anyhow::bail!("the game has no big_space grid, so nothing can be placed in it"),
-            [only] => Ok(only.entity),
-            many => anyhow::bail!(
-                "the game has {} grids ({}). Pass `parent` to say which one.",
-                many.len(),
-                many.iter()
-                    .map(|g| format!("{} `{}`", g.entity, g.name.as_deref().unwrap_or("")))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
-        }
-    }
 }
 
-/// Whether a schema belongs to one of `crates`, with an empty list meaning "any".
-///
-/// `registry.schema` applies its own `with_crates` only to types that have a crate name, so
-/// `&str`, `()` and tuple types come back whatever is asked for. Repeating the test here is what
-/// makes the filter mean what its name says.
-fn crate_matches(schema: &Value, crates: &[String]) -> bool {
-    if crates.is_empty() {
-        return true;
-    }
-    schema
-        .get("crateName")
-        .or_else(|| schema.get("crate_name"))
-        .and_then(Value::as_str)
-        .is_some_and(|name| crates.iter().any(|wanted| wanted == name))
-}
-
-/// Refuses a mutation that would write half of a position.
-///
-/// `Transform.translation` is an offset within one grid cell relative to a floating origin that
-/// moves as the camera moves, so writing it sets a different world point every time. Failing
-/// here is the whole reason `world_set_position` exists.
-fn reject_position_write(component: &str, path: &str) -> Result<(), ErrorData> {
-    // Field 0 of `Transform` is `translation`, so `#0` names it too; a leading `.` is optional.
-    let first = path
-        .trim_start_matches('.')
-        .split(['.', '['])
-        .next()
-        .unwrap_or_default();
-    let touches_translation = component.ends_with("::Transform")
-        && (first.is_empty() || first == "translation" || first == "#0");
-    let touches_cell = component.ends_with("::CellCoord");
-    if touches_translation || touches_cell {
-        return Err(ErrorData::invalid_params(
-            "position is a grid cell plus an offset from a moving origin, so writing either half \
-             alone lands somewhere else. Use world_set_position with absolute metres.",
-            None,
-        ));
-    }
-    Ok(())
+/// `_meta` asking Claude Code to load a tool upfront instead of deferring it behind tool search.
+/// For the core tools only: each costs context every turn.
+pub(crate) fn always_load() -> rmcp::model::MetaObject {
+    let mut meta = rmcp::model::MetaObject::new();
+    meta.insert("anthropic/alwaysLoad".into(), Value::Bool(true));
+    meta
 }
 
 impl ServerHandler for GameServer {
@@ -1097,7 +939,9 @@ impl ServerHandler for GameServer {
              message. The game's own commands (screenshots, video, editor views, camera poses \
              and named viewpoints) appear as tools while it runs; command_list and command_call \
              reach them at any time. Pose a camera with camera_look_at or viewpoint_goto, not \
-             world_set_position plus a quaternion. If a result \
+             world_set_position plus a quaternion. Start with world_overview. Types may be \
+             short names. Before writing a type for the first time, read its example with \
+             registry_schema. Values that needed fixing come back under `coerced`. If a result \
              says ename_mcp is out of date, do what it says and tell the user in your reply what \
              it asks of them, and why; if you may not build, ask the user to."
                 .to_owned(),
@@ -1230,8 +1074,6 @@ impl ServerHandler for GameServer {
 mod tests {
     use serde_json::json;
 
-    use super::{CELL_COORD as CELL, TRANSFORM, crate_matches, reject_position_write};
-
     /// The `index`th request and its body in; the response's `result` or `error` member out, or
     /// `None` to never answer, holding the connection open the way a hung game does.
     pub(super) type Responder = std::sync::Arc<
@@ -1294,59 +1136,5 @@ mod tests {
             }
         });
         url
-    }
-
-    #[test]
-    fn refuses_writes_that_would_move_half_a_position() {
-        for (component, path) in [
-            (TRANSFORM, "translation"),
-            (TRANSFORM, "translation.x"),
-            (TRANSFORM, ".translation"),
-            (TRANSFORM, "#0"),
-            (TRANSFORM, ".#0.y"),
-            (TRANSFORM, ""),
-            (CELL, "x"),
-        ] {
-            assert!(
-                reject_position_write(component, path).is_err(),
-                "`{component}` `{path}` should be refused"
-            );
-        }
-    }
-
-    #[test]
-    fn allows_writes_to_the_rest_of_a_transform() {
-        for path in ["scale", "scale.x", "rotation"] {
-            assert!(reject_position_write(TRANSFORM, path).is_ok(), "`{path}`");
-        }
-    }
-
-    /// `translation` is a prefix of nothing else on `Transform` today, but the check is a string
-    /// comparison and a future field starting with those letters must not be caught by it.
-    #[test]
-    fn does_not_refuse_an_unrelated_component() {
-        assert!(reject_position_write("some::other::Type", "translation").is_ok());
-    }
-
-    #[test]
-    fn an_empty_crate_filter_matches_everything() {
-        assert!(crate_matches(&json!({"crateName": "avian3d"}), &[]));
-        assert!(crate_matches(&json!({}), &[]));
-    }
-
-    /// The case upstream gets wrong: `&str` and `()` have no crate name and `registry.schema`
-    /// lets them through whatever `with_crates` says.
-    #[test]
-    fn a_crate_filter_rejects_types_with_no_crate() {
-        let wanted = ["ename_engine".to_owned()];
-        assert!(!crate_matches(&json!({}), &wanted));
-        assert!(!crate_matches(
-            &json!({"crateName": "bevy_transform"}),
-            &wanted
-        ));
-        assert!(crate_matches(
-            &json!({"crateName": "ename_engine"}),
-            &wanted
-        ));
     }
 }

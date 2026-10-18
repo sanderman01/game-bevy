@@ -65,7 +65,8 @@ impl Plugin for ViewCommandsPlugin {
                 "editor.set_view",
                 "Show the editor's Scene View or Game View, as clicking its tab would. Finishes \
                  once the game has drawn a frame with it, so a screenshot taken next shows it.",
-            ),
+            )
+            .always_load(),
             set_view,
         )
         .add_systems(Last, settle_views);

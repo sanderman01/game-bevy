@@ -169,7 +169,8 @@ impl GameServer {
     #[tool(
         description = "Run a game command by its dotted name with a params object. For a job \
                        command, waits up to wait_seconds (default and maximum 50) and then returns \
-                       a job id for job_wait."
+                       a job id for job_wait.",
+        meta = super::always_load()
     )]
     async fn command_call(
         &self,

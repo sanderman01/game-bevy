@@ -48,6 +48,7 @@ pub struct CommandSpec {
     description: &'static str,
     scope: CommandScope,
     read_only: bool,
+    always_load: bool,
     adjust_params: Option<AdjustSchema>,
 }
 
@@ -63,6 +64,7 @@ impl CommandSpec {
             description,
             scope: CommandScope::Development,
             read_only: false,
+            always_load: false,
             adjust_params: None,
         }
     }
@@ -75,6 +77,13 @@ impl CommandSpec {
     /// No side effects. Becomes MCP's `readOnlyHint`; not a security boundary.
     pub fn read_only(mut self) -> Self {
         self.read_only = true;
+        self
+    }
+
+    /// A core tool: an MCP client loads its schema upfront instead of deferring it. Costs context
+    /// every turn, so only for the few commands most sessions use.
+    pub fn always_load(mut self) -> Self {
+        self.always_load = true;
         self
     }
 
@@ -94,6 +103,8 @@ pub struct CommandInfo {
     pub kind: CommandKind,
     pub scope: CommandScope,
     pub read_only: bool,
+    /// See [`CommandSpec::always_load`].
+    pub always_load: bool,
     /// JSON schema (draft 2020-12) of the params object.
     pub params: Value,
     /// JSON schema of the result; for a job, of the job's final result.
@@ -337,6 +348,7 @@ impl CommandAppExt for App {
             kind: CommandKind::Instant,
             scope: spec.scope,
             read_only: spec.read_only,
+            always_load: spec.always_load,
             params: params_schema::<P>(&mut spec),
             result: schema_for::<R>(SchemaSettings::draft2020_12().for_serialize()).to_value(),
         };
@@ -373,6 +385,7 @@ impl CommandAppExt for App {
             kind: CommandKind::Job,
             scope: spec.scope,
             read_only: spec.read_only,
+            always_load: spec.always_load,
             params: params_schema::<P>(&mut spec),
             result: schema_for::<R>(SchemaSettings::draft2020_12().for_serialize()).to_value(),
         };

@@ -23,8 +23,11 @@
 //! | `game.exit` | A graceful stop with exit code 0 on every platform; Ctrl+C cannot reach a detached Windows process. |
 //! | `game.command.list` / `.call` | The commands any crate registered in `ename_engine::command`, listed with their schemas and called by name. This crate never learns what they are. |
 //! | `game.job.status` / `.list` / `.cancel` | The jobs those commands start. |
+//! | `game.registry.describe` | `registry.schema` describes reflection structure, not the wire form, and is the whole registry at once. This answers a one-line shape and an example the game reads back. |
+//! | `game.components.*`, `game.resources.*`, `game.entities.spawn` | BRP takes ids and full paths and fails on the first wrong value with serde's message. These take `name` or `entity`, short type names, coerce mistakes with one fix, and name the failing field with an example. Removing needs no reflection. |
 //!
-//! It also replaces `world.mutate_components` with a guarded version. See [`mutate`].
+//! It also replaces `world.mutate_components` with a guarded version. See
+//! [`components::guarded_mutate_components`].
 //!
 //! # Ports
 //!
@@ -45,16 +48,20 @@
 //! Screenshots, video and the editor's views are not here. Their crates register them as commands,
 //! and they arrive through `game.command.*` like any other.
 
+mod coerce;
 mod command;
+mod components;
 mod entities;
 mod exit;
 mod logs;
-mod mutate;
+mod overview;
 mod port;
 mod position;
+mod registry;
 mod run_id;
 mod run_record;
 mod time;
+mod value_shape;
 mod window_size;
 
 use bevy::{
@@ -86,6 +93,19 @@ impl PluginGroup for RemotePlugins {
     fn build(self) -> PluginGroupBuilder {
         let remote = RemotePlugin::default()
             .with_method_main(entities::LIST_METHOD, entities::list)
+            .with_method_main(registry::DESCRIBE_METHOD, registry::describe)
+            .with_method_main(components::LIST_METHOD, components::list)
+            .with_method_main(components::GET_METHOD, components::get)
+            .with_method_main(components::INSERT_METHOD, components::insert)
+            .with_method_main(components::MUTATE_METHOD, components::mutate)
+            .with_method_main(components::REMOVE_METHOD, components::remove)
+            .with_method_main(components::RESOURCES_GET_METHOD, components::resources_get)
+            .with_method_main(
+                components::RESOURCES_MUTATE_METHOD,
+                components::resources_mutate,
+            )
+            .with_method_main(components::SPAWN_METHOD, components::spawn)
+            .with_method_main(overview::METHOD, overview::overview)
             .with_method_main(position::GET_METHOD, position::get)
             .with_method_main(position::SET_METHOD, position::set)
             .with_method_main(time::GET_METHOD, time::get)
@@ -99,7 +119,10 @@ impl PluginGroup for RemotePlugins {
             .with_method_main(command::JOB_LIST_METHOD, command::job_list)
             .with_method_main(command::JOB_CANCEL_METHOD, command::job_cancel)
             // Last, so it replaces the built-in of the same name.
-            .with_method_main(mutate::METHOD, mutate::mutate_components);
+            .with_method_main(
+                components::BUILTIN_MUTATE_METHOD,
+                components::guarded_mutate_components,
+            );
 
         let port = port::brp_port();
         PluginGroupBuilder::start::<Self>()

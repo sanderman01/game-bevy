@@ -9,10 +9,7 @@ use std::any::TypeId;
 use bevy::{
     ecs::reflect::ReflectComponent,
     prelude::*,
-    reflect::{
-        GetPath, ParsedPath, PartialReflect, TypeRegistration, TypeRegistry,
-        serde::TypedReflectSerializer,
-    },
+    reflect::{GetPath, ParsedPath, PartialReflect, serde::TypedReflectSerializer},
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -20,8 +17,11 @@ use serde_json::{Value, json};
 
 use super::until::Check;
 use crate::{
-    bigspace::grid::{PositionError, absolute_position},
-    command::{CommandError, EntityTarget},
+    bigspace::{
+        CellCoord,
+        grid::{PositionError, absolute_position, is_position_half},
+    },
+    command::{CommandError, EntityTarget, TypeSet, resolve_type},
 };
 
 /// Reads a field that is present, `null` included, as `Some`; `#[serde(default)]` leaves a
@@ -191,35 +191,27 @@ impl Predicate {
         value: Option<Value>,
         world: &mut World,
     ) -> Result<Self, CommandError> {
+        let (set, entity) = match &source {
+            Source::Component(target) => (TypeSet::Components, Some(target.resolve(world)?)),
+            Source::Resource => (TypeSet::Resources, None),
+        };
+        let resolved = resolve_type(world, set, entity, type_name)?.require_reflected()?;
+        let type_id = resolved
+            .type_id
+            .expect("a reflected type has a registration");
         let registry = world.resource::<AppTypeRegistry>().clone();
         let registry = registry.read();
-        let registration = registration(&registry, type_name)?;
+        let registration = registry
+            .get(type_id)
+            .expect("a reflected type has a registration");
         let type_path = registration.type_info().type_path();
-        if registration.data::<ReflectComponent>().is_none() {
-            let what = match source {
-                Source::Component(_) => "a component",
-                Source::Resource => "a resource",
-            };
-            return Err(CommandError::invalid(
-                "not_registered",
-                format!("`{type_path}` is registered, but not as {what}"),
-            ));
-        }
         let path = path.filter(|path| !path.is_empty());
-        // Field 0 of `Transform` is `translation`, so `#0` names it too.
-        let first = path.map(|path| {
-            path.trim_start_matches('.')
-                .split(['.', '['])
-                .next()
-                .unwrap_or_default()
-        });
-        let touches_translation = type_path.ends_with("::Transform")
-            && match first {
-                Some(first) => first == "translation" || first == "#0",
-                // The whole value includes the translation; presence and change do not compare it.
-                None => !matches!(op, Op::Exists | Op::Absent | Op::Changed),
-            };
-        if touches_translation || type_path.ends_with("::CellCoord") {
+        // The whole value includes the translation; presence and change do not compare it.
+        let whole_without_value =
+            path.is_none() && matches!(op, Op::Exists | Op::Absent | Op::Changed);
+        let is_cell = type_id == TypeId::of::<CellCoord>();
+        if is_cell || (!whole_without_value && is_position_half(type_id, path.unwrap_or_default()))
+        {
             return Err(CommandError::invalid(
                 "invalid_params",
                 "under big_space a `Transform.translation` or `CellCoord` alone is not a world \
@@ -256,7 +248,6 @@ impl Predicate {
                 })
             })
             .transpose()?;
-        let type_id = registration.type_id();
         drop(registry);
         let mut predicate = Self {
             source,
@@ -500,33 +491,6 @@ fn json_eq(a: &Value, b: &Value) -> bool {
     }
 }
 
-/// A full type path, or a short one only one type has.
-fn registration<'r>(
-    registry: &'r TypeRegistry,
-    name: &str,
-) -> Result<&'r TypeRegistration, CommandError> {
-    if let Some(registration) = registry.get_with_type_path(name) {
-        return Ok(registration);
-    }
-    if registry.is_ambiguous(name) {
-        return Err(CommandError::invalid(
-            "not_registered",
-            format!("the short name `{name}` belongs to several types; give the full type path"),
-        )
-        .with_hint("`registry_schema` with `contains` lists the full paths."));
-    }
-    registry.get_with_short_type_path(name).ok_or_else(|| {
-        CommandError::invalid(
-            "not_registered",
-            format!(
-                "`{name}` is not in the type registry, so nothing can read or write it (an \
-                 unregistered type)"
-            ),
-        )
-        .with_hint("`registry_schema` with `contains` finds the registered name.")
-    })
-}
-
 /// A target that resolved when the wait started and no longer does.
 fn entity_gone(err: CommandError) -> CommandError {
     if err.kind == "entity_not_found" {
@@ -719,7 +683,7 @@ mod tests {
                 &mut app,
                 json!({ "component": { "name": "Crate", "component": "Nope", "op": "exists" } })
             ),
-            "not_registered"
+            "unknown_type"
         );
         assert_eq!(
             refused(&mut app, component("nowhere", "eq", json!(1))),
@@ -813,8 +777,8 @@ mod tests {
             json!({ "component": { "name": "Crate", "component": "Twin", "op": "exists" } }),
         )
         .unwrap_err();
-        assert_eq!(err.kind, "not_registered");
-        assert!(err.message.contains("several types"), "{err}");
+        assert_eq!(err.kind, "ambiguous_type");
+        assert!(err.message.contains("names 2 types"), "{err}");
         let full = std::any::type_name::<first::Twin>();
         assert!(holds(
             &mut app,

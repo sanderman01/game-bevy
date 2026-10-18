@@ -59,7 +59,8 @@ pub(super) fn register(app: &mut App) {
             "Capture the game window, the game camera or the editor camera to a PNG file. \
              Returns the absolute path written and its size in pixels.",
         )
-        .adjust_params_schema(restrict_source(names)),
+        .adjust_params_schema(restrict_source(names))
+        .always_load(),
         capture,
     );
 }

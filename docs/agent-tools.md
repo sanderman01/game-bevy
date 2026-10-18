@@ -166,15 +166,17 @@ cannot become a crate that ships by accident.
 
 | Tool | Does |
 | --- | --- |
-| `world_query` | Find entities by name substring, component, or parent. The discovery tool. |
-| `world_list_components` | The component type paths on one or more entities, without their values. |
-| `world_get_components` | The values of named components on one entity. |
+| `world_overview` | The named entities as a tree, with position and a few tags each. Start here. |
+| `world_query` | Find entities by name substring, component, or parent. `matched_types` says what a component filter matched. |
+| `world_list_components` | The component types on one or more entities, without their values; `not_reflected` lists the ones only removal can touch. |
+| `world_get_components` | The values of named components on one entity, by short name; `Type.field` reads one field. |
 | `world_get_position` | Where an entity is: absolute metres, its grid, and the `CellCoord`, `Transform` and `GlobalTransform` behind them. |
-| `registry_schema` | The JSON schema of registered types: the fully-qualified type paths, what fields a component has and their shapes. |
+| `registry_schema` | How to write a type: a one-line wire shape and an example value the game reads back. |
 | `world_spawn_entity` | Create an entity with a name, components and a position. |
 | `world_despawn_entity` | Delete an entity and its children. |
-| `world_insert_component` / `world_remove_component` | Add or drop components. |
+| `world_insert_component` / `world_remove_component` | Add or drop components. Removal works on unreflected components. |
 | `world_mutate_component` | Set one field of one component. |
+| `world_get_resources` / `world_mutate_resource` | Read and set resources (global state) the same way. |
 | `world_reparent_entity` | Move an entity in the hierarchy. |
 | `world_set_position` | Move an entity to an absolute world position. |
 | `time_get` / `time_set` | Read the virtual clock; pause, resume, or step N frames. |
@@ -214,21 +216,53 @@ candidates.
 **Discovery hides the ECS's own entities.** Bevy stores resources, observers and registered
 systems as entities, and in this project that is over 500 of them against seventeen named ones.
 `world_query` filters them out and sorts named entities first. Pass `include_internal` to see
-them.
+them. It returns 50 rows by default, positions rounded to millimetres; a cut answer adds
+`name_counts`, the ten most common names among all matches, so 400 rows of `Water surface`
+become one line. A component filter that is a type's short name matches only that type
+(`FloatingOrigin` no longer matches `FloatingOriginCandidate`), and `matched_types` tells "no
+entity has it" apart from "no such type".
 
-**Writing a component starts at `registry_schema`.** It takes a `contains` substring, so
-"rigidbody" finds `avian3d::dynamics::rigid_body::RigidBody`, and it returns the field names and
-shapes the value must have along with the path. Ask it for the types you actually need: the full
-registry is 1330 types and about 775 KB, and the default `limit` of 100 only caps how much of an
-unfiltered call comes back. A path it reports under `unregistered` is one nothing can read or
-write, which is an answer rather than a failure.
+**The core tools load upfront.** Claude Code defers MCP tools behind tool search by default. The
+fourteen most used (`world_overview`, `world_query`, `world_get_components`,
+`world_mutate_component`, `world_set_position`, `registry_schema`, `log_get_entries`,
+`command_call`, `game_start`, `game_status`, `wait_settled`, `screenshot_capture`,
+`editor_set_view`, `camera_look_at`) carry `_meta["anthropic/alwaysLoad"]`. A command opts in
+with `CommandSpec::always_load()`; keep the set small, since each costs context every turn.
 
-**Reading a component means naming it.** `world_get_components` takes full type paths and
-nothing else, because the alternative -- an entity dumped whole -- costs more context than it
-usually pays back. `world_list_components` lists the paths one or more entities have, and
-`registry_schema` turns a partial name into a full one. A requested path the entity does not
-have comes back under `absent`, apart from the ones whose value would not serialize, which come
-back under `unreadable`.
+**Types go by short name.** Every tool that takes a component or resource type accepts the full
+path, a path suffix (`grid::Grid`) or the short name (`Transform`). An exact full path wins, then
+an exact short name, then a case-insensitive one, then a suffix. For an entity, its own
+components are tried first. A name two types share fails with `ambiguous_type` and lists both;
+an unknown one fails with `unknown_type` and up to five close paths. Results always give the
+full path.
+
+**Writing a type starts at `registry_schema`.** For each type it returns `shape`, one line on how
+the value is written (`unit struct: write {}`, `newtype over Vec3: write the Vec3 value itself,
+not [value]`, `one of "Dynamic" | "Static" | "Kinematic" (bare string)`), and `example`, a value
+the game's serializer wrote and its deserializer read back. The upstream JSON schema describes
+reflection structure and is wrong for newtypes and glam types, so it comes only with
+`full_schema: true`. A name under `unregistered` is one nothing can read or write; one under
+`not_reflected` can be listed and removed but not read or written.
+
+**Small mistakes are fixed and reported.** A value that parses as sent is used as sent. One that
+fails gets one pass of fixes with a single right answer: `null` to `{}` for a unit struct, `"3.0"`
+to `3.0`, `"\"Hidden\""` to `"Hidden"`, `"field_only"` to `"FieldOnly"`, `[[0,1,0]]` to
+`[0,1,0]` for a newtype, `{"x":..,"y":..,"z":..,"w":..}` to an array for a glam type. Each fix
+comes back under `coerced`, so the next call can use the right form. `strict: true` turns this
+off. Anything else fails, naming the deepest failing field, its shape and an example:
+`` `DirectionalLight` is invalid at `shadow_depth_bias`: invalid type: string "abc", expected f32.
+Expected: a number. Example: 0.0 ``.
+
+**Reading a component means naming it.** `world_get_components` takes the types to read, since
+an entity dumped whole costs more context than it pays back. `"Transform.rotation"` reads one
+field, with the path syntax `world_mutate_component` uses. A value over 8 KB comes back as its
+size and field names, to read by path. A type the entity does not have comes back under
+`absent`; one that cannot be read (not reflected, or an asset handle) under `unreadable` with the
+reason. `Transform` is relative to a grid cell; `world_get_position` gives the world position.
+
+**Immutable components are replaced whole.** avian's `RigidBody` is immutable: setting a field
+fails with `immutable_component`, and `world_mutate_component` with an empty `path` replaces the
+whole value.
 
 **Positions are absolute metres, Y up.** Under big_space a position is a grid cell plus a
 `Transform` offset from an origin that moves with the camera, so a raw `Transform.translation`

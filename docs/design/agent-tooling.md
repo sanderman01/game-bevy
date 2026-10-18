@@ -187,6 +187,54 @@ render size needs the Scene View drawn offscreen, which was rejected. Cropping, 
 sheets are external tools (ImageMagick, PIL, ffmpeg) on the files, which work everywhere and cost
 this project no code.
 
+## Writing values
+
+Agents spent a retry on almost every new component type: `null` for a unit struct, `[[x,y,z]]`
+for a newtype, `"3.0"` for a number, a quaternion as an object. Upstream's `registry.schema` was
+no help, because it describes reflection structure, not what serde reads: it shows every
+one-field tuple struct as an array, though `bevy_reflect` writes it as the bare inner value.
+
+**The game describes values, not the sidecar.** Only the game has the `TypeRegistry`, so shape
+hints, examples, coercion and error location live in `ename_remote`. The sidecar passes params
+through to `game.*` methods and never parses a type name or a property path.
+
+**An example is written by the real serializer, never by hand.** It is the type's
+`ReflectDefault`, else a value built from `TypeInfo` (taking `ReflectDefault` for every opaque or
+custom-serde node, since a dynamic `Vec3` serializes as an object glam rejects). Either is
+serialized, deserialized again and built into the concrete type before it is shown; one that fails
+is skipped. So the example cannot disagree with the wire. A live instance was considered and
+dropped: it needs a world scan per type and adds nothing the two sources miss.
+
+**Lenient only after strict parsing fails, and always reported.** A value that parses as sent is
+used as sent. On failure, one pass applies fixes that have a single right answer, descending only
+into the parts that fail on their own, so a valid sibling is never rewritten. Each fix comes back
+under `coerced`, so the agent learns the form. Guessing fixes (field order from array length for
+a non-glam type, a variant name two variants match) stay errors. `strict: true` turns it off.
+
+**Short type names everywhere, ambiguity an error.** The resolver lives in
+`ename_engine::command` beside `EntityTarget`, so `wait.until` resolves the same way. A component
+type is `ReflectComponent` without `ReflectResource`, because in Bevy 0.19 every resource
+registers `ReflectComponent` too. The position guard (no `Transform.translation`, no `CellCoord`)
+runs in the game after resolution, compared by `TypeId`, so a short name cannot get past it.
+
+**Upstream BRP methods keep upstream behaviour.** Raw clients see the same methods and results.
+Only `world.mutate_components` is replaced, because upstream panics the game on a despawned entity
+and on an immutable component. The richer behaviour is in `game.components.*`,
+`game.resources.*` and `game.entities.spawn`, which raw clients can call too.
+
+**Writes are built before they are inserted.** `ReflectComponent::insert` panics when it cannot
+build the concrete type (a struct missing fields with no `Default`), and `reflect_mut` panics on
+an immutable component. The `game.*` writes build every value first and fail cleanly; an
+immutable component is replaced whole, never mutated.
+
+**Removing needs no reflection.** `game.components.remove` removes by `ComponentId`, so it works
+on components that do not derive `Reflect`, such as `EditorCamera`.
+
+**The core tools load upfront.** Claude Code defers MCP tools behind tool search, which cost about
+six `ToolSearch` calls per session. Fourteen tools carry the per-tool
+`_meta["anthropic/alwaysLoad"]`, tested to work for command tools added after `list_changed` too.
+The server-level flag would load all ~47 schemas every turn.
+
 ## Debug switches
 
 **One registry, in the engine.** A debug switch is a toggle or mode for debugging, performance

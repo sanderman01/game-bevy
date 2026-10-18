@@ -71,6 +71,49 @@ impl GridFrame {
     }
 }
 
+/// The one grid without a parent, which a newly placed entity hangs under. Errs, naming them,
+/// when there are none or several.
+pub fn root_grid(world: &mut World) -> Result<Entity, String> {
+    let mut roots: Vec<(Entity, Option<String>)> = world
+        .query_filtered::<(Entity, Option<&Name>), (With<Grid>, Without<ChildOf>)>()
+        .iter(world)
+        .map(|(entity, name)| (entity, name.map(|n| n.as_str().to_owned())))
+        .collect();
+    roots.sort_by_key(|(entity, _)| *entity);
+    match &roots[..] {
+        [] => Err("the game has no big_space grid, so nothing can be placed in it".to_owned()),
+        [(entity, _)] => Ok(*entity),
+        many => Err(format!(
+            "the game has {} root grids ({}); pass `parent` to say which one",
+            many.len(),
+            many.iter()
+                .map(|(e, name)| format!("{} `{}`", e.to_bits(), name.as_deref().unwrap_or("")))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+    }
+}
+
+/// Whether a field `path` into a value of `type_id` is half of a grid position:
+/// `Transform.translation` (also as `#0`, with or without a leading `.`), a whole `Transform`
+/// (empty path), or any part of a `CellCoord`. Either half alone names a different world point
+/// as the origin moves; [`set_absolute_position`] writes both.
+pub fn is_position_half(type_id: std::any::TypeId, path: &str) -> bool {
+    use std::any::TypeId;
+    if type_id == TypeId::of::<CellCoord>() {
+        return true;
+    }
+    if type_id != TypeId::of::<Transform>() {
+        return false;
+    }
+    let first = path
+        .trim_start_matches('.')
+        .split(['.', '['])
+        .next()
+        .unwrap_or_default();
+    first.is_empty() || first == "translation" || first == "#0"
+}
+
 /// The entity's position in metres, absolute, in the frame of the nearest grid at or above it.
 ///
 /// Composes a non-grid parent chain (a camera parented to an airship) up to the grid's child that

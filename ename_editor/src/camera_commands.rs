@@ -72,7 +72,8 @@ impl Plugin for CameraCommandsPlugin {
                     "camera.look_at",
                     "Place a camera at an absolute position facing a point, an entity, or a \
                      yaw/pitch in degrees, kept above the ground; returns the pose read back.",
-                ),
+                )
+                .always_load(),
                 look_at,
             )
             .register_command(
