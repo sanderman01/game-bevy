@@ -1,6 +1,6 @@
 //! Read-only commands over asset and content state: the package scan as the running game sees it
-//! (`content.report`), alias to path and back (`content.resolve`), and which indexed assets
-//! loaded, which failed and why (`asset.list`).
+//! (`content.report`), alias to path and back (`content.resolve`), which indexed assets loaded,
+//! which failed and why (`asset.list`), and what one of them holds (`asset.inspect`).
 //!
 //! Bevy keeps its table of assets private, so `asset.list` enumerates the alias index
 //! ([`ContentIndex`](ename_asset_content::ContentIndex)) and asks the asset server about each alias's `alias://` path and physical
@@ -10,6 +10,7 @@
 
 mod content;
 mod failures;
+mod inspect;
 mod list;
 
 use bevy::{
@@ -64,6 +65,16 @@ impl Plugin for AssetInfoPlugin {
                 .scope(CommandScope::Safe)
                 .read_only(),
                 list::list,
+            )
+            .register_command(
+                CommandSpec::new(
+                    "asset.inspect",
+                    "One asset's handles, load states, full error chain, and a summary of the \
+                     loaded Image, Mesh, StandardMaterial, GltfMaterial or Gltf.",
+                )
+                .scope(CommandScope::Safe)
+                .read_only(),
+                inspect::inspect,
             );
     }
 }

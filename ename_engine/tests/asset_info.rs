@@ -8,6 +8,7 @@ use bevy::{
     },
     mesh::{Mesh, PrimitiveTopology},
     prelude::*,
+    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
 use ename_asset_content::{AssetContentPlugin, ContentIndex};
 use ename_engine::{
@@ -68,6 +69,18 @@ impl AssetLoader for NoteLoader {
                 ],
             );
             load_context.add_labeled_asset("Mesh0", mesh);
+            let image = Image::new_fill(
+                Extent3d {
+                    width: 2,
+                    height: 2,
+                    depth_or_array_layers: 1,
+                },
+                TextureDimension::D2,
+                &[255, 0, 0, 255],
+                TextureFormat::Rgba8UnormSrgb,
+                RenderAssetUsages::default(),
+            );
+            load_context.add_labeled_asset("Image0", image);
         }
         Ok(note)
     }
@@ -90,6 +103,7 @@ fn test_app() -> App {
     ))
     .init_asset::<Note>()
     .init_asset::<Mesh>()
+    .init_asset::<Image>()
     .register_asset_reflect::<Mesh>()
     .register_asset_loader(NoteLoader);
     let mut index = ContentIndex::default();
@@ -343,4 +357,66 @@ fn content_commands_without_a_scan_say_so() {
         .err()
         .unwrap();
     assert_eq!(err.kind, "no_content_scan");
+}
+
+#[test]
+fn asset_inspect_summarizes_meshes_images_and_errors() {
+    let mut app = test_app();
+    let server = app.world().resource::<AssetServer>().clone();
+    let mesh: Handle<Mesh> = server.load("shape.meshy#Mesh0");
+    let image: Handle<Image> = server.load("shape.meshy#Image0");
+    let bad: Handle<Note> = server.load("bad.note");
+    update_until(&mut app, |app| {
+        settled(app, &mesh) && settled(app, &image) && settled(app, &bad)
+    });
+
+    // An alias with a label reaches the physical path's handle through the index.
+    let inspected = call(
+        &mut app,
+        "asset.inspect",
+        json!({"asset": "test::shape#Mesh0"}),
+    );
+    let handle = &inspected["handles"][0];
+    assert_eq!(handle["path"], "shape.meshy#Mesh0", "{inspected:#}");
+    assert_eq!(handle["state"], "loaded");
+    let summary = &handle["summary"];
+    assert_eq!(summary["vertices"], 3, "{summary:#}");
+    assert_eq!(
+        summary["aabb"],
+        json!({"min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 0.0]})
+    );
+    let color = summary["attributes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|attribute| attribute["name"] == "Vertex_Color")
+        .unwrap();
+    assert_eq!(color["min"][3], 0.0, "{color:#}");
+    assert_eq!(color["max"][3], 0.5);
+
+    let inspected = call(
+        &mut app,
+        "asset.inspect",
+        json!({"asset": "shape.meshy#Image0"}),
+    );
+    let summary = &inspected["handles"][0]["summary"];
+    assert_eq!(summary["format"], "Rgba8UnormSrgb", "{summary:#}");
+    assert_eq!(summary["size"], json!([2, 2]));
+
+    let inspected = call(&mut app, "asset.inspect", json!({"asset": "test::bad"}));
+    let handle = &inspected["handles"][0];
+    assert_eq!(handle["state"], "failed");
+    let error = handle["errors"][0].as_str().unwrap();
+    assert!(error.contains("Expected comma"), "{handle:#}");
+
+    let caller = Caller {
+        scope: CommandScope::Safe,
+        cwd: None,
+    };
+    let err = app
+        .world_mut()
+        .call_command("asset.inspect", json!({"asset": "test::unused"}), caller)
+        .err()
+        .unwrap();
+    assert_eq!(err.kind, "not_loaded");
 }
