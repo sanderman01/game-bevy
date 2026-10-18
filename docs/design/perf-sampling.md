@@ -88,6 +88,26 @@ the same `PerfRecords` as `perf.sample`.
 - Panel colours are our own theme tokens, `ename.stats.bg` and `ename.stats.header.bg`, derived
   from the theme's pane colours, so the pane can be translucent.
 
+## Measured overhead
+
+Measured 2026-10-18 on the example editor in the Game View (815 x 489 view, 1360 x 710 window),
+`dev` build, `perf.sample` with `repeats: 5` and `uncapped: true`, since a vsync-capped frame time
+hides changes this small. Noise is the range of the five run medians.
+
+- **Always-on `RenderDiagnosticsPlugin`.** Two baselines with it, one build without it in
+  between. GPU 0.93 and 0.94 ms against 0.86 ms per frame: +0.07 to 0.08 ms, noise 0.01, about
+  8 % of this scene's GPU time. Frame 9.97 and 10.12 ms against 9.64 ms: +0.3 to 0.5 ms, noise
+  0.2, all of it in `render_wall_ms`; `cpu_main_ms` did not move.
+- **The statistics panel** (`perf.compare`, `overlay.stats` false against true, 2 rounds, one
+  panel since only the Game View host is active): frame +0.25 ms (noise 0.13), `cpu_main_ms`
+  +0.20 (0.08), `render_wall_ms` +0.21 (0.11), GPU +0.02 ms (0.00). Both arms hold timing
+  demand, so this is the panel's UI and text cost alone, not the timer's.
+
+The example scene is light: three cameras and seven timed passes. These numbers show the fixed
+cost per frame and that it sits above the noise. They do not show the cost in a game with many
+cameras and passes, such as landscape streaming or reflection probes, where Bevy's timestamp
+queries grow with every pass run.
+
 ## Rejected
 
 - **Main-world matching of Bevy's per-path measurements to cameras.** Frames late, droppable, no
