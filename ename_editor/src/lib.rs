@@ -77,6 +77,7 @@ impl PluginGroup for EditorPlugins {
             .add(EditorSchedulePlugin)
             .add(debug_switches::EditorDebugSwitchesPlugin)
             .add(diagnostics::EditorDiagnosticsPlugin)
+            .add(ename_engine::perf::PerfCommandsPlugin)
             .add(panels::PanelsPlugin)
             .add(selection::SelectionPlugin)
             .add(viewport::ViewportPlugin)

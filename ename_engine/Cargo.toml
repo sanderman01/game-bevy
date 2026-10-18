@@ -30,6 +30,7 @@ serde_json.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
+wgpu.workspace = true
 
 [dev-dependencies]
 # `stage_archive.rs` mounts an archive to save into.

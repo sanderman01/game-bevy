@@ -134,3 +134,145 @@ fn verdict_serializes_snake_case() {
         "within_noise"
     );
 }
+
+mod demand {
+    use std::time::{Duration, Instant};
+
+    use bevy::prelude::*;
+
+    use crate::perf::{
+        PerfDemand, PerfDemandHolder, PerfFrame, PerfPlugin,
+        records::{MainFrame, PerfRecords, Stamped},
+    };
+
+    fn app() -> App {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, PerfPlugin));
+        app.finish();
+        app.cleanup();
+        app
+    }
+
+    fn on(app: &App) -> bool {
+        app.world().resource::<PerfDemand>().on()
+    }
+
+    #[test]
+    fn demand_follows_a_holder_entity() {
+        let mut app = app();
+        app.update();
+        assert!(!on(&app));
+        assert_eq!(app.world().resource::<PerfFrame>().0, 0);
+        assert!(app.world().resource::<PerfRecords>().main.is_empty());
+
+        let holder = app.world_mut().spawn(PerfDemandHolder).id();
+        app.update();
+        app.update();
+        assert!(on(&app));
+        assert_eq!(app.world().resource::<PerfFrame>().0, 2);
+        let frames: Vec<u64> = app
+            .world()
+            .resource::<PerfRecords>()
+            .main
+            .iter()
+            .map(|m| m.record.frame)
+            .collect();
+        assert_eq!(frames, [1, 2]);
+
+        app.world_mut().despawn(holder);
+        app.update();
+        assert!(!on(&app));
+        assert_eq!(app.world().resource::<PerfFrame>().0, 2);
+        assert!(app.world().resource::<PerfRecords>().main.is_empty());
+    }
+
+    #[test]
+    fn demand_follows_the_panel() {
+        let mut app = app();
+        app.world_mut().resource_mut::<PerfDemand>().panel = true;
+        app.update();
+        assert!(on(&app));
+        // A holder ending while the panel stays on keeps the records.
+        let holder = app.world_mut().spawn(PerfDemandHolder).id();
+        app.update();
+        app.world_mut().despawn(holder);
+        app.update();
+        assert!(on(&app));
+        assert_eq!(app.world().resource::<PerfRecords>().main.len(), 3);
+
+        app.world_mut().resource_mut::<PerfDemand>().panel = false;
+        app.update();
+        assert!(!on(&app));
+    }
+
+    #[test]
+    fn records_age_out() {
+        let now = Instant::now();
+        let frame = |frame, age_ms| Stamped {
+            arrived: frame,
+            at: now - Duration::from_millis(age_ms),
+            record: MainFrame {
+                frame,
+                frame_ms: 16.0,
+                cpu_main_ms: 4.0,
+                entity_count: None,
+                counters: Vec::new(),
+            },
+        };
+        let mut records = PerfRecords::default();
+        records
+            .main
+            .extend([frame(1, 1500), frame(2, 1001), frame(3, 999), frame(4, 0)]);
+        records.prune(now, Duration::from_secs(1));
+        let kept: Vec<u64> = records.main.iter().map(|m| m.arrived).collect();
+        assert_eq!(kept, [3, 4]);
+        assert_eq!(records.keep(), Duration::from_secs(1));
+    }
+}
+
+mod passes {
+    use crate::perf::{
+        gpu_timer::Timestamps,
+        passes::{PassGroup, PassTime, PassWarning},
+    };
+
+    fn group(runs: u32, gpu_runs: u32) -> PassGroup {
+        PassGroup {
+            passes: vec![PassTime {
+                path: "main_opaque_pass_3d".into(),
+                runs,
+                cpu_ms: 0.5,
+                gpu_runs,
+                gpu_ms: 1.0,
+            }],
+        }
+    }
+
+    const ALL: Timestamps = Timestamps {
+        views: true,
+        passes: true,
+    };
+    const VIEWS_ONLY: Timestamps = Timestamps {
+        views: true,
+        passes: false,
+    };
+
+    #[test]
+    fn complete_groups_warn_nothing() {
+        assert_eq!(group(2, 2).warning(Some(ALL)), None);
+        assert_eq!(group(2, 2).warning(Some(VIEWS_ONLY)), None);
+    }
+
+    #[test]
+    fn missing_gpu_times_are_budget_or_unsupported_by_device_features() {
+        assert_eq!(
+            group(3, 1).warning(Some(ALL)),
+            Some(PassWarning::TimestampBudget)
+        );
+        assert_eq!(
+            group(3, 0).warning(Some(VIEWS_ONLY)),
+            Some(PassWarning::PassGpuUnsupported)
+        );
+        assert_eq!(group(3, 0).warning(None), None);
+    }
+}

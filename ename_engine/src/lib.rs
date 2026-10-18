@@ -188,7 +188,8 @@ impl PluginGroup for EnginePlugins {
             .add(wait::WaitPlugin)
             .add(capture::CapturePlugin)
             .add(screenshot::ScreenshotPlugin)
-            .add(video::VideoPlugin);
+            .add(video::VideoPlugin)
+            .add(perf::PerfPlugin);
         // After `DefaultPlugins`, because it resizes the buffer `LogPlugin` just built.
         group.add(log::LogBufferPlugin {
             capacity: self.log_capacity,

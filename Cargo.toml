@@ -88,6 +88,9 @@ toml = "1.1.2"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
 uuid = { version = "1.26.0", features = ["serde"] }
+# Query sets and pass timestamp writes, which `bevy::render` does not re-export. Bevy's version,
+# so it unifies; Bevy turns on the backends.
+wgpu = { version = "29.0.3", default-features = false }
 # Process creation flags for the launcher on Windows. The version `process-wrap` uses.
 windows = { version = "0.62.2", default-features = false }
 # Tests and tooling build archives with it; `ename_asset_vfs` reads them with its own parser.
