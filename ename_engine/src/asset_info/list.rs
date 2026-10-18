@@ -10,7 +10,9 @@ use ename_asset_alias::{ALIAS_SOURCE, ContentIndex};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{HandleInfo, dropped_handle, failures::AssetLoadFailures, handle_info, limit};
+use super::{
+    HandleInfo, dropped_handle, failures::AssetLoadFailures, handle_info, limit, not_scanned,
+};
 use crate::command::{Call, CommandError};
 
 #[derive(Deserialize, JsonSchema)]
@@ -98,11 +100,7 @@ pub(super) fn list(In(call): In<Call<ListParams>>, world: &World) -> Result<List
     } = call.params;
     let limit = limit(requested)?;
     let Some(index) = world.get_resource::<ContentIndex>() else {
-        return Err(CommandError::failed(
-            "content_not_scanned",
-            "the package scan has not finished, so there is no alias index yet",
-        )
-        .with_hint("`content.report` says when the scan is done"));
+        return Err(not_scanned());
     };
     let contains = contains.map(|text| text.to_lowercase());
     let by_path: HashMap<String, &str> = index

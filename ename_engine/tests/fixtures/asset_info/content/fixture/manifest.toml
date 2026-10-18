@@ -1,0 +1,6 @@
+[package]
+id = "fixture"
+version = "1.2.0"
+authors = ["Test"]
+title = "Fixture"
+description = "asset_info test package."

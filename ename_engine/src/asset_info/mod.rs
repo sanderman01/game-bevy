@@ -1,12 +1,14 @@
-//! Read-only commands over asset state: which indexed assets loaded, which failed and why
-//! (`asset.list`).
+//! Read-only commands over asset and content state: the package scan as the running game sees it
+//! (`content.report`), alias to path and back (`content.resolve`), and which indexed assets
+//! loaded, which failed and why (`asset.list`).
 //!
 //! Bevy keeps its table of assets private, so `asset.list` enumerates the alias index
-//! ([`ContentIndex`]) and asks the asset server about each alias's `alias://` path and physical
+//! ([`ContentIndex`](ename_asset_content::ContentIndex)) and asks the asset server about each alias's `alias://` path and physical
 //! path by id, never taking a handle. Labeled sub-assets (`#Mesh0`) are found by walking every
 //! reflect-registered asset type, since their root handle may be gone. Failed loads are kept in a
 //! log of their own, because the server forgets a failure once its handle drops.
 
+mod content;
 mod failures;
 mod list;
 
@@ -24,14 +26,35 @@ use failures::{AssetLoadFailures, log_failures};
 const DEFAULT_LIMIT: u32 = 50;
 const MAX_LIMIT: u32 = 500;
 
-/// Registers the failure log and the `asset.*` commands. Needs `AssetPlugin` and
-/// [`CommandPlugin`](crate::command::CommandPlugin).
+/// Registers the failure log and the `content.*` and `asset.*` commands. Needs `AssetPlugin` and
+/// [`CommandPlugin`](crate::command::CommandPlugin); the commands that read the scan answer
+/// `no_content_scan` without `AssetContentPlugin`.
 pub struct AssetInfoPlugin;
 
 impl Plugin for AssetInfoPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AssetLoadFailures>()
             .add_systems(PostUpdate, log_failures)
+            .register_command(
+                CommandSpec::new(
+                    "content.report",
+                    "The package scan as the game sees it: asset root, search paths, load order \
+                     file, packages, disabled packages, contests and problems.",
+                )
+                .scope(CommandScope::Safe)
+                .read_only(),
+                content::report,
+            )
+            .register_command(
+                CommandSpec::new(
+                    "content.resolve",
+                    "Resolve an alias to its path, a path to the aliases claiming it, or search \
+                     both by substring; each with its package.",
+                )
+                .scope(CommandScope::Safe)
+                .read_only(),
+                content::resolve,
+            )
             .register_command(
                 CommandSpec::new(
                     "asset.list",
@@ -54,6 +77,14 @@ fn limit(limit: Option<u32>) -> Result<usize, CommandError> {
             format!("`limit` must be 1 to {MAX_LIMIT}, not {other}"),
         )),
     }
+}
+
+fn not_scanned() -> CommandError {
+    CommandError::failed(
+        "content_not_scanned",
+        "the package scan has not finished, so there is no alias index yet",
+    )
+    .with_hint("`content.report` says when the scan is done")
 }
 
 /// One handle the asset server knows, or knew until it dropped.

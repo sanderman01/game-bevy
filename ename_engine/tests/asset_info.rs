@@ -9,7 +9,7 @@ use bevy::{
     mesh::{Mesh, PrimitiveTopology},
     prelude::*,
 };
-use ename_asset_alias::ContentIndex;
+use ename_asset_content::{AssetContentPlugin, ContentIndex};
 use ename_engine::{
     asset_info::AssetInfoPlugin,
     command::{Caller, CommandPlugin, CommandScope, CommandWorldExt, Reply},
@@ -82,7 +82,7 @@ fn test_app() -> App {
     app.add_plugins((
         MinimalPlugins,
         AssetPlugin {
-            file_path: concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/asset_info").into(),
+            file_path: FIXTURES.into(),
             ..default()
         },
         CommandPlugin,
@@ -235,4 +235,112 @@ fn asset_list_refuses_a_limit_over_500() {
         .err()
         .unwrap();
     assert_eq!(err.kind, "invalid_params");
+}
+
+const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/asset_info");
+
+/// The real package scan over `content/` (one package) and a search path that does not exist.
+fn scanning_app() -> App {
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        AssetContentPlugin::default()
+            .with_asset_root(FIXTURES)
+            .with_search_paths(["content", "missing"])
+            .with_load_order_file(format!("{FIXTURES}/no_load_order.toml")),
+        AssetPlugin {
+            file_path: FIXTURES.into(),
+            ..default()
+        },
+        CommandPlugin,
+        AssetInfoPlugin,
+    ));
+    app
+}
+
+#[test]
+fn content_report_goes_from_running_to_done() {
+    let mut app = scanning_app();
+    let first = call(&mut app, "content.report", json!({}));
+    assert_eq!(first["scan"], "running", "{first:#}");
+    assert_eq!(first["packages"]["count"], 0);
+
+    update_until(&mut app, |app| {
+        app.world().contains_resource::<ContentIndex>()
+    });
+    let report = call(&mut app, "content.report", json!({}));
+    assert_eq!(report["scan"], "done", "{report:#}");
+    assert_eq!(report["asset_root"], FIXTURES);
+    assert_eq!(
+        report["search_paths"],
+        json!([
+            {"path": "content", "exists": true, "packages": 1},
+            {"path": "missing", "exists": false, "packages": 0}
+        ])
+    );
+    assert_eq!(report["load_order_file"]["exists"], false);
+    assert_eq!(
+        report["packages"],
+        json!({"count": 1, "truncated": false, "items": [
+            {"id": "fixture", "version": "1.2.0", "root": "content/fixture", "aliases": 1}
+        ]})
+    );
+    assert_eq!(report["aliases"], 1);
+}
+
+#[test]
+fn content_resolve_maps_both_ways_and_names_the_package() {
+    let mut app = scanning_app();
+    update_until(&mut app, |app| {
+        app.world().contains_resource::<ContentIndex>()
+    });
+    let expected = json!({"entries": [
+        {"alias": "fixture::thing", "path": "content/fixture/thing.note", "package": "fixture"}
+    ], "truncated": false});
+    assert_eq!(
+        call(
+            &mut app,
+            "content.resolve",
+            json!({"alias": "fixture::thing"})
+        ),
+        expected
+    );
+    assert_eq!(
+        call(
+            &mut app,
+            "content.resolve",
+            json!({"path": "content/fixture/thing.note"})
+        ),
+        expected
+    );
+    assert_eq!(
+        call(&mut app, "content.resolve", json!({"contains": "THING"})),
+        expected
+    );
+    let caller = Caller {
+        scope: CommandScope::Safe,
+        cwd: None,
+    };
+    let err = app
+        .world_mut()
+        .call_command("content.resolve", json!({}), caller)
+        .err()
+        .unwrap();
+    assert_eq!(err.kind, "invalid_params");
+}
+
+#[test]
+fn content_commands_without_a_scan_say_so() {
+    let mut app = test_app();
+    app.update();
+    let caller = Caller {
+        scope: CommandScope::Safe,
+        cwd: None,
+    };
+    let err = app
+        .world_mut()
+        .call_command("content.report", json!({}), caller)
+        .err()
+        .unwrap();
+    assert_eq!(err.kind, "no_content_scan");
 }
