@@ -1,0 +1,19 @@
+ename_editor/src/camera.rs
+  s_98ee18e46e18e2::t_6e438cc1153e26 33-34,49-50,57-58,193-195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dbae9432d6f7dee058d4ec2fc3e8cdae64c8ee41",
+  "prompts": {},
+  "sessions": {
+    "s_98ee18e46e18e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8a5f0e8a-b9be-45bb-bd80-e1e8ce438335",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
