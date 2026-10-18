@@ -1,0 +1,22 @@
+ename_asset_content/src/lib.rs
+  s_73f100acbee58a::t_c044c14e79354c 135-139,145-159
+  s_73f100acbee58a::t_88489adc2e9776 200
+  s_73f100acbee58a::t_4ab09c31f28c9f 180-181
+  s_73f100acbee58a::t_d3d0d8ed145356 160-161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "079cb903e905a8fd08ebc2e1e4883d73e3d04775",
+  "prompts": {},
+  "sessions": {
+    "s_73f100acbee58a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c819127-4325-4a80-b7e5-047d2832ae98",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
