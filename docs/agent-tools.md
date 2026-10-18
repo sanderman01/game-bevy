@@ -776,7 +776,7 @@ one run. A difference smaller than `noise` means nothing.
 | `render_wall_ms` | Render-world wall time, first to last render set. It includes waiting for the swapchain and for present, so it is not CPU work. |
 | `gpu_ms` | GPU time per frame, every camera, egui and post-processing included. `"unavailable"` without the `TIMESTAMP_QUERY` feature. |
 | `gpu_unattributed_ms` | Per frame, `gpu_ms` minus the sum of its views. Near 0 in `game`. |
-| `views` | Per label: `count` (cameras under it in one frame), `size` (largest physical render target), `gpu_ms` and `cpu_ms` (wall time of its render schedule), each `median` and `noise`. |
+| `views` | Per label: `count` (cameras under it in one frame), `size` (largest physical viewport size, which for the Scene View camera is its tab, not the window), `gpu_ms` and `cpu_ms` (wall time of its render schedule), each `median` and `noise`. |
 | `passes` | Bevy's render pass spans: `path`, `runs_per_frame`, `gpu_ms`, `cpu_ms`. `"unavailable"` without `RenderDiagnosticsPlugin`. |
 | `counters` | `entity_count` and every registered counter. A counter that changed during the sample reads `{median, min, max}`: it was not settled. |
 | `hitches` | `frame_ms` frames above twice their window's median: `count`, `threshold_ms`, `worst_ms`, `at_seconds`. Statistics leave them out. `hitch_counts` gives the other series' counts. |
