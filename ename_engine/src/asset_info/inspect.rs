@@ -1,27 +1,24 @@
-//! `asset.inspect`: one asset's handles, load states and error chain, and a summary of what Bevy
-//! made of it. The runtime twin of `ename_gltf_info`: the file says what was authored, this what
-//! was loaded.
+//! `asset.inspect`: one asset's handles, load states and errors, and a summary of what Bevy made
+//! of it. The runtime twin of `ename_gltf_info`: the file says what was authored, this what was
+//! loaded.
 
 use std::error::Error;
 
 use bevy::{
     asset::{
         AssetPath, DependencyLoadState, LoadState, RecursiveDependencyLoadState, UntypedAssetId,
-        io::AssetSourceId,
     },
     gltf::{Gltf, GltfMaterial},
     image::Image,
     mesh::{Indices, Mesh, VertexAttributeValues},
     prelude::*,
 };
-use ename_asset_alias::{ALIAS_SOURCE, ContentIndex};
+use ename_asset_alias::{ALIAS_SOURCE, ContentIndex, validate_alias};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::{
-    dependency_state_name, error_text, failures::AssetLoadFailures, load_state_name, type_path,
-};
+use super::{State, error_text, failures::AssetLoadFailures, type_path};
 use crate::command::{Call, CommandError};
 
 #[derive(Deserialize, JsonSchema)]
@@ -44,16 +41,23 @@ struct InspectedHandle {
     path: String,
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     type_path: Option<String>,
-    state: &'static str,
+    state: State,
     /// Direct dependencies.
-    dependencies: &'static str,
-    recursive_dependencies: &'static str,
-    /// The failure and each error it wraps, outermost first.
+    dependencies: State,
+    recursive_dependencies: State,
+    /// The failure and each error it exposes as its source, outermost first. A loader's own
+    /// error is wrapped by Bevy and usually ends the chain, with its message in the first entry.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     errors: Vec<String>,
+    /// Why a dependency failed, when one did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dependency_error: Option<String>,
     /// The last logged failure for this path, when it has loaded since.
     #[serde(skip_serializing_if = "Option::is_none")]
     previous_error: Option<String>,
+    /// The handle is gone; state and error come from the failure log.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    dropped: bool,
     /// What the loaded value holds, for `Image`, `Mesh`, `StandardMaterial`, `GltfMaterial` and
     /// `Gltf`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -66,10 +70,35 @@ pub(super) fn inspect(
 ) -> Result<Inspected, CommandError> {
     let asset = call.params.asset;
     let server = world.resource::<AssetServer>();
+    let latest = world.resource::<AssetLoadFailures>().latest_by_path();
     let mut handles = Vec::new();
     for path in candidates(world, &asset)? {
-        for id in server.get_path_ids(&path) {
-            handles.push(inspect_handle(world, id, &path));
+        let logged = latest.get(&path.to_string()).copied();
+        let ids = server.get_path_ids(&path);
+        match logged {
+            // Every handle dropped, but the log still knows why it failed.
+            Some(failure) if ids.is_empty() && !failure.resolved => {
+                handles.push(InspectedHandle {
+                    path: path.to_string(),
+                    type_path: None,
+                    state: State::Failed,
+                    dependencies: State::NotLoaded,
+                    recursive_dependencies: State::NotLoaded,
+                    errors: vec![failure.error.clone()],
+                    dependency_error: None,
+                    previous_error: None,
+                    dropped: true,
+                    summary: None,
+                });
+            }
+            _ => handles.extend(ids.into_iter().map(|id| {
+                inspect_handle(
+                    world,
+                    id,
+                    &path,
+                    logged.map(|failure| failure.error.as_str()),
+                )
+            })),
         }
     }
     if handles.is_empty() {
@@ -85,46 +114,47 @@ pub(super) fn inspect(
 }
 
 /// The asset paths `asset` may be registered under: for an alias, both its `alias://` path and
-/// its physical path, label kept.
+/// its physical path, label kept. Parsing never panics: `asset` is whatever the caller sent.
 fn candidates(world: &World, asset: &str) -> Result<Vec<AssetPath<'static>>, CommandError> {
-    let invalid = |err: &dyn std::fmt::Display| {
-        CommandError::invalid("invalid_params", format!("`{asset}`: {err}"))
+    let parse = |text: &str| {
+        AssetPath::try_parse(text)
+            .map(AssetPath::into_owned)
+            .map_err(|err| CommandError::invalid("invalid_params", format!("`{asset}`: {err}")))
     };
+    let alias_prefix = format!("{ALIAS_SOURCE}://");
     let (base, label) = match asset.split_once('#') {
         Some((base, label)) => (base, Some(label)),
         None => (asset, None),
     };
-    let alias = if let Some(alias) = base.strip_prefix(&format!("{ALIAS_SOURCE}://")) {
-        Some(alias)
-    } else if base.contains("://") {
-        let path = AssetPath::try_parse(asset).map_err(|err| invalid(&err))?;
-        return Ok(vec![path.into_owned()]);
-    } else if base.contains("::") {
-        Some(base)
-    } else {
-        None
+    let alias = match base.strip_prefix(&alias_prefix) {
+        Some(alias) => alias,
+        None if !base.contains("://") && base.contains("::") => base,
+        None => return Ok(vec![parse(asset)?]),
     };
-    let with_label = |path: AssetPath<'static>| match label {
-        Some(label) => path.with_label(label.to_owned()),
-        None => path,
-    };
-    let Some(alias) = alias else {
-        let path = AssetPath::try_parse(asset).map_err(|err| invalid(&err))?;
-        return Ok(vec![path.into_owned()]);
-    };
-    let mut paths = vec![with_label(
-        AssetPath::from(alias.to_owned()).with_source(AssetSourceId::from(ALIAS_SOURCE)),
-    )];
+    validate_alias(alias)
+        .map_err(|err| CommandError::invalid("invalid_params", format!("`{asset}`: {err}")))?;
+    let mut paths = vec![parse(&format!("{alias_prefix}{alias}"))?];
     if let Some(physical) = world
         .get_resource::<ContentIndex>()
         .and_then(|index| index.resolve(alias))
     {
-        paths.push(with_label(AssetPath::from_path(physical).into_owned()));
+        paths.push(AssetPath::from_path(physical).into_owned());
     }
-    Ok(paths)
+    Ok(match label {
+        Some(label) => paths
+            .into_iter()
+            .map(|path| path.with_label(label.to_owned()))
+            .collect(),
+        None => paths,
+    })
 }
 
-fn inspect_handle(world: &World, id: UntypedAssetId, path: &AssetPath) -> InspectedHandle {
+fn inspect_handle(
+    world: &World,
+    id: UntypedAssetId,
+    path: &AssetPath,
+    logged: Option<&str>,
+) -> InspectedHandle {
     let server = world.resource::<AssetServer>();
     let (state, dependencies, recursive) = server.get_load_states(id).unwrap_or((
         LoadState::NotLoaded,
@@ -143,24 +173,26 @@ fn inspect_handle(world: &World, id: UntypedAssetId, path: &AssetPath) -> Inspec
         }
         _ => Vec::new(),
     };
-    let previous_error = errors
-        .is_empty()
-        .then(|| world.resource::<AssetLoadFailures>().latest(path))
-        .flatten()
-        .map(|failure| failure.error.clone());
+    // Bevy copies an asset's own failure into its dependency states too.
+    let dependency_error = match &recursive {
+        RecursiveDependencyLoadState::Failed(cause) if errors.is_empty() => Some(error_text(cause)),
+        _ => None,
+    };
     InspectedHandle {
         path: path.to_string(),
         type_path: type_path(world, id),
-        state: load_state_name(&state),
+        state: State::of_load(&state),
         dependencies: match dependencies {
-            DependencyLoadState::NotLoaded => "not_loaded",
-            DependencyLoadState::Loading => "loading",
-            DependencyLoadState::Loaded => "loaded",
-            DependencyLoadState::Failed(_) => "failed",
+            DependencyLoadState::NotLoaded => State::NotLoaded,
+            DependencyLoadState::Loading => State::Loading,
+            DependencyLoadState::Loaded => State::Loaded,
+            DependencyLoadState::Failed(_) => State::Failed,
         },
-        recursive_dependencies: dependency_state_name(&recursive),
+        recursive_dependencies: State::of_dependencies(&recursive),
+        previous_error: logged.filter(|_| errors.is_empty()).map(str::to_owned),
         errors,
-        previous_error,
+        dependency_error,
+        dropped: false,
         summary: summary(world, id, path),
     }
 }
@@ -330,7 +362,12 @@ fn components(values: &VertexAttributeValues) -> Option<(usize, Vec<f32>)> {
         V::Sint8x4(v) => flat(v, f32::from),
         V::Unorm8(v) => one(v, unorm8),
         V::Unorm8x2(v) => flat(v, unorm8),
-        V::Unorm8x4(v) | V::Unorm8x4Bgra(v) => flat(v, unorm8),
+        V::Unorm8x4(v) => flat(v, unorm8),
+        // Stored B, G, R, A; the shader reads R, G, B, A.
+        V::Unorm8x4Bgra(v) => {
+            let rgba: Vec<[u8; 4]> = v.iter().map(|[b, g, r, a]| [*r, *g, *b, *a]).collect();
+            flat(&rgba, unorm8)
+        }
         V::Snorm8(v) => one(v, snorm8),
         V::Snorm8x2(v) => flat(v, snorm8),
         V::Snorm8x4(v) => flat(v, snorm8),

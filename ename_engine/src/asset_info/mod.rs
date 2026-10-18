@@ -3,10 +3,11 @@
 //! which failed and why (`asset.list`), and what one of them holds (`asset.inspect`).
 //!
 //! Bevy keeps its table of assets private, so `asset.list` enumerates the alias index
-//! ([`ContentIndex`](ename_asset_content::ContentIndex)) and asks the asset server about each alias's `alias://` path and physical
-//! path by id, never taking a handle. Labeled sub-assets (`#Mesh0`) are found by walking every
-//! reflect-registered asset type, since their root handle may be gone. Failed loads are kept in a
-//! log of their own, because the server forgets a failure once its handle drops.
+//! ([`ContentIndex`](ename_asset_content::ContentIndex)) and asks the asset server about each
+//! alias's `alias://` path and physical path by id, never taking a handle. Labeled sub-assets
+//! (`#Mesh0`) are found by walking every reflect-registered asset type, since their root handle
+//! may be gone. Failed loads are kept in a log of their own, because the server forgets a failure
+//! once its handle drops; a failed label never reaches `Assets<T>`, so only the log finds it.
 
 mod content;
 mod failures;
@@ -14,14 +15,16 @@ mod inspect;
 mod list;
 
 use bevy::{
-    asset::{AssetPath, LoadState, RecursiveDependencyLoadState, UntypedAssetId},
+    asset::{
+        AssetPath, DependencyLoadState, LoadState, RecursiveDependencyLoadState, UntypedAssetId,
+    },
     prelude::*,
 };
 use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::command::{CommandAppExt, CommandError, CommandScope, CommandSpec};
-use failures::{AssetLoadFailures, log_failures};
+use failures::{AssetLoadFailures, LoggedFailure, log_failures, resolve_failures};
 
 /// Default and largest `limit` of every list these commands return.
 const DEFAULT_LIMIT: u32 = 50;
@@ -35,7 +38,8 @@ pub struct AssetInfoPlugin;
 impl Plugin for AssetInfoPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AssetLoadFailures>()
-            .add_systems(PostUpdate, log_failures)
+            // Resolving after logging, so a failure and its recovery in one frame end resolved.
+            .add_systems(PostUpdate, (log_failures, resolve_failures).chain())
             .register_command(
                 CommandSpec::new(
                     "content.report",
@@ -60,7 +64,7 @@ impl Plugin for AssetInfoPlugin {
                 CommandSpec::new(
                     "asset.list",
                     "List indexed assets by load state (default: every requested one), with each \
-                     failure's error.",
+                     failure's error, labeled and dependency failures included.",
                 )
                 .scope(CommandScope::Safe)
                 .read_only(),
@@ -69,8 +73,8 @@ impl Plugin for AssetInfoPlugin {
             .register_command(
                 CommandSpec::new(
                     "asset.inspect",
-                    "One asset's handles, load states, full error chain, and a summary of the \
-                     loaded Image, Mesh, StandardMaterial, GltfMaterial or Gltf.",
+                    "One asset's handles, load states, errors, and a summary of the loaded Image, \
+                     Mesh, StandardMaterial, GltfMaterial or Gltf.",
                 )
                 .scope(CommandScope::Safe)
                 .read_only(),
@@ -90,20 +94,37 @@ fn limit(limit: Option<u32>) -> Result<usize, CommandError> {
     }
 }
 
-/// An error's message without the backtrace a `BevyError` appends when backtraces are on.
+/// A list cut to `limit`, with its full length.
+#[derive(Serialize, JsonSchema)]
+struct Items<T> {
+    count: usize,
+    truncated: bool,
+    items: Vec<T>,
+}
+
+impl<T> Items<T> {
+    fn of(all: impl ExactSizeIterator<Item = T>, limit: usize) -> Self {
+        let count = all.len();
+        Self {
+            count,
+            truncated: count > limit,
+            items: all.take(limit).collect(),
+        }
+    }
+}
+
+/// An error's message without the backtrace a `BevyError` appends when backtraces are on: it
+/// starts at an indented `0:` frame followed by an `at <file>` line.
 fn error_text(error: &dyn std::fmt::Display) -> String {
     let text = error.to_string();
-    let is_frame = |line: &str| {
-        line.trim_start()
-            .split_once(": ")
-            .is_some_and(|(n, _)| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
-    };
-    text.lines()
-        .take_while(|line| !is_frame(line) && !line.starts_with("note: Some \"noisy\""))
-        .collect::<Vec<_>>()
-        .join("\n")
-        .trim_end()
-        .to_owned()
+    let lines: Vec<&str> = text.lines().collect();
+    let backtrace = lines.windows(2).position(|pair| {
+        pair[0].starts_with(' ')
+            && pair[0].trim_start().starts_with("0: ")
+            && pair[1].trim_start().starts_with("at ")
+    });
+    let kept = backtrace.map_or(&lines[..], |start| &lines[..start]);
+    kept.join("\n").trim_end().to_owned()
 }
 
 fn not_scanned() -> CommandError {
@@ -114,20 +135,83 @@ fn not_scanned() -> CommandError {
     .with_hint("`content.report` says when the scan is done")
 }
 
+/// A load state, ordered from least to most in need of attention.
+#[derive(Serialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+enum State {
+    NotLoaded,
+    Loaded,
+    Loading,
+    Failed,
+}
+
+impl State {
+    fn of_load(state: &LoadState) -> Self {
+        match state {
+            LoadState::NotLoaded => Self::NotLoaded,
+            LoadState::Loading => Self::Loading,
+            LoadState::Loaded => Self::Loaded,
+            LoadState::Failed(_) => Self::Failed,
+        }
+    }
+
+    fn of_dependencies(state: &RecursiveDependencyLoadState) -> Self {
+        match state {
+            RecursiveDependencyLoadState::NotLoaded => Self::NotLoaded,
+            RecursiveDependencyLoadState::Loading => Self::Loading,
+            RecursiveDependencyLoadState::Loaded => Self::Loaded,
+            RecursiveDependencyLoadState::Failed(_) => Self::Failed,
+        }
+    }
+}
+
+/// What the server knows about one id, cheap enough to ask for every alias.
+struct Probe {
+    own: LoadState,
+    recursive: RecursiveDependencyLoadState,
+}
+
+impl Probe {
+    fn of(server: &AssetServer, id: UntypedAssetId) -> Self {
+        let (own, _, recursive) = server.get_load_states(id).unwrap_or((
+            LoadState::NotLoaded,
+            DependencyLoadState::NotLoaded,
+            RecursiveDependencyLoadState::NotLoaded,
+        ));
+        Self { own, recursive }
+    }
+
+    /// The asset's own state, raised to `loading` or `failed` by what it depends on.
+    fn effective(&self) -> State {
+        let own = State::of_load(&self.own);
+        let dependencies = State::of_dependencies(&self.recursive);
+        if own == State::Loaded {
+            own.max(dependencies)
+        } else {
+            own
+        }
+    }
+}
+
 /// One handle the asset server knows, or knew until it dropped.
 #[derive(Serialize, JsonSchema, Clone, Debug)]
 struct HandleInfo {
-    /// `alias` for `alias://<alias>`, `path` for the physical path.
+    /// `alias` for an `alias://` path, `path` for a physical one.
     via: &'static str,
+    /// The asset path, label included.
+    path: String,
     /// The asset type's path, when registered.
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     type_path: Option<String>,
-    /// `not_loaded`, `loading`, `loaded` or `failed`.
-    state: &'static str,
+    /// The asset's own load state.
+    state: State,
     /// The state of everything it depends on, recursively.
-    dependencies: &'static str,
+    dependencies: State,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    /// Why a dependency failed, when one did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dependency_error: Option<String>,
     /// The last logged failure for this path, when it has loaded since.
     #[serde(skip_serializing_if = "Option::is_none")]
     previous_error: Option<String>,
@@ -136,21 +220,67 @@ struct HandleInfo {
     dropped: bool,
 }
 
-fn load_state_name(state: &LoadState) -> &'static str {
-    match state {
-        LoadState::NotLoaded => "not_loaded",
-        LoadState::Loading => "loading",
-        LoadState::Loaded => "loaded",
-        LoadState::Failed(_) => "failed",
+impl HandleInfo {
+    /// What the server says about `id`, with the failure log's last word on `path`.
+    fn live(
+        world: &World,
+        probe: &Probe,
+        id: UntypedAssetId,
+        via: &'static str,
+        path: &AssetPath,
+        logged: Option<&LoggedFailure>,
+    ) -> Self {
+        let error = match &probe.own {
+            LoadState::Failed(error) => Some(error_text(error)),
+            _ => None,
+        };
+        // Bevy copies an asset's own failure into its dependency states too.
+        let dependency_error = match &probe.recursive {
+            RecursiveDependencyLoadState::Failed(cause) if error.is_none() => {
+                Some(error_text(cause))
+            }
+            _ => None,
+        };
+        Self {
+            via,
+            path: path.to_string(),
+            type_path: type_path(world, id),
+            state: State::of_load(&probe.own),
+            dependencies: State::of_dependencies(&probe.recursive),
+            previous_error: logged
+                .filter(|_| error.is_none())
+                .map(|failure| failure.error.clone()),
+            error,
+            dependency_error,
+            dropped: false,
+        }
+    }
+
+    /// A handle that failed and dropped, rebuilt from the failure log.
+    fn dropped(via: &'static str, failure: &LoggedFailure) -> Self {
+        Self {
+            via,
+            path: failure.path.to_string(),
+            type_path: None,
+            state: State::Failed,
+            dependencies: State::NotLoaded,
+            error: Some(failure.error.clone()),
+            dependency_error: None,
+            previous_error: None,
+            dropped: true,
+        }
     }
 }
 
-fn dependency_state_name(state: &RecursiveDependencyLoadState) -> &'static str {
-    match state {
-        RecursiveDependencyLoadState::NotLoaded => "not_loaded",
-        RecursiveDependencyLoadState::Loading => "loading",
-        RecursiveDependencyLoadState::Loaded => "loaded",
-        RecursiveDependencyLoadState::Failed(_) => "failed",
+/// `alias` for the alias source, `path` for the rest.
+fn via(path: &AssetPath) -> &'static str {
+    match path.source() {
+        bevy::asset::io::AssetSourceId::Name(name)
+            if name.as_ref() == ename_asset_alias::ALIAS_SOURCE =>
+        {
+            "alias"
+        }
+        _ => "path",
     }
 }
 
@@ -166,55 +296,6 @@ fn type_path(world: &World, id: UntypedAssetId) -> Option<String> {
     )
 }
 
-/// What the server says about `id`, with the failure log's last word on `path`.
-fn handle_info(
-    world: &World,
-    id: UntypedAssetId,
-    via: &'static str,
-    path: &AssetPath,
-) -> HandleInfo {
-    let server = world.resource::<AssetServer>();
-    let (state, _, dependencies) = server.get_load_states(id).unwrap_or((
-        LoadState::NotLoaded,
-        bevy::asset::DependencyLoadState::NotLoaded,
-        RecursiveDependencyLoadState::NotLoaded,
-    ));
-    let error = match &state {
-        LoadState::Failed(error) => Some(error_text(error)),
-        _ => None,
-    };
-    let previous_error = match error {
-        Some(_) => None,
-        None => world
-            .resource::<AssetLoadFailures>()
-            .latest(path)
-            .map(|failure| failure.error.clone()),
-    };
-    HandleInfo {
-        via,
-        type_path: type_path(world, id),
-        state: load_state_name(&state),
-        dependencies: dependency_state_name(&dependencies),
-        error,
-        previous_error,
-        dropped: false,
-    }
-}
-
-/// A handle that failed and dropped, rebuilt from the failure log.
-fn dropped_handle(world: &World, via: &'static str, path: &AssetPath) -> Option<HandleInfo> {
-    let failure = world.resource::<AssetLoadFailures>().latest(path)?;
-    Some(HandleInfo {
-        via,
-        type_path: None,
-        state: "failed",
-        dependencies: "not_loaded",
-        error: Some(failure.error.clone()),
-        previous_error: None,
-        dropped: true,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::error_text;
@@ -223,6 +304,11 @@ mod tests {
     fn error_text_drops_an_appended_backtrace() {
         let text = "Failed to load 'a': Expected comma\n   0: <x as y>::from\n             at a.rs:1:2\n  12: poll\nnote: Some \"noisy\" backtrace lines have been filtered out.\n";
         assert_eq!(error_text(&text), "Failed to load 'a': Expected comma");
-        assert_eq!(error_text(&"two\nlines"), "two\nlines");
+    }
+
+    #[test]
+    fn error_text_keeps_numbered_lines_of_the_error_itself() {
+        let text = "Model validation failed:\n  1: missing NORMAL\n  2: invalid material";
+        assert_eq!(error_text(&text), text);
     }
 }

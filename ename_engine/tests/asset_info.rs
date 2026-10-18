@@ -90,28 +90,66 @@ impl AssetLoader for NoteLoader {
     }
 }
 
+/// Loads successfully and depends on `bad.note`, which does not.
+#[derive(Asset, TypePath)]
+struct Parent {
+    #[dependency]
+    child: Handle<Note>,
+}
+
+#[derive(TypePath)]
+struct ParentLoader;
+
+impl AssetLoader for ParentLoader {
+    type Asset = Parent;
+    type Settings = ();
+    type Error = std::io::Error;
+
+    async fn load(
+        &self,
+        _reader: &mut dyn Reader,
+        _settings: &(),
+        load_context: &mut LoadContext<'_>,
+    ) -> Result<Parent, std::io::Error> {
+        Ok(Parent {
+            child: load_context.load("bad.note"),
+        })
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["parent"]
+    }
+}
+
 fn test_app() -> App {
+    test_app_at(std::path::Path::new(FIXTURES))
+}
+
+fn test_app_at(root: &std::path::Path) -> App {
     let mut app = App::new();
     app.add_plugins((
         MinimalPlugins,
         AssetPlugin {
-            file_path: FIXTURES.into(),
+            file_path: root.to_string_lossy().into_owned(),
             ..default()
         },
         CommandPlugin,
         AssetInfoPlugin,
     ))
     .init_asset::<Note>()
+    .init_asset::<Parent>()
     .init_asset::<Mesh>()
     .init_asset::<Image>()
     .register_asset_reflect::<Mesh>()
-    .register_asset_loader(NoteLoader);
+    .register_asset_loader(NoteLoader)
+    .register_asset_loader(ParentLoader);
     let mut index = ContentIndex::default();
     for (alias, path) in [
         ("test::good", "good.note"),
         ("test::bad", "bad.note"),
         ("test::shape", "shape.meshy"),
         ("test::unused", "unused.note"),
+        ("test::parent", "p.parent"),
     ] {
         index.insert(alias, path).unwrap();
     }
@@ -179,7 +217,7 @@ fn asset_list_reports_loaded_failed_labeled_and_unrequested_assets() {
     let listed = call(&mut app, "asset.list", json!({"state": "any"}));
     assert_eq!(
         listed["counts"],
-        json!({"aliases": 4, "not_requested": 1, "loading": 0, "loaded": 2, "failed": 1}),
+        json!({"aliases": 5, "not_requested": 2, "loading": 0, "loaded": 2, "failed": 1}),
         "{listed:#}"
     );
 
@@ -203,9 +241,9 @@ fn asset_list_reports_loaded_failed_labeled_and_unrequested_assets() {
     );
 
     assert_eq!(asset(&listed, "test::unused")["state"], "not_requested");
-    let outside = listed["failures_outside_index"].as_array().unwrap();
-    assert_eq!(outside.len(), 1, "{listed:#}");
-    assert_eq!(outside[0]["path"], "missing.note");
+    let outside = &listed["failures_outside_index"];
+    assert_eq!(outside["count"], 1, "{listed:#}");
+    assert_eq!(outside["items"][0]["path"], "missing.note");
 
     // The default lists only requested assets; `contains` and `limit` narrow further.
     let requested = call(&mut app, "asset.list", json!({}));
@@ -217,6 +255,140 @@ fn asset_list_reports_loaded_failed_labeled_and_unrequested_assets() {
     let limited = call(&mut app, "asset.list", json!({"limit": 1}));
     assert_eq!(limited["assets"].as_array().unwrap().len(), 1);
     assert_eq!(limited["truncated"], true);
+}
+
+#[test]
+fn a_failed_label_is_listed_under_its_alias_kept_or_dropped() {
+    let mut app = test_app();
+    let server = app.world().resource::<AssetServer>().clone();
+    // The usual way a glTF fails: through a label, with no handle on the file itself.
+    let missing: Handle<Mesh> = server.load("shape.meshy#Missing");
+    update_until(&mut app, |app| settled(app, &missing));
+    app.update();
+    let failed_label = |app: &mut App| {
+        let listed = call(app, "asset.list", json!({"state": "failed"}));
+        let shape = asset(&listed, "test::shape").clone();
+        let handle = shape["handles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|handle| handle["path"] == "shape.meshy#Missing")
+            .cloned()
+            .unwrap_or_else(|| panic!("no labeled handle in {shape:#}"));
+        assert!(handle["error"].is_string(), "{handle:#}");
+        handle
+    };
+    assert!(failed_label(&mut app).get("dropped").is_none());
+    drop(missing);
+    for _ in 0..10 {
+        app.update();
+    }
+    assert_eq!(failed_label(&mut app)["dropped"], true);
+}
+
+#[test]
+fn an_unknown_alias_failure_is_outside_the_index() {
+    let mut app = test_app();
+    let server = app.world().resource::<AssetServer>().clone();
+    // A typo: `alias://` paths of aliases the index does not hold belong to no entry.
+    let _ = server.load::<Note>("alias://test::typo");
+    let _ = server.load::<Note>("missing.note");
+    for _ in 0..20 {
+        app.update();
+    }
+    let listed = call(&mut app, "asset.list", json!({"limit": 1}));
+    let outside = &listed["failures_outside_index"];
+    assert_eq!(outside["count"], 2, "{listed:#}");
+    assert_eq!(outside["truncated"], true);
+    let all = call(&mut app, "asset.list", json!({}));
+    let paths: Vec<&str> = all["failures_outside_index"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|failure| failure["path"].as_str().unwrap())
+        .collect();
+    assert!(paths.contains(&"alias://test::typo"), "{paths:?}");
+}
+
+#[test]
+fn a_recovered_failure_is_history_once_its_handle_drops() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("flip.note"), "(text: ").unwrap();
+    let mut app = test_app_at(root.path());
+    app.world_mut()
+        .resource_mut::<ContentIndex>()
+        .insert("test::flip", "flip.note")
+        .unwrap();
+    let server = app.world().resource::<AssetServer>().clone();
+    let flip: Handle<Note> = server.load("flip.note");
+    update_until(&mut app, |app| settled(app, &flip));
+    std::fs::write(root.path().join("flip.note"), "(text: \"fixed\")").unwrap();
+    server.reload("flip.note");
+    update_until(&mut app, |app| {
+        matches!(
+            app.world().resource::<AssetServer>().get_load_state(&flip),
+            Some(LoadState::Loaded)
+        )
+    });
+    app.update();
+    let listed = call(&mut app, "asset.list", json!({"contains": "flip"}));
+    let entry = asset(&listed, "test::flip");
+    assert_eq!(entry["state"], "loaded", "{entry:#}");
+    assert!(
+        entry["handles"][0]["previous_error"].is_string(),
+        "{entry:#}"
+    );
+
+    drop(flip);
+    for _ in 0..10 {
+        app.update();
+    }
+    let listed = call(
+        &mut app,
+        "asset.list",
+        json!({"state": "any", "contains": "flip"}),
+    );
+    let entry = asset(&listed, "test::flip");
+    assert_eq!(entry["state"], "not_requested", "{entry:#}");
+    assert_eq!(entry["handles"], json!([]));
+}
+
+#[test]
+fn a_loaded_asset_with_a_failed_dependency_counts_as_failed() {
+    let mut app = test_app();
+    let server = app.world().resource::<AssetServer>().clone();
+    let parent: Handle<Parent> = server.load("p.parent");
+    update_until(&mut app, |app| {
+        matches!(
+            app.world()
+                .resource::<AssetServer>()
+                .get_recursive_dependency_load_state(&parent),
+            Some(bevy::asset::RecursiveDependencyLoadState::Failed(_))
+        )
+    });
+    let listed = call(&mut app, "asset.list", json!({"state": "failed"}));
+    let entry = asset(&listed, "test::parent");
+    let handle = &entry["handles"][0];
+    assert_eq!(handle["state"], "loaded", "{entry:#}");
+    assert_eq!(handle["dependencies"], "failed");
+    let error = handle["dependency_error"].as_str().unwrap();
+    assert!(error.contains("bad.note"), "{error}");
+}
+
+#[test]
+fn aliases_sharing_a_file_share_its_labeled_assets() {
+    let mut app = test_app();
+    app.world_mut()
+        .resource_mut::<ContentIndex>()
+        .insert("test::shape_again", "shape.meshy")
+        .unwrap();
+    let server = app.world().resource::<AssetServer>().clone();
+    let mesh: Handle<Mesh> = server.load("shape.meshy#Mesh0");
+    update_until(&mut app, |app| settled(app, &mesh));
+    let listed = call(&mut app, "asset.list", json!({"contains": "shape"}));
+    for alias in ["test::shape", "test::shape_again"] {
+        assert_eq!(asset(&listed, alias)["labeled"]["loaded"], 1, "{listed:#}");
+    }
 }
 
 #[test]
@@ -419,4 +591,33 @@ fn asset_inspect_summarizes_meshes_images_and_errors() {
         .err()
         .unwrap();
     assert_eq!(err.kind, "not_loaded");
+}
+
+#[test]
+fn asset_inspect_refuses_malformed_paths_and_reads_dropped_failures_from_the_log() {
+    let mut app = test_app();
+    let server = app.world().resource::<AssetServer>().clone();
+    let bad: Handle<Note> = server.load("bad.note");
+    update_until(&mut app, |app| settled(app, &bad));
+    drop(bad);
+    for _ in 0..10 {
+        app.update();
+    }
+    let inspected = call(&mut app, "asset.inspect", json!({"asset": "test::bad"}));
+    let handle = &inspected["handles"][0];
+    assert_eq!(handle["dropped"], true, "{inspected:#}");
+    assert_eq!(handle["state"], "failed");
+
+    for malformed in ["alias://://x", "://x"] {
+        let caller = Caller {
+            scope: CommandScope::Safe,
+            cwd: None,
+        };
+        let err = app
+            .world_mut()
+            .call_command("asset.inspect", json!({"asset": malformed}), caller)
+            .err()
+            .unwrap_or_else(|| panic!("{malformed} was accepted"));
+        assert_eq!(err.kind, "invalid_params", "{malformed}: {err}");
+    }
 }

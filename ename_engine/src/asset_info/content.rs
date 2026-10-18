@@ -8,7 +8,7 @@ use ename_asset_content::{ContentIndex, ContentReport, ContentScanSettings};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{limit, list::asset_path_string, not_scanned};
+use super::{Items, limit, list::asset_path_string, not_scanned};
 use crate::command::{Call, CommandError};
 
 #[derive(Deserialize, JsonSchema)]
@@ -54,25 +54,6 @@ struct SearchPath {
 struct LoadOrderFile {
     path: String,
     exists: bool,
-}
-
-/// A list cut to `limit`, with its full length.
-#[derive(Serialize, JsonSchema)]
-struct Items<T> {
-    count: usize,
-    truncated: bool,
-    items: Vec<T>,
-}
-
-impl<T> Items<T> {
-    fn of(all: impl ExactSizeIterator<Item = T>, limit: usize) -> Self {
-        let count = all.len();
-        Self {
-            count,
-            truncated: count > limit,
-            items: all.take(limit).collect(),
-        }
-    }
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -230,18 +211,25 @@ pub(super) fn resolve(
     };
     let path = path.map(|path| asset_path_string(Path::new(&path)));
     let contains = contains.map(|text| text.to_lowercase());
-    let mut entries: Vec<(&str, String)> = index
-        .iter()
-        .map(|(alias, path)| (alias, asset_path_string(path)))
-        .filter(|(entry_alias, entry_path)| {
-            alias.as_deref().is_none_or(|alias| alias == *entry_alias)
-                && path.as_deref().is_none_or(|path| path == entry_path)
-                && contains.as_deref().is_none_or(|text| {
-                    entry_alias.to_lowercase().contains(text)
-                        || entry_path.to_lowercase().contains(text)
-                })
-        })
-        .collect();
+    let mut entries: Vec<(&str, String)> = match &alias {
+        // One lookup, not a scan of the whole index.
+        Some(alias) => index
+            .resolve(alias)
+            .map(|path| (alias.as_str(), asset_path_string(path)))
+            .into_iter()
+            .collect(),
+        None => index
+            .iter()
+            .map(|(alias, path)| (alias, asset_path_string(path)))
+            .filter(|(entry_alias, entry_path)| {
+                path.as_deref().is_none_or(|path| path == entry_path)
+                    && contains.as_deref().is_none_or(|text| {
+                        entry_alias.to_lowercase().contains(text)
+                            || entry_path.to_lowercase().contains(text)
+                    })
+            })
+            .collect(),
+    };
     entries.sort();
     let truncated = entries.len() > limit;
     let packages: Vec<(PathBuf, String)> = world
@@ -259,9 +247,11 @@ pub(super) fn resolve(
             .into_iter()
             .take(limit)
             .map(|(alias, path)| ResolvedEntry {
+                // The deepest root wins, should one package root sit inside another.
                 package: packages
                     .iter()
-                    .find(|(root, _)| Path::new(&path).starts_with(root))
+                    .filter(|(root, _)| Path::new(&path).starts_with(root))
+                    .max_by_key(|(root, _)| root.components().count())
                     .map(|(_, id)| id.clone()),
                 alias: alias.to_owned(),
                 path,
