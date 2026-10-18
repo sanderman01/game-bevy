@@ -2,10 +2,13 @@
 
 Bevy and the kitchen sink.
 
-`ename` is a game engine built as a set of Rust crates on top of
-[Bevy](https://bevyengine.org). Bevy gives you an ECS, a renderer and a plugin system,
-and stops there on purpose. This project attemts to fill in the layer above it. An integrated and opinionated pile
-covering:
+`ename` is an opinionated game engine distribution: a set of Rust crates on top of
+[Bevy](https://bevyengine.org). It relates to Bevy the way Ubuntu relates to Linux, or LazyVim
+to Neovim.
+
+Bevy is the framework. It owns the main loop, the ECS and the plugin model, and it stays minimal
+on purpose. `ename` does not change that model. It adds pre-wired plugins, tools and a content
+pipeline inside it, picking the integrations for you:
 
 - An editor (`egui` for now, while we wait for the bevy editor)
 - In-game log event buffer and console with filtering
@@ -14,11 +17,10 @@ covering:
 - A BRP socket and an MCP sidecar, so a coding agent can inspect and drive the running game
 - `big_space` floating origin and `avian3d` physics integration
 
-A game project depends on the crates it wants and starts writing gameplay."
+A game project depends on the crates it wants and starts writing gameplay.
 
-This project **does not intend** to replace or supplant the Bevy project or bevy crates.
-As Bevy adds and improves functionality, various functionality inside this project may be replaced by
-standard Bevy equivalents, and this project should become less neccesary over time.
+This project **does not intend** to replace or supplant the Bevy project or Bevy crates.
+As Bevy adds the same functionality, the parts here give way to the standard Bevy equivalents.
 
 This project also serves as a testbed for some of my ideas e.g. asset alias over path or uuid.
 
