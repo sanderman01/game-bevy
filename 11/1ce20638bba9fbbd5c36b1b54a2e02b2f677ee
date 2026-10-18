@@ -1,0 +1,75 @@
+ename_engine/src/debug_switch/mod.rs
+  s_36d39a2464f61e::t_e0cdf75c6036b1 1-64
+ename_engine/src/debug_switch/keys.rs
+  s_36d39a2464f61e::t_782bfe6cb2399c 1-38,46-48,53-57
+  s_36d39a2464f61e::t_6c9c57d993284f 39-45,49-50
+  s_36d39a2464f61e::t_f69dbd5d733935 51-52
+ename_engine/src/debug_switch/registry.rs
+  s_36d39a2464f61e::t_75f737f242922f 1-12,17-756
+  s_36d39a2464f61e::t_d95f67295b9cb2 13-16
+  s_36d39a2464f61e::t_c264180261bdd1 757-764
+ename_engine/src/lib.rs
+  s_36d39a2464f61e::t_e4d25b137d3c26 17,178
+  s_36d39a2464f61e::t_613f6c82953da5 18,179
+ename_engine/src/debug_switch/tests.rs
+  s_36d39a2464f61e::t_67c3208b27efe9 1-432
+  s_36d39a2464f61e::t_6dfac273d6f73b 433-464
+  s_36d39a2464f61e::t_c8cb5231be4821 465-511
+  s_36d39a2464f61e::t_f7a94e09ce4870 512-553
+ename_engine/src/debug_switch/command.rs
+  s_36d39a2464f61e::t_aea45cdc8c8a00 1-163,174-284,286-287,292-382
+  s_36d39a2464f61e::t_1724f2396cb7be 383-385
+  s_36d39a2464f61e::t_4fc3d71fddbb48 164-173
+  s_36d39a2464f61e::t_479b546bb177a8 285,288-291
+ename_editor/src/debug_switches.rs
+  s_36d39a2464f61e::t_bf1dfcd960957b 1-13,19-20
+  s_36d39a2464f61e::t_2ea63c06641aa9 14-18
+ename_engine/src/debug_overlay.rs
+  s_36d39a2464f61e::t_4491dea8b35167 31,34-52
+  s_36d39a2464f61e::t_b4587de615aadd 8-9
+ename_editor/src/lib.rs
+  s_36d39a2464f61e::t_4ecfa13c1707f7 18,76
+  s_36d39a2464f61e::t_613f6c82953da5 19,77
+docs/design.md
+  s_36d39a2464f61e::t_0b2e91d82bc678 55-58
+ename_editor/src/menu.rs
+  s_36d39a2464f61e::t_2dc3d27d87fe11 11
+  s_36d39a2464f61e::t_9d07e44fc7c97e 62-88,90-98,100-101
+  s_36d39a2464f61e::t_10f67cdf983c6e 103,105
+ename_editor/src/camera.rs
+  s_36d39a2464f61e::t_a73acb32ff13ea 14,16
+  s_36d39a2464f61e::t_35c23e94f72911 228-237,242-260
+  s_36d39a2464f61e::t_7c4a16e0e5c7b9 261
+ename_editor/src/diagnostics.rs
+  s_36d39a2464f61e::t_613f6c82953da5 1-15
+ename_engine/src/diagnostics.rs
+  s_36d39a2464f61e::t_0ab241adf90790 1-14,16-36,39-65,69-86
+  s_36d39a2464f61e::t_8758d381d0da69 37-38
+  s_36d39a2464f61e::t_24f997f589e579 15,66-68
+docs/code-style.md
+  s_36d39a2464f61e::t_fb29eba297a1b0 236-244
+  s_36d39a2464f61e::t_8aee7f9e439758 259
+AGENTS.md
+  s_36d39a2464f61e::t_e2a218d2e45978 29-30
+docs/design/agent-tooling.md
+  s_36d39a2464f61e::t_d9c920e4c9ee5c 190-233
+docs/agent-tools.md
+  s_36d39a2464f61e::t_0fef32220c367f 704-725
+  s_36d39a2464f61e::t_c375d73efe7f6d 195-196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "111ce20638bba9fbbd5c36b1b54a2e02b2f677ee",
+  "prompts": {},
+  "sessions": {
+    "s_36d39a2464f61e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "06788778-3756-4e70-98fa-9e678be2c257",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
