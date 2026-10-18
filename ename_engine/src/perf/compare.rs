@@ -2,8 +2,9 @@
 //!
 //! Each step runs its arm's commands through `call_command` with the caller's scope, waits for
 //! the ones that start jobs, then samples with a child [`Sampler`], which settles again first.
-//! The `restore` commands run at the end however it ends: done, failed or cancelled. Restore
-//! steps that start jobs are started, not awaited.
+//! The `restore` commands run at the end however it ends: done, failed or cancelled. A cancel
+//! while an arm's job runs cancels that job and waits for it to end first, since its own cleanup
+//! could undo `restore`. Restore steps that start jobs are started, not awaited.
 
 use std::collections::BTreeMap;
 
@@ -122,7 +123,7 @@ struct CompareProgress {
     step: usize,
     of: usize,
     arm: &'static str,
-    /// "commands" or "sampling".
+    /// "commands", "sampling" or "cancelling" (waiting for an arm's job to end).
     phase: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     sample: Option<Progress>,
@@ -135,6 +136,8 @@ enum State {
         waiting: Option<JobId>,
     },
     Sampling(Entity),
+    /// Cancelled while an arm's job ran: `restore` waits until that job has ended.
+    Draining(JobId),
 }
 
 #[derive(Component)]
@@ -255,19 +258,19 @@ fn drive_compares(world: &mut World) {
             continue;
         }
         let arm = compare.order[compare.step];
-        let sample = match compare.state {
-            State::Sampling(child) => world.get::<Sampler>(child).map(|s| s.progress().clone()),
-            State::Commands { .. } => None,
+        let (phase, sample) = match compare.state {
+            State::Sampling(child) => (
+                "sampling",
+                world.get::<Sampler>(child).map(|s| s.progress().clone()),
+            ),
+            State::Commands { .. } => ("commands", None),
+            State::Draining(_) => ("cancelling", None),
         };
         let progress = CompareProgress {
             step: compare.step + 1,
             of: compare.order.len(),
             arm: arm.name(),
-            phase: if sample.is_some() {
-                "sampling"
-            } else {
-                "commands"
-            },
+            phase,
             sample,
         };
         world
@@ -278,7 +281,32 @@ fn drive_compares(world: &mut World) {
 }
 
 fn advance(world: &mut World, compare: &mut CompareJob) -> Outcome {
+    let scope = compare.caller.scope;
+    let running = |world: &World, job: &JobId| {
+        world
+            .resource::<Jobs>()
+            .status(job, scope)
+            .is_some_and(|status| status.state == "running")
+    };
+    if let State::Draining(job) = &compare.state {
+        return if running(world, job) {
+            Outcome::Running
+        } else {
+            Outcome::Cancelled
+        };
+    }
     if compare.cancel {
+        if let State::Commands {
+            waiting: Some(job), ..
+        } = &compare.state
+        {
+            let job = job.clone();
+            let _ = world.cancel_job(&job, scope);
+            if running(world, &job) {
+                compare.state = State::Draining(job);
+                return Outcome::Running;
+            }
+        }
         return Outcome::Cancelled;
     }
     let arm = compare.order[compare.step];
@@ -357,6 +385,7 @@ fn advance(world: &mut World, compare: &mut CompareJob) -> Outcome {
             };
             Outcome::Running
         }
+        State::Draining(_) => unreachable!("a draining compare returns above"),
     }
 }
 
@@ -382,7 +411,7 @@ fn end(world: &mut World, entity: Entity, mut compare: CompareJob, outcome: Outc
                 child.despawn();
             }
         }
-        State::Commands { .. } => {}
+        State::Commands { .. } | State::Draining(_) => {}
     }
     let mut warnings = Warnings::default();
     for step in std::mem::take(&mut compare.restore) {

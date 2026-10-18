@@ -877,7 +877,9 @@ faster.
 
 `restore` runs once at the end, also when a step fails or the job is cancelled. Its job commands
 are started, not awaited, and a failed one adds a `restore_failed` warning. A failing arm step
-stops the job and the error names the step. Cancelling also cancels an arm's job still running.
+stops the job and the error names the step. Cancelling also cancels an arm's job still running
+and waits for it to end (progress `phase: "cancelling"`) before `restore` runs; the compare stays
+running, and `perf_busy` holds, until then.
 
 ### The statistics panel
 
