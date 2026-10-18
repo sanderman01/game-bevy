@@ -18,4 +18,5 @@ pub mod fix;
 pub mod list;
 pub mod mv;
 pub mod policy;
+pub mod read_asset;
 mod scan;
