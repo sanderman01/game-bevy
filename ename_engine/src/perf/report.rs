@@ -149,10 +149,7 @@ impl Sampled {
         context.refresh_ms = context.refresh_ms.or(other.refresh_ms);
         context.gpu_available &= other.gpu_available;
         // The busiest step's load, since that is the one that may have disturbed the arm.
-        let cores = |load: &Option<Load>| load.as_ref().map_or(-1.0, |l| l.other_cpu_cores);
-        if cores(&other.load) > cores(&context.load) {
-            context.load = other.load;
-        }
+        context.load = Load::busiest(context.load.take().into_iter().chain(other.load));
         context.warnings.extend(&other.warnings);
         context.reruns.extend(other.reruns);
     }
@@ -255,7 +252,7 @@ pub(crate) struct SampleResult {
     pub hitches: HitchesOut,
     /// Hitches the other series dropped.
     pub hitch_counts: HitchCounts,
-    /// Other processes' use of the machine over the sample.
+    /// Other processes' use of the machine over the busiest sample window.
     pub load: Option<Load>,
     /// Runs dropped and sampled again because the view changed.
     #[serde(skip_serializing_if = "Vec::is_empty")]

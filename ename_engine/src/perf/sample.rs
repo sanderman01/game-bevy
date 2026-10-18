@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     PerfFrame, PerfOverlay, PerfViewLabel,
     gpu_timer::{GpuTiming, TimestampSupport, Timestamps, ViewTime, view_label},
-    load::LoadSnapshot,
+    load::{Load, LoadSnapshot},
     passes::{PassRecords, PassWarning},
     records::{PerfCounters, PerfRecordAge, PerfRecords},
     report::{
@@ -214,8 +214,10 @@ pub(crate) struct Sampler {
     /// The run that was already sampled again after a view change.
     rerun: Option<usize>,
     stop: bool,
-    first_load: Option<LoadStamp>,
+    /// The latest load snapshot: before the first window, then after each one.
     last_load: Option<LoadStamp>,
+    /// Other processes' load over each window, from the snapshots around it.
+    loads: Vec<Load>,
     load_task: Option<Task<LoadStamp>>,
     /// Records are kept from here on; the start of the current phase.
     anchor: Instant,
@@ -284,8 +286,8 @@ impl Sampler {
             },
             rerun: None,
             stop: false,
-            first_load: None,
             last_load: None,
+            loads: Vec::new(),
             load_task: None,
             anchor: Instant::now(),
             progress: Progress {
@@ -347,11 +349,12 @@ impl Sampler {
             return;
         };
         self.load_task = None;
-        if self.first_load.is_none() {
-            self.first_load = Some(stamp);
-        } else {
-            self.last_load = Some(stamp);
+        if let Some((start, before)) = &self.last_load {
+            let (end, after) = &stamp;
+            let window = end.saturating_duration_since(*start);
+            self.loads.push(LoadSnapshot::diff(before, after, window));
         }
+        self.last_load = Some(stamp);
     }
 
     fn finish(&mut self, outcome: Result<(), CommandError>) {
@@ -379,17 +382,17 @@ impl Sampler {
 
     fn sampled(&mut self) -> Sampled {
         let mut context = std::mem::take(&mut self.context);
-        if let (Some((start, before)), Some((end, after))) = (&self.first_load, &self.last_load) {
-            let load = LoadSnapshot::diff(before, after, end.saturating_duration_since(*start));
+        if let Some(load) = Load::busiest(std::mem::take(&mut self.loads)) {
             if load.machine_busy {
-                let gpu = load
-                    .gpu_others_ms
-                    .map(|ms| format!(" and {ms} ms of GPU time"))
-                    .unwrap_or_default();
+                let gpu = match (load.gpu_others_ms, load.gpu_others_measured_ms) {
+                    (Some(ms), _) => format!(" and {ms} ms of GPU time"),
+                    (None, Some(ms)) => format!(" and at least {ms} ms of GPU time"),
+                    (None, None) => String::new(),
+                };
                 context.warnings.add(
                     "machine_busy",
                     format!(
-                        "other processes used {} cores{gpu} during the sample; see `load.top`",
+                        "other processes used {} cores{gpu} during a sample window; see `load.top`",
                         load.other_cpu_cores
                     ),
                 );
@@ -703,10 +706,10 @@ fn drive(
         }
         Phase::Warmup { until } => {
             let until = *until;
-            if sampler.first_load.is_none() && sampler.load_task.is_none() {
+            if sampler.last_load.is_none() && sampler.load_task.is_none() {
                 sampler.start_load_snapshot();
             }
-            if frame + 1 >= until && sampler.first_load.is_some() {
+            if frame + 1 >= until && sampler.last_load.is_some() {
                 sampler.open_window(frame);
             }
         }

@@ -781,15 +781,17 @@ one run. A difference smaller than `noise` means nothing.
 | `counters` | `entity_count` and every registered counter. A counter that changed during the sample reads `{median, min, max}`: it was not settled. |
 | `hitches` | `frame_ms` frames above twice their window's median: `count`, `threshold_ms`, `worst_ms`, `at_seconds`. Statistics leave them out. `hitch_counts` gives the other series' counts. |
 | `bound` | What the frame time waits on, see below. |
-| `load` | Other processes over the sample: `loadavg_1m`, `cpus`, `other_cpu_cores`, `top` (above 0.25 cores, children of the game marked `child`), `gpu_others_ms` and `gpu_top`. |
+| `load` | Other processes over the busiest window: `loadavg_1m`, `cpus`, `other_cpu_cores`, `top` (above 0.25 cores, children of the game marked `child`), `gpu_others_ms`, `gpu_others_measured_ms` and `gpu_top`. |
 | `window`, `focused`, `occluded`, `present_mode`, `refresh_ms` | The primary window's physical size and state, and the monitor's refresh interval. |
 | `gpu_frames_missing`, `gpu_frames_skipped` | Frames whose GPU times never came back, or were not recorded because every timer slot was in flight. |
 | `reruns` | Runs dropped and sampled again because the view changed mid-window. |
 | `warnings` | `{kind, message}` each; see below. |
 
 Other processes' GPU time comes from the kernel's DRM fdinfo on Linux. On Windows and macOS
-`gpu_others_ms` is `null`, and `loadavg_1m` is `null` on Windows. A second editor left running
-shows up in `gpu_top`.
+`gpu_others_ms` is `null`, and `loadavg_1m` is `null` on Windows. On Linux it is also `null` when
+some process's driver reports no usage (its `gpu_top` entry has `gpu_ms: null`); then
+`gpu_others_measured_ms` holds the measured processes' time, a lower bound. A second editor left
+running shows up in `gpu_top`.
 
 `bound` is a heuristic, first match wins: `vsync` when `vsync_capped` is warned; `gpu` when the
 `gpu_ms` median is at least 90 % of the frame median; `cpu_main` when `cpu_main_ms` is; `render`
@@ -799,7 +801,7 @@ only `cpu_main` can be named.
 | Warning | Means |
 | --- | --- |
 | `vsync_capped` | The frame median sits within 3 % of a multiple of the refresh interval, under any present mode (a compositor can cap a window too). Frame time cannot show a change; read the CPU and GPU series, or pass `uncapped: true`. |
-| `machine_busy` | Other processes used over one core on average, or GPU time above 5 % of the window. |
+| `machine_busy` | In some window, other processes used over one core on average, or GPU time above 5 % of the window. |
 | `not_settled` | Settling timed out; sampled anyway, with what was busy. |
 | `not_steady` | The frame time was still drifting after 5 s. |
 | `hitchy` | Over 5 % of frames were hitches. The hitches are the finding. |

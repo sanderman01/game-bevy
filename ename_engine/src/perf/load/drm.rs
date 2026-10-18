@@ -82,9 +82,10 @@ struct Client {
 }
 
 impl GpuSnapshot {
-    /// Reads every process's DRM fds. Processes we may not inspect are skipped.
+    /// Reads every process's DRM fds. Processes we may not inspect are skipped; `None` when
+    /// `/proc` cannot be listed.
     pub(super) fn take(own_pid: u32) -> Option<Self> {
-        Some(Self::from_fds(read_fds(), own_pid))
+        Some(Self::from_fds(read_fds()?, own_pid))
     }
 
     /// Dedupes clients across fds and processes, and drops the ones `own_pid` holds.
@@ -124,7 +125,8 @@ impl GpuSnapshot {
     }
 
     /// Engine time per pid between the two snapshots. A client new in `after` counts its engine
-    /// time from zero; a counter that went down counts 0; cycles need both snapshots.
+    /// time from zero; a counter that went down counts 0; cycles need both snapshots, so a client
+    /// new in `after` with cycles is also unmeasured.
     pub(crate) fn diff(before: &Self, after: &Self, window: Duration) -> GpuUse {
         let window_ms = window.as_secs_f64() * 1000.0;
         let mut usage = GpuUse {
@@ -153,6 +155,13 @@ impl GpuSnapshot {
                     Some((busy as f64 / total as f64).min(1.0) * window_ms)
                 })
                 .sum();
+            // Cycles without a `before` to compare with: its use is unknown, not zero.
+            let cycles_unknown = client.info.cycles.keys().any(|engine| {
+                previous.is_none_or(|previous| !previous.cycles.contains_key(engine))
+            });
+            if cycles_unknown {
+                usage.unmeasured.insert(client.pid);
+            }
             *usage.per_pid.entry(client.pid).or_default() += engine_ns as f64 / 1e6 + cycles_ms;
         }
         usage
@@ -160,10 +169,8 @@ impl GpuSnapshot {
 }
 
 /// Every process's fds that point at a DRM device, with their fdinfo.
-fn read_fds() -> Vec<(u32, DrmFdinfo)> {
-    let Ok(processes) = fs::read_dir("/proc") else {
-        return Vec::new();
-    };
+fn read_fds() -> Option<Vec<(u32, DrmFdinfo)>> {
+    let processes = fs::read_dir("/proc").ok()?;
     let mut fds = Vec::new();
     for process in processes.flatten() {
         let Some(pid) = process.file_name().to_str().and_then(|s| s.parse().ok()) else {
@@ -188,5 +195,5 @@ fn read_fds() -> Vec<(u32, DrmFdinfo)> {
             }
         }
     }
-    fds
+    Some(fds)
 }

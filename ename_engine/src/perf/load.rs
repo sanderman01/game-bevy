@@ -51,6 +51,22 @@ pub(crate) struct GpuUse {
     pub unmeasured: HashSet<u32>,
 }
 
+impl GpuUse {
+    fn measured_ms(&self) -> f64 {
+        self.per_pid.values().sum()
+    }
+
+    /// `(total, measured subtotal)`: the total when every client is measured, else only the
+    /// subtotal, so unknown use is never reported as 0.
+    pub(crate) fn totals(&self) -> (Option<f64>, Option<f64>) {
+        if self.unmeasured.is_empty() {
+            (Some(self.measured_ms()), None)
+        } else {
+            (None, Some(self.measured_ms()))
+        }
+    }
+}
+
 /// The processes and counters at one moment. Compare two with [`LoadSnapshot::diff`].
 #[derive(Clone, Debug)]
 pub(crate) struct LoadSnapshot {
@@ -138,17 +154,21 @@ impl LoadSnapshot {
             (Some(before), Some(after)) => Some(GpuSnapshot::diff(before, after, window)),
             _ => None,
         };
-        let gpu_others_ms = gpu.as_ref().map(|gpu| gpu.per_pid.values().sum::<f64>());
+        let measured_ms = gpu.as_ref().map(GpuUse::measured_ms);
+        let (gpu_others_ms, gpu_others_measured_ms) =
+            gpu.as_ref().map_or((None, None), GpuUse::totals);
         let gpu_top = gpu.map_or_else(Vec::new, |gpu| after.gpu_processes(gpu));
 
+        // The measured part is a lower bound, so it can still show the machine busy.
         let machine_busy = other_cpu_cores > BUSY_CORES
-            || gpu_others_ms.is_some_and(|ms| ms > BUSY_GPU_FRACTION * window_ms);
+            || measured_ms.is_some_and(|ms| ms > BUSY_GPU_FRACTION * window_ms);
         Load {
             loadavg_1m: after.loadavg_1m.map(round2),
             cpus: after.cpus,
             other_cpu_cores: round2(other_cpu_cores),
             top: busy,
             gpu_others_ms: gpu_others_ms.map(round2),
+            gpu_others_measured_ms: gpu_others_measured_ms.map(round2),
             gpu_top,
             machine_busy,
         }
@@ -168,7 +188,7 @@ impl LoadSnapshot {
         let mut measured: Vec<(u32, f64)> = gpu
             .per_pid
             .into_iter()
-            .filter(|&(_, ms)| ms > 0.0)
+            .filter(|&(pid, ms)| ms > 0.0 && !gpu.unmeasured.contains(&pid))
             .collect();
         measured.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
         measured.truncate(TOP_COUNT);
@@ -191,12 +211,35 @@ pub(crate) struct Load {
     /// Cores used by other processes on average.
     pub other_cpu_cores: f64,
     pub top: Vec<BusyProcess>,
-    /// Engine time of other processes' GPU clients, in ms; `None` where the OS has no source.
+    /// Engine time of other processes' GPU clients, in ms; `None` where the OS has no source or
+    /// some client's use is unknown (a `gpu_top` entry with `gpu_ms: null`).
     pub gpu_others_ms: Option<f64>,
+    /// Only when `gpu_others_ms` is `None` for unmeasured clients: the clients that do report
+    /// usage, a lower bound of the total.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpu_others_measured_ms: Option<f64>,
     pub gpu_top: Vec<GpuProcess>,
     /// Other processes used over 1 core or over 5 % of the window in GPU time: `machine_busy`.
     #[serde(skip)]
     pub machine_busy: bool,
+}
+
+impl Load {
+    /// The load that most likely disturbed a sample: busy first, then by other processes' cores,
+    /// then by their GPU time.
+    pub fn busiest(loads: impl IntoIterator<Item = Load>) -> Option<Load> {
+        let gpu = |load: &Load| {
+            load.gpu_others_ms
+                .or(load.gpu_others_measured_ms)
+                .unwrap_or(0.0)
+        };
+        loads.into_iter().max_by(|a, b| {
+            a.machine_busy
+                .cmp(&b.machine_busy)
+                .then(a.other_cpu_cores.total_cmp(&b.other_cpu_cores))
+                .then(gpu(a).total_cmp(&gpu(b)))
+        })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, JsonSchema)]

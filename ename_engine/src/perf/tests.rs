@@ -399,9 +399,49 @@ mod load {
         assert!(load.other_cpu_cores >= 0.0);
         assert!(load.top.iter().all(|p| p.pid != std::process::id()));
         assert_eq!(load.loadavg_1m.is_none(), cfg!(windows));
-        assert_eq!(load.gpu_others_ms.is_some(), cfg!(target_os = "linux"));
+        // Unknown when some client reports no usage.
+        let all_measured = load.gpu_top.iter().all(|p| p.gpu_ms.is_some());
+        assert_eq!(
+            load.gpu_others_ms.is_some(),
+            cfg!(target_os = "linux") && all_measured
+        );
+        assert_eq!(
+            load.gpu_others_measured_ms.is_some(),
+            cfg!(target_os = "linux") && !all_measured
+        );
         assert!(load.gpu_top.iter().all(|p| p.pid != std::process::id()));
-        assert!(!load.machine_busy || load.other_cpu_cores > 0.0 || load.gpu_others_ms > Some(0.0));
+        let gpu = load.gpu_others_ms.or(load.gpu_others_measured_ms);
+        assert!(!load.machine_busy || load.other_cpu_cores > 0.0 || gpu > Some(0.0));
+    }
+
+    #[test]
+    fn unmeasured_gpu_use_has_no_total() {
+        use crate::perf::load::GpuUse;
+
+        let mut usage = GpuUse::default();
+        usage.per_pid.insert(100, 2.0);
+        assert_eq!(usage.totals(), (Some(2.0), None));
+        usage.unmeasured.insert(400);
+        assert_eq!(usage.totals(), (None, Some(2.0)));
+    }
+
+    #[test]
+    fn the_busiest_load_wins() {
+        use crate::perf::load::Load;
+
+        let load = |cores: f64, busy: bool| Load {
+            loadavg_1m: None,
+            cpus: 8,
+            other_cpu_cores: cores,
+            top: Vec::new(),
+            gpu_others_ms: None,
+            gpu_others_measured_ms: None,
+            gpu_top: Vec::new(),
+            machine_busy: busy,
+        };
+        let busiest = Load::busiest([load(0.5, false), load(0.9, true), load(0.7, false)]);
+        assert_eq!(busiest, Some(load(0.9, true)));
+        assert_eq!(Load::busiest([]), None);
     }
 
     #[cfg(target_os = "linux")]
@@ -499,6 +539,17 @@ mod load {
                 SECOND,
             );
             assert!((usage.per_pid[&100] - 200.0).abs() < 1e-9);
+            assert!(usage.unmeasured.is_empty());
+        }
+
+        #[test]
+        fn a_new_cycles_client_is_unmeasured() {
+            let usage = GpuSnapshot::diff(
+                &snapshot(&[]),
+                &snapshot(&[(100, &xe(3_000, 20_000))]),
+                SECOND,
+            );
+            assert!(usage.unmeasured.contains(&100));
         }
 
         #[test]
