@@ -90,7 +90,6 @@ impl Warnings {
         self.0.entry(kind).or_insert_with(|| message.into());
     }
 
-    #[expect(dead_code, reason = "used by perf.compare")]
     pub fn extend(&mut self, other: &Warnings) {
         for (kind, message) in &other.0 {
             self.add(kind, message.clone());
@@ -135,7 +134,6 @@ pub(crate) struct Sampled {
 
 impl Sampled {
     /// Adds a later sample of the same arm: its runs count as more runs.
-    #[expect(dead_code, reason = "used by perf.compare")]
     pub fn merge(&mut self, other: Sampled) {
         if self.runs.is_empty() && self.context.window.is_none() {
             *self = other;
@@ -211,7 +209,6 @@ pub(crate) struct Aggregate {
     pub gpu_ms: Option<SeriesStat>,
     pub views: Vec<ViewStat>,
     /// Every pass, busiest first; `None` without `RenderDiagnosticsPlugin`.
-    #[expect(dead_code, reason = "used by perf.compare")]
     pub passes: Option<Vec<PassStat>>,
 }
 

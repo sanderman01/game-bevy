@@ -4,6 +4,7 @@
 //! work entity) or the statistics panel. Off, only the two main-schedule markers and the
 //! render world's extraction check run.
 
+mod compare;
 mod gpu_timer;
 mod load;
 mod panel;
@@ -124,6 +125,7 @@ pub struct PerfCommandsPlugin;
 impl Plugin for PerfCommandsPlugin {
     fn build(&self, app: &mut App) {
         sample::register(app);
+        compare::register(app);
     }
 
     fn finish(&self, app: &mut App) {

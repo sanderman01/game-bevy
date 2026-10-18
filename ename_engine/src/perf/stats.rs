@@ -43,7 +43,6 @@ pub(crate) struct Metric {
 }
 
 /// How arm B compares with arm A.
-#[cfg_attr(not(test), expect(dead_code, reason = "used by perf.compare"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Verdict {
@@ -88,11 +87,11 @@ pub(crate) fn aggregate_runs(runs: &[Summary]) -> Option<Metric> {
 
 /// B against A: within noise when the difference of medians is at most the larger noise of the
 /// two. An unknown noise counts as zero.
-#[cfg_attr(not(test), expect(dead_code, reason = "used by perf.compare"))]
 pub(crate) fn verdict(a: Metric, b: Metric) -> Verdict {
     let diff = b.median - a.median;
     let noise = a.noise.unwrap_or(0.0).max(b.noise.unwrap_or(0.0));
-    if diff.abs() <= noise {
+    // The tolerance absorbs float error when both sides are rounded to 0.01.
+    if diff.abs() <= noise + 1e-9 {
         Verdict::WithinNoise
     } else if diff < 0.0 {
         Verdict::BFaster
