@@ -5,6 +5,8 @@
 use avian3d::debug_render::PhysicsGizmos;
 use bevy::prelude::*;
 
+use crate::debug_switch::{DebugSwitchAppExt, DebugSwitchKeys, DebugSwitchSpec};
+
 /// Which debug gizmo overlays are drawn. Both off by default -- these are authoring aids, and a
 /// shipping build that never flips them should look like the plugins were not there.
 #[derive(Resource, Debug, Clone, Copy, Default, Reflect)]
@@ -26,9 +28,28 @@ impl Plugin for DebugOverlayPlugin {
             // `PreUpdate`, so the `false` defaults land before the first frame's gizmos are
             // drawn in `PostUpdate`. `resource_changed` is also true the first time a just-added
             // resource is seen, which is what makes that first pass happen at all.
+            // After `DebugSwitchKeys`, so an overlay key takes effect in the frame it is pressed.
             .add_systems(
                 PreUpdate,
-                apply_debug_overlays.run_if(resource_changed::<DebugOverlays>),
+                apply_debug_overlays
+                    .after(DebugSwitchKeys)
+                    .run_if(resource_changed::<DebugOverlays>),
+            )
+            .add_field_debug_switch::<DebugOverlays>(
+                DebugSwitchSpec::new(
+                    "overlay",
+                    "overlay.physics",
+                    "Draw avian3d's collider wireframes, body axes and joints.",
+                ),
+                "physics",
+            )
+            .add_field_debug_switch::<DebugOverlays>(
+                DebugSwitchSpec::new(
+                    "overlay",
+                    "overlay.grids",
+                    "Draw big_space's grid axes and the cell bounds around the origin.",
+                ),
+                "grids",
             );
     }
 }

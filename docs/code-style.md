@@ -233,6 +233,15 @@ easier to find and change than a resource threaded through a plugin.
 Wrap a third-party crate only when you are hiding a real incompatibility or a genuinely bad
 API. A wrapper that forwards calls unchanged adds a file to read and a name to learn.
 
+## Debug toggles
+
+A toggle or mode for debugging, performance analysis or an experiment is a registered debug
+switch (`ename_engine::debug_switch`): a `bool` or unit-variant enum on the crate's reflected
+debug resource, registered in the plugin's `build`, with an optional key chord. Not an env var
+read at startup, and not a hand-written key system. The registry owns debug keys, lists every
+switch, sets them without a restart, and logs each change. Gameplay controls are not debug
+switches.
+
 ## Things not to write
 
 A checklist for reviewing your own diff.
@@ -247,3 +256,4 @@ A checklist for reviewing your own diff.
 - A component holding unrelated fields because they were spawned together.
 - Writing a component every frame with the value it already has.
 - An event type ending in `Event`, or a system ending in `system`.
+- A debug toggle read from an env var, or a key system of its own for debug keys.

@@ -8,8 +8,7 @@ use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 use bevy_inspector_egui::bevy_inspector::hierarchy::SelectedEntities;
-use ename_engine::bigspace::{CellCoord, FrozenOrigin, set_origin_frozen};
-use ename_engine::debug_overlay::DebugOverlays;
+use ename_engine::debug_switch::{DebugSwitchValue, DebugSwitchWorldExt};
 use ename_engine::stage::{
     AssetRoot, SaveStageError, StageFormats, StageId, new_stage, open_stage, open_stage_additive,
     save_stage, stage_of, write_stage_file,
@@ -60,47 +59,52 @@ pub(crate) fn ui(ui: &mut egui::Ui, world: &mut World, selected: &mut SelectedEn
 /// Draws the Freeze Origin checkbox. Disabled, rather than hidden, with no grid loaded: the
 /// toggle is a property of the camera, and the camera is still there.
 fn freeze_origin_item(ui: &mut egui::Ui, world: &mut World) {
-    let Ok(camera) = world
-        .query_filtered::<Entity, With<crate::camera::EditorCamera>>()
-        .single(world)
-    else {
-        return;
-    };
-    let frozen = world.get::<FrozenOrigin>(camera).is_some();
-    let has_grid = world.get::<CellCoord>(camera).is_some();
-
-    ui.add_enabled_ui(has_grid, |ui| {
-        let mut checked = frozen;
-        if ui
-            .checkbox(&mut checked, "Freeze Camera Origin")
-            .on_hover_text(
-                "Keep flying without recentering the world around the camera. \
-                 Disabled with no Grid loaded -- there is nothing to freeze.",
-            )
-            .changed()
-        {
-            set_origin_frozen(world, camera, checked);
-            ui.close();
-        }
-    });
+    switch_checkbox(
+        ui,
+        world,
+        "camera.freeze_origin",
+        "Freeze Camera Origin",
+        "Keep flying without recentering the world around the camera. \
+         Disabled with no Grid loaded -- there is nothing to freeze.",
+    );
 }
 
-/// Draws the debug gizmo overlay checkboxes. Writing the resource back only when something
-/// actually changed keeps `DebugOverlays` from being marked changed every frame the menu is open.
+/// Draws the debug gizmo overlay checkboxes.
 fn debug_overlay_items(ui: &mut egui::Ui, world: &mut World) {
-    let mut overlays = *world.resource::<DebugOverlays>();
-    let mut changed = ui
-        .checkbox(&mut overlays.physics, "Avian Physics Gizmos")
-        .on_hover_text("Collider wireframes, body axes and joints, drawn by avian3d.")
-        .changed();
-    changed |= ui
-        .checkbox(&mut overlays.grids, "Big Space Grid Gizmos")
-        .on_hover_text("big_space's grid axes and the bounds of the cells around the origin.")
-        .changed();
+    switch_checkbox(
+        ui,
+        world,
+        "overlay.physics",
+        "Avian Physics Gizmos",
+        "Collider wireframes, body axes and joints, drawn by avian3d.",
+    );
+    switch_checkbox(
+        ui,
+        world,
+        "overlay.grids",
+        "Big Space Grid Gizmos",
+        "big_space's grid axes and the bounds of the cells around the origin.",
+    );
+}
 
-    if changed {
-        *world.resource_mut::<DebugOverlays>() = overlays;
-    }
+/// A checkbox over a bool debug switch, disabled while the switch does not apply. Writes go
+/// through the registry, so a menu change logs the same line a key or command does.
+fn switch_checkbox(ui: &mut egui::Ui, world: &mut World, name: &str, label: &str, hover: &str) {
+    let current = match world.debug_switch(name) {
+        Ok(Some(DebugSwitchValue::Bool(value))) => Some(value),
+        _ => None,
+    };
+    ui.add_enabled_ui(current.is_some(), |ui| {
+        let mut checked = current.unwrap_or(false);
+        if ui
+            .checkbox(&mut checked, label)
+            .on_hover_text(hover)
+            .changed()
+            && let Err(err) = world.set_debug_switch(name, DebugSwitchValue::Bool(checked), "menu")
+        {
+            warn!("{err}");
+        }
+    });
 }
 
 /// Saves `id` back to its recorded source, or -- for a stage that has never been saved -- asks

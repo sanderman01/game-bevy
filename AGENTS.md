@@ -26,6 +26,8 @@ Where the two overlap, this file wins.
   scripts may stay as they are.
 - Write new scripts in Rust or modern Python 3 rather than shell, since both run on every
   platform. In Python, use `pathlib`, `subprocess.run` and f-strings; no Python 2 idioms.
+- Experiment and debug toggles are debug switches (`ename_engine::debug_switch`), never env vars;
+  set them at runtime with `debug_set`. See [docs/code-style.md](docs/code-style.md#debug-toggles).
 
 ## Version Control
 

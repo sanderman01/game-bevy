@@ -187,6 +187,50 @@ render size needs the Scene View drawn offscreen, which was rejected. Cropping, 
 sheets are external tools (ImageMagick, PIL, ffmpeg) on the files, which work everywhere and cost
 this project no code.
 
+## Debug switches
+
+**One registry, in the engine.** A debug switch is a toggle or mode for debugging, performance
+analysis or modding, never a gameplay control. A crate registers it in its plugin's `build`
+(`ename_engine::debug_switch::DebugSwitchAppExt`): a category, a `namespace.field` name, a
+description, and a reflected resource, a field of one, or a get/set pair. The registry lives in
+`ename_engine`, so release builds have it too, for performance analysis and modders; release
+builds have no remote, so there the keys are the front-end until a console exists. Four `Safe`
+commands, `debug.list`, `debug.get`, `debug.set` and `debug.reset`, take flat params that a
+console line maps onto. Rejected: a typed command per crate (a serde mirror of every enum, no
+single listing), raw BRP resource writes (no discovery, no allowed values, no log line), env vars
+read at runtime (invisible, need a restart to change), and a registry in the editor (absent from
+release builds).
+
+**Values go through `bevy_reflect`.** Debug resources already derive `Reflect`; few have a serde
+and schemars mirror. Supported: `bool` and enums of unit variants, written as snake_case strings
+like every other command. A key toggles a bool or cycles an enum in declaration order. Anything
+else, a bad path, a bad name or category, two variants with one snake_case spelling, two switches
+with one name, or two on one chord in one build target panics at startup, in
+`DebugSwitchPlugin::finish`, so registration order does not matter.
+
+**Keys belong to the registry.** One system in `PreUpdate` after `InputSystems` applies chords,
+so `Update` sees a change in its frame. Chords match modifiers exactly, left and right alike; a
+held Super blocks them all. That replaces hand-written "F5 but not Shift+F5" rules. Each switch
+has an editor chord and a release chord (`.key()` sets both); `DebugSwitchTarget` picks the live
+one, `Release` by default and `Editor` under `EditorPlugins`, and a game can move another crate's
+chords with `rebind_debug_switch`. The editor gates the keys while egui has the keyboard.
+
+**Writes compare first, read back, and log.** An equal value is not written, so change detection
+stays precise. A write that did not take (a callback whose target is gone) is an error, not a
+log line about a change that never happened. Every change logs `debug switch <name> = <value>
+(<source>)`, the source being `command`, `menu` or the chord. Launch values are recorded the
+first time a switch can be read, not at startup, because some apply only later (the editor camera
+joins a grid after startup).
+
+**Diagnostics logging is a switch.** `EnginePlugins` adds frame-time, entity-count and log
+diagnostics when absent; `diagnostics.log` (`off`, `frame_times`, `all`) sets the log filter, off
+by default. `EditorPlugins` adds `RenderDiagnosticsPlugin`, so only editor builds pay for GPU
+timestamp queries.
+
+**Experiment toggles are switches, not env vars.** The next `NB_OFF`-style toggle is a `bool`
+field on the crate's debug resource registered as a debug switch: about as many lines, listed,
+and flipped without a restart.
+
 ## Early failure detection
 
 **Errors ride on every result.** The game sends a cumulative log tally (ERROR and WARN counts,

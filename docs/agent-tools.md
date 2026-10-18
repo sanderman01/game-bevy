@@ -192,6 +192,8 @@ cannot become a crate that ships by accident.
 | `wait_settled` | Wait until loading, pipeline compiles and streaming have finished and stayed finished. See "Waiting". |
 | `wait_until` | Wait until one condition holds: frames, virtual seconds, a log line, a component or resource value, a position, a body at rest. |
 | `wait_activity` | What is still loading or building, right now. |
+| `debug_list` / `debug_get` | Debug switches (overlays, diagnostics logging, the camera's frozen origin, a game's own): category, value, allowed values, keys. See "Debug switches". |
+| `debug_set` / `debug_reset` | Set debug switches by name, or restore their launch values. No restart, no key press. |
 
 Every result also carries `pid`, eight letters naming the run of the game process that answered
 it. See "Noticing a restart".
@@ -698,6 +700,28 @@ Image work is left to ImageMagick, PIL or ffmpeg on the files.
 
 For motion: `magick montage scratch/shots/fly/*.png -tile 9x -geometry 300x+2+2 sheet.png` makes
 a contact sheet, and `magick compare -metric AE` over consecutive stills finds a pop as a spike.
+
+## Debug switches
+
+A debug switch is a named toggle or mode for debugging, performance analysis or modding:
+`overlay.physics`, `overlay.grids`, `camera.freeze_origin`, `diagnostics.log`, and whatever a game
+crate registers. Set them by name; never with ydotool, a key press or `world_mutate_resources`.
+
+- `debug_list` returns every switch with its `category`, `value`, `allowed` values,
+  `launch_value`, key chords per build (`keys.editor`, `keys.release`) and description.
+  `{"category": "overlay"}` narrows it; `categories` always lists them all.
+- `debug_get {"names": [...]}` reads some, in the order given.
+- `debug_set {"values": {"overlay.physics": true, "diagnostics.log": "frame_times"}}` checks
+  every entry before writing any and returns what `changed`. Bools are JSON booleans; modes are
+  snake_case strings from `allowed`.
+- `debug_reset` restores launch values, all of them or `{"names": [...]}`.
+
+A switch whose `value` is `null` does not apply now (`camera.freeze_origin` with no grid);
+setting it fails `switch_unavailable`. Every change, from a command, the View menu or a key, logs
+one line: `log_get_entries` with `message_contains: "debug switch"` shows them.
+
+`diagnostics.log` logs Bevy diagnostics every 5 s: `frame_times` (fps, frame time, frame count)
+or `all` (also entity count and, in the editor, render pass CPU and GPU timings).
 
 ## Commands and jobs
 

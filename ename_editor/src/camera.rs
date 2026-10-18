@@ -11,8 +11,9 @@ use bevy::{
 };
 use ename_engine::bigspace::{
     BigSpaceCameraController, BigSpaceCameraInput, CellCoord, FloatingOriginCandidate,
-    FrozenOrigin, Grid, GridCameraSystems, GridFollowCamera, Grids,
+    FrozenOrigin, Grid, GridCameraSystems, GridFollowCamera, Grids, set_origin_frozen,
 };
+use ename_engine::debug_switch::{DebugSwitchAppExt, DebugSwitchSpec};
 
 use crate::panels::{ActiveViewport, UiState};
 
@@ -224,8 +225,38 @@ impl Plugin for EditorCameraPlugin {
                 // trade-off `GridSystems::Recentered`/`sync_grid_attachment` already accept
                 // elsewhere in this codebase.
                 apply_focus_on_f_key.in_set(crate::EditorSystems::ApplySelection),
+            )
+            .add_bool_debug_switch(
+                DebugSwitchSpec::new(
+                    "camera",
+                    "camera.freeze_origin",
+                    "Keep the floating origin where it is while the editor camera flies; needs a \
+                     grid.",
+                ),
+                origin_frozen,
+                set_editor_origin_frozen,
             );
     }
+}
+
+/// `None` with no editor camera, or one not on a grid: there is nothing to freeze.
+fn origin_frozen(world: &World) -> Option<bool> {
+    let camera = editor_camera(world)?;
+    world.get::<CellCoord>(camera)?;
+    Some(world.get::<FrozenOrigin>(camera).is_some())
+}
+
+fn set_editor_origin_frozen(world: &mut World, frozen: bool) {
+    if let Some(camera) = editor_camera(world) {
+        set_origin_frozen(world, camera, frozen);
+    }
+}
+
+fn editor_camera(world: &World) -> Option<Entity> {
+    world
+        .try_query_filtered::<Entity, With<EditorCamera>>()?
+        .single(world)
+        .ok()
 }
 
 /// True while the fly camera is claiming the keyboard. The camera and the gizmo shortcuts both

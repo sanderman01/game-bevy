@@ -52,8 +52,10 @@ camera claims the keyboard and the gizmo's W/E/R/X shortcuts stand down.
 ## Debug overlays
 
 avian3d's `PhysicsDebugPlugin` and big_space's `BigSpaceDebugPlugins` are always installed, and
-both overlays start off. `ename_engine::debug_overlay::DebugOverlays` is the single switch; the
-editor's `View` menu is the only thing that flips it today. Installing them unconditionally and
+both overlays start off. `ename_engine::debug_overlay::DebugOverlays` holds both, registered as
+the debug switches `overlay.physics` and `overlay.grids` (see
+[agent-tooling.md](design/agent-tooling.md#debug-switches)); the editor's `View` menu, the
+`debug.*` commands and any key a game binds all go through that registry. Installing them unconditionally and
 switching them at runtime beats a cargo feature: the question "is the collider where I think it
 is" comes up mid-session, and a feature answers it only after a rebuild.
 

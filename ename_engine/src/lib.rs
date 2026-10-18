@@ -14,6 +14,8 @@ pub mod camera;
 pub mod capture;
 pub mod command;
 pub mod debug_overlay;
+pub mod debug_switch;
+pub mod diagnostics;
 pub mod log;
 pub mod physics;
 mod readback;
@@ -173,6 +175,8 @@ impl PluginGroup for EnginePlugins {
             // No longer bundled with BigSpaceDefaultPlugins as of big_space 0.13.
             .add_group(BigSpaceDebugPlugins::default())
             .add(bigspace::BigSpacePlugin)
+            .add(debug_switch::DebugSwitchPlugin)
+            .add(diagnostics::DiagnosticsLogPlugin)
             .add(debug_overlay::DebugOverlayPlugin)
             .add(camera::VirtualCameraPlugin)
             .add(camera::ground::CameraGroundPlugin)

@@ -15,6 +15,8 @@ mod camera;
 mod camera_commands;
 mod capture_sequence;
 mod console;
+mod debug_switches;
+mod diagnostics;
 mod game_view;
 mod gizmo;
 mod menu;
@@ -71,6 +73,8 @@ impl PluginGroup for EditorPlugins {
     fn build(self) -> PluginGroupBuilder {
         PluginGroupBuilder::start::<Self>()
             .add(EditorSchedulePlugin)
+            .add(debug_switches::EditorDebugSwitchesPlugin)
+            .add(diagnostics::EditorDiagnosticsPlugin)
             .add(panels::PanelsPlugin)
             .add(selection::SelectionPlugin)
             .add(viewport::ViewportPlugin)
