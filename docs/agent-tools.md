@@ -901,6 +901,46 @@ draws nothing.
 The panel stays small on purpose; `perf_sample` reports the rest (render wall time, per-view
 times, passes, counters).
 
+Game code adds its own sections and rows at runtime. Content is entities under one
+`Statistics content` root, apart from the panels, so it survives the switch going off; every
+panel draws it. The built-in sections, `StatsFpsSection` (order 0), `StatsTimingSection` (10,
+header `ms median max`) and `StatsSceneSection` (20), are spawned in `PreStartup`, so add
+content from `Startup` on:
+
+```rust
+use ename_engine::perf::{StatsCells, StatsRow, StatsSceneSection, StatsSection};
+
+fn add_stats(mut commands: Commands, scene: Single<Entity, With<StatsSceneSection>>) {
+    // A section of its own: a title, a header (label column, then one per value column), rows.
+    commands.spawn((
+        StatsSection::titled("Streaming", 100).with_header(["", "tiles"]),
+        children![StatsRow::system("Loaded", 0, loaded_tiles)],
+    ));
+    // One row in a built-in section, between Entities (0) and View (10).
+    commands.spawn((StatsRow::diagnostic("Bodies", 5, BODY_COUNT), ChildOf(*scene)));
+}
+
+// Run once per panel with its host camera; `None` hides the row.
+fn loaded_tiles(_host: In<Entity>, tiles: Query<(), With<Tile>>) -> Option<StatsCells> {
+    Some(StatsCells::one(tiles.iter().count().to_string()))
+}
+```
+
+- Sections sort by `order` under the root, rows by `order` in their section; ties keep child
+  order. A section spawned without a parent is put under the root. Despawn a row or section to
+  remove it; a row owns its system, which is unregistered with it. Edits to the components,
+  reparenting and child reorders show at the next refresh.
+- A system row returns one cell per value column (one without a header). A different count is
+  joined into the last column, with one warning. A system that fails is hidden with one
+  warning; one skipped by its parameters (`Single` with no match) is hidden silently. A
+  section whose rows are all hidden is hidden.
+- A diagnostic row shows the diagnostic's latest value and suffix, hidden while it is missing,
+  disabled or unmeasured.
+- A row outside a section under the root is not shown and warns once.
+- The components are not reflected (a row holds a boxed system), so `world_spawn_entity` cannot
+  add rows. The example game adds an "Example" section and a "Frames" row in the Scene section
+  (`example_game_lib/src/stats.rs`).
+
 Values cover the last 120 frames, refreshed four times a second. A row whose value has no
 source, such as the GPU row without `TIMESTAMP_QUERY`, is hidden. Nothing like Unity's batches,
 triangles or SetPass calls is measured here, so none is shown. Clicks pass through the panel.

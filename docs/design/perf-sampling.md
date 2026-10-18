@@ -89,6 +89,18 @@ the same `PerfRecords` as `perf.sample`.
   every Tab press in a window with no `TabGroup`.
 - Panel colours are our own theme tokens, `ename.stats.bg` and `ename.stats.header.bg`, derived
   from the theme's pane colours, so the pane can be translucent.
+- **Extensible content.** What the panel shows is entities: `StatsSection`s under one
+  `StatsContent` root, `StatsRow`s under sections. Content outlives the panels (one per host,
+  despawned with the switch), and other code adds or removes rows by spawning and despawning.
+  The built-in rows use the same mechanism. A system row's system is boxed in the row and
+  registered on first refresh as a tracked `SystemHandle`, so despawning the row unregisters it.
+  Each refresh compares a sorted layout key against the one each panel was built from and
+  rebuilds that panel's body on a difference; observers would miss field edits, reparenting and
+  child swaps. Each section is one CSS grid, so value columns line up without padded strings.
+  `title` and `header` are `Option` fields, not marker components: they are parts of one
+  presentation value, not states of the entity. Built-in sections are found by marker
+  components, not a resource of entity ids that could go stale. The refresh is exclusive, since
+  row systems run through `run_system_with` and return their cells.
 
 ## Measured overhead
 
