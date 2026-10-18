@@ -1,0 +1,23 @@
+ename_xtask/src/policy.rs
+  s_73f100acbee58a::t_ced57ed54eb9b1 10-11,18-25,36-80,83,85,90-136
+  s_73f100acbee58a::t_0036d1ac5f3289 137-139
+ename_xtask/src/main.rs
+  s_73f100acbee58a::t_df136e3b055d93 6,22-24,34-36,47-49,82-99
+  s_73f100acbee58a::t_04a39a9f54a151 100-102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "170b1f3c78a809d9b21a3c891fed1d865eea1a3e",
+  "prompts": {},
+  "sessions": {
+    "s_73f100acbee58a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c819127-4325-4a80-b7e5-047d2832ae98",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
