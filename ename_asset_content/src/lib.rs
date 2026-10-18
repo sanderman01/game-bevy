@@ -132,12 +132,31 @@ impl AssetContentPlugin {
     }
 }
 
-/// What [`start_content_scan`] needs, kept out of the plugin so the system can read it.
-#[derive(Resource, Clone)]
-struct ContentScanConfig {
+/// What the package scan was configured with: read-only, so a tool can report what the running
+/// game scans without a second copy of the target's settings.
+#[derive(Resource, Clone, Debug)]
+pub struct ContentScanSettings {
+    asset_root: String,
     search_paths: Vec<String>,
     load_order_file: Option<PathBuf>,
     ignored: IgnoredFiles,
+}
+
+impl ContentScanSettings {
+    /// As given to [`AssetContentPlugin::with_asset_root`], relative to the working directory or
+    /// `BEVY_ASSET_ROOT` the way `AssetPlugin::file_path` is.
+    pub fn asset_root(&self) -> &str {
+        &self.asset_root
+    }
+
+    /// Relative to the asset root.
+    pub fn search_paths(&self) -> &[String] {
+        &self.search_paths
+    }
+
+    pub fn load_order_file(&self) -> Option<&std::path::Path> {
+        self.load_order_file.as_deref()
+    }
 }
 
 /// Where [`start_content_scan`] leaves the report for [`mirror_content_scan`] to pick up.
@@ -158,7 +177,8 @@ impl Plugin for AssetContentPlugin {
         }
         app.add_plugins(AliasSourcePlugin::default().with_asset_root(self.asset_root.clone()))
             .init_resource::<ContentReportCell>()
-            .insert_resource(ContentScanConfig {
+            .insert_resource(ContentScanSettings {
+                asset_root: self.asset_root.clone(),
                 search_paths: self.search_paths.clone(),
                 load_order_file: self.load_order_file.clone(),
                 ignored: self.ignored.clone(),
@@ -177,7 +197,7 @@ fn start_content_scan(
     server: Res<AssetServer>,
     cell: Res<ContentIndexCell>,
     report: Res<ContentReportCell>,
-    config: Res<ContentScanConfig>,
+    config: Res<ContentScanSettings>,
     mounts: Option<Res<ArchiveMounts>>,
 ) {
     let mounts = mounts.map(|mounts| mounts.0.clone());
