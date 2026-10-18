@@ -3,7 +3,7 @@
 
 use ename_xtask::{check, cli, content_build, dep_src, fix, list, mv, policy};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 fn main() -> ExitCode {
@@ -19,7 +19,9 @@ fn main() -> ExitCode {
         cli::Command::Check => {
             let asset_root = Path::new(policy::ASSET_ROOT);
             let search_paths = policy::search_paths();
-            let load_order_path = policy::load_order_path();
+            let Some(load_order_path) = load_order_path() else {
+                return ExitCode::FAILURE;
+            };
             if check::check(asset_root, &search_paths, load_order_path.as_deref()) {
                 ExitCode::SUCCESS
             } else {
@@ -29,7 +31,9 @@ fn main() -> ExitCode {
         cli::Command::List => {
             let asset_root = Path::new(policy::ASSET_ROOT);
             let search_paths = policy::search_paths();
-            let load_order_path = policy::load_order_path();
+            let Some(load_order_path) = load_order_path() else {
+                return ExitCode::FAILURE;
+            };
             list::list(asset_root, &search_paths, load_order_path.as_deref());
             ExitCode::SUCCESS
         }
@@ -40,7 +44,9 @@ fn main() -> ExitCode {
         cli::Command::Fix => {
             let asset_root = Path::new(policy::ASSET_ROOT);
             let search_paths = policy::search_paths();
-            let load_order_path = policy::load_order_path();
+            let Some(load_order_path) = load_order_path() else {
+                return ExitCode::FAILURE;
+            };
             let summary = fix::fix(asset_root, &search_paths, load_order_path.as_deref());
             println!(
                 "wrote {} new .alias files, assigned {} guids, {} failed, {} skipped inside archives",
@@ -70,6 +76,27 @@ fn main() -> ExitCode {
             }
         },
         cli::Command::DepSrc { name } => dep_src(&name),
+    }
+}
+
+/// The load order file for the project names in the environment, or `None` after printing why
+/// the override could not be used.
+fn load_order_path() -> Option<Option<PathBuf>> {
+    // A value that is not Unicode is passed on lossily, so name validation rejects it by name.
+    let var = |name| match std::env::var(name) {
+        Ok(value) => Some(value),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(std::env::VarError::NotUnicode(value)) => Some(value.to_string_lossy().into_owned()),
+    };
+    match policy::project_names(
+        var(policy::ORGANISATION_NAME_ENV),
+        var(policy::PROJECT_NAME_ENV),
+    ) {
+        Ok((organisation, project)) => Some(policy::load_order_path(&organisation, &project)),
+        Err(err) => {
+            eprintln!("{err}");
+            None
+        }
     }
 }
 
