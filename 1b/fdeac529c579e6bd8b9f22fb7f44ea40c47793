@@ -1,0 +1,35 @@
+docs/agent-tools.md
+  s_e330b98cbebc97::t_96d22f194085ab 894-897,904
+ename_engine/src/perf/panel.rs
+  s_e330b98cbebc97::t_f85acb7dd67d2f 326,336-340
+  s_e330b98cbebc97::t_5726fecf5ce22a 308-309,316,323-324
+  s_e330b98cbebc97::t_a82d0a4a23b147 265-285
+  s_e330b98cbebc97::t_c9b8ad359010a8 28-31
+  s_e330b98cbebc97::t_b4ff57f8cc8f3c 191-192
+  s_e330b98cbebc97::t_372e3b5cdebaa7 366
+  s_e330b98cbebc97::t_f87e96c82c1071 297-300,306-307,311-315
+  s_e330b98cbebc97::t_ce2569591bbf12 2,4
+  s_e330b98cbebc97::t_9fdf63fdca07e8 220-221
+  s_e330b98cbebc97::t_a9be354d35be93 22
+ename_engine/src/perf/records.rs
+  s_e330b98cbebc97::t_8d157c77aee372 21
+  s_e330b98cbebc97::t_d3fcb8f10ff148 196,199-202,206-207,211-212
+  s_e330b98cbebc97::t_edd6da24436631 24
+  s_e330b98cbebc97::t_55fbe58c263f8d 208-210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1bfdeac529c579e6bd8b9f22fb7f44ea40c47793",
+  "prompts": {},
+  "sessions": {
+    "s_e330b98cbebc97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17f2c035-9b9b-4c57-8fb6-463dc39f045f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
