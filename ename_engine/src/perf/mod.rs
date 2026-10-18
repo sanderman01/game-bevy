@@ -5,6 +5,8 @@
 //! render world's extraction check run.
 
 mod gpu_timer;
+#[cfg_attr(not(test), expect(dead_code, reason = "used by perf.sample"))]
+mod load;
 mod panel;
 mod passes;
 mod records;

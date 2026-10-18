@@ -384,3 +384,134 @@ mod panel {
         assert!(panel_hosts(&mut app).is_empty());
     }
 }
+
+mod load {
+    use std::time::Duration;
+
+    use crate::perf::load::LoadSnapshot;
+
+    #[test]
+    fn a_snapshot_diff_reports_this_machine() {
+        let before = LoadSnapshot::take();
+        let after = LoadSnapshot::take();
+        let load = LoadSnapshot::diff(&before, &after, Duration::from_secs(1));
+        assert!(load.cpus >= 1);
+        assert!(load.other_cpu_cores >= 0.0);
+        assert!(load.top.iter().all(|p| p.pid != std::process::id()));
+        assert_eq!(load.loadavg_1m.is_none(), cfg!(windows));
+        assert_eq!(load.gpu_others_ms.is_some(), cfg!(target_os = "linux"));
+        assert!(load.gpu_top.iter().all(|p| p.pid != std::process::id()));
+        assert!(!load.machine_busy || load.other_cpu_cores > 0.0 || load.gpu_others_ms > Some(0.0));
+    }
+
+    #[cfg(target_os = "linux")]
+    mod drm {
+        use std::time::Duration;
+
+        use crate::perf::load::drm::{DrmFdinfo, GpuSnapshot, parse_fdinfo};
+
+        const OWN: u32 = 1;
+        const SECOND: Duration = Duration::from_secs(1);
+
+        fn amdgpu(client_id: u64, gfx_ns: u64) -> String {
+            format!(
+                "pos:\t0\nflags:\t02100002\nmnt_id:\t26\ndrm-driver:\tamdgpu\n\
+                 drm-client-id:\t{client_id}\ndrm-pdev:\t0000:03:00.0\npasid:\t32789\n\
+                 drm-memory-vram:\t12345 KiB\ndrm-engine-gfx:\t{gfx_ns} ns\n\
+                 drm-engine-compute:\t500000 ns\ndrm-engine-capacity-gfx:\t2\n"
+            )
+        }
+
+        fn xe(busy: u64, total: u64) -> String {
+            format!(
+                "drm-driver:\txe\ndrm-client-id:\t7\ndrm-pdev:\t0000:00:02.0\n\
+                 drm-cycles-rcs:\t{busy}\ndrm-total-cycles-rcs:\t{total}\n\
+                 drm-cycles-bcs:\t0\ndrm-total-cycles-bcs:\t{total}\n\
+                 drm-engine-capacity-rcs:\t1\n"
+            )
+        }
+
+        fn info(text: &str) -> DrmFdinfo {
+            parse_fdinfo(text).expect("a DRM fdinfo")
+        }
+
+        fn snapshot(fds: &[(u32, &str)]) -> GpuSnapshot {
+            GpuSnapshot::from_fds(fds.iter().map(|&(pid, text)| (pid, info(text))), OWN)
+        }
+
+        #[test]
+        fn fdinfo_with_several_engines() {
+            let parsed = info(&amdgpu(14, 1_000_000));
+            assert_eq!(parsed.pdev, "0000:03:00.0");
+            assert_eq!(parsed.client_id, Some(14));
+            assert_eq!(parsed.engines_ns.len(), 2);
+            assert_eq!(parsed.engines_ns["gfx"], 1_000_000);
+            assert_eq!(parsed.engines_ns["compute"], 500_000);
+            assert!(parsed.cycles.is_empty());
+        }
+
+        #[test]
+        fn a_non_drm_fd_is_not_parsed() {
+            assert_eq!(parse_fdinfo("pos:\t0\nflags:\t02\nmnt_id:\t26\n"), None);
+        }
+
+        #[test]
+        fn one_client_through_two_fds_and_two_processes_counts_once() {
+            let before = amdgpu(14, 1_000_000);
+            let after = amdgpu(14, 3_000_000);
+            let before = snapshot(&[(200, &before), (100, &before), (100, &before)]);
+            let after = snapshot(&[(100, &after), (200, &after), (100, &after)]);
+            let usage = GpuSnapshot::diff(&before, &after, SECOND);
+            assert_eq!(usage.per_pid.len(), 1);
+            assert!((usage.per_pid[&100] - 2.0).abs() < 1e-9);
+        }
+
+        #[test]
+        fn our_own_clients_are_skipped() {
+            let before = amdgpu(14, 0);
+            let after = amdgpu(14, 9_000_000);
+            let usage = GpuSnapshot::diff(
+                &snapshot(&[(OWN, &before), (300, &before)]),
+                &snapshot(&[(OWN, &after), (300, &after)]),
+                SECOND,
+            );
+            assert!(usage.per_pid.is_empty());
+        }
+
+        #[test]
+        fn a_counter_that_went_down_counts_zero() {
+            let usage = GpuSnapshot::diff(
+                &snapshot(&[(100, &amdgpu(14, 5_000_000))]),
+                &snapshot(&[(100, &amdgpu(14, 2_000_000))]),
+                SECOND,
+            );
+            assert_eq!(usage.per_pid[&100], 0.0);
+        }
+
+        #[test]
+        fn xe_cycles_give_a_busy_fraction_of_the_window() {
+            let parsed = info(&xe(1_000, 10_000));
+            assert_eq!(parsed.cycles["rcs"], (1_000, 10_000));
+            assert!(parsed.engines_ns.is_empty());
+            let usage = GpuSnapshot::diff(
+                &snapshot(&[(100, &xe(1_000, 10_000))]),
+                &snapshot(&[(100, &xe(3_000, 20_000))]),
+                SECOND,
+            );
+            assert!((usage.per_pid[&100] - 200.0).abs() < 1e-9);
+        }
+
+        #[test]
+        fn a_driver_without_usage_stats_is_unmeasured() {
+            let bare = "drm-driver:\tnouveau\ndrm-pdev:\t0000:01:00.0\n";
+            let usage = GpuSnapshot::diff(
+                &snapshot(&[(400, bare)]),
+                &snapshot(&[(400, bare), (100, &amdgpu(14, 0))]),
+                SECOND,
+            );
+            assert!(usage.unmeasured.contains(&400));
+            assert!(!usage.per_pid.contains_key(&400));
+            assert_eq!(usage.per_pid[&100], 0.5);
+        }
+    }
+}
