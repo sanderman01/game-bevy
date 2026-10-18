@@ -22,6 +22,7 @@
 mod entity;
 mod error;
 mod jobs;
+mod length;
 mod registry;
 mod run_id;
 mod type_name;
@@ -33,6 +34,7 @@ pub use error::{CommandError, ErrorClass};
 pub use jobs::{
     JobCancelRequested, JobHandle, JobId, JobStatus, JobWork, Jobs, OnCancel, RETENTION,
 };
+pub use length::{Length, parse_timecode};
 pub use registry::{
     Call, Caller, CommandAppExt, CommandInfo, CommandKind, CommandRegistry, CommandScope,
     CommandSpec, CommandWorldExt, Reply,

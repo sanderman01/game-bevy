@@ -1,8 +1,9 @@
-//! How long a recording runs, and the `hh:mm:ss` form of it.
+//! How long a recording runs.
 
 use std::{num::NonZeroU32, time::Duration};
 
 use super::VideoError;
+use crate::command::parse_timecode;
 
 /// The longest recording accepted.
 const MAX_LENGTH: Duration = Duration::from_secs(24 * 60 * 60);
@@ -35,6 +36,13 @@ impl VideoLength {
         Ok(Self::Time(Duration::from_secs_f64(seconds)))
     }
 
+    /// A `hh:mm:ss` timecode (see [`parse_timecode`]) as a [`VideoLength::Time`].
+    pub fn from_timecode(text: &str) -> Result<Self, VideoError> {
+        parse_timecode(text)
+            .map(Self::Time)
+            .map_err(VideoError::InvalidDuration)
+    }
+
     pub(crate) fn validate(self) -> Result<(), VideoError> {
         match self {
             Self::Frames(_) => Ok(()),
@@ -46,90 +54,20 @@ impl VideoLength {
     }
 }
 
-/// Parses `H:MM:SS` or `H:MM:SS.fff`. Hours may have any number of digits; minutes and seconds
-/// are two digits below 60. The result must be above zero and at most 24 hours.
-pub fn parse_timecode(text: &str) -> Result<Duration, VideoError> {
-    let invalid = || {
-        VideoError::InvalidDuration(format!(
-            "`{text}` is not a timecode of the form hh:mm:ss or hh:mm:ss.fff"
-        ))
-    };
-    let mut parts = text.split(':');
-    let (Some(hours), Some(minutes), Some(seconds), None) =
-        (parts.next(), parts.next(), parts.next(), parts.next())
-    else {
-        return Err(invalid());
-    };
-    let (whole, fraction) = match seconds.split_once('.') {
-        Some((whole, fraction)) => (whole, Some(fraction)),
-        None => (seconds, None),
-    };
-    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
-    if !digits(hours)
-        || minutes.len() != 2
-        || !digits(minutes)
-        || whole.len() != 2
-        || !digits(whole)
-        || fraction.is_some_and(|f| !digits(f) || f.len() > 9)
-    {
-        return Err(invalid());
-    }
-    let hours: u64 = hours.parse().map_err(|_| invalid())?;
-    let minutes: u64 = minutes.parse().map_err(|_| invalid())?;
-    let whole: u64 = whole.parse().map_err(|_| invalid())?;
-    if minutes >= 60 || whole >= 60 {
-        return Err(invalid());
-    }
-    let nanos = match fraction {
-        Some(fraction) => format!("{fraction:0<9}").parse().map_err(|_| invalid())?,
-        None => 0,
-    };
-    let length = hours
-        .checked_mul(3600)
-        .and_then(|h| h.checked_add(minutes * 60 + whole))
-        .map(|secs| Duration::new(secs, nanos))
-        .ok_or_else(invalid)?;
-    VideoLength::Time(length).validate()?;
-    Ok(length)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn timecodes_parse() {
-        assert_eq!(parse_timecode("00:00:10"), Ok(Duration::from_secs(10)));
-        assert_eq!(parse_timecode("1:30:00"), Ok(Duration::from_secs(5400)));
+    fn timecodes_become_times() {
         assert_eq!(
-            parse_timecode("00:00:10.5"),
-            Ok(Duration::from_millis(10500))
+            VideoLength::from_timecode("00:00:10.5"),
+            Ok(VideoLength::Time(Duration::from_millis(10500)))
         );
-        assert_eq!(parse_timecode("24:00:00"), Ok(Duration::from_secs(86400)));
-    }
-
-    #[test]
-    fn bad_timecodes_are_rejected() {
-        for bad in [
-            "100:00:00",
-            "24:00:01",
-            "00:60:00",
-            "00:00:60",
-            "10",
-            "aa:bb:cc",
-            "",
-            "00:00:00",
-            "0:0:10",
-            "00:00:10.",
-            "00:00:10.x",
-            "-1:00:00",
-            "00:00:00:10",
-        ] {
-            assert!(
-                matches!(parse_timecode(bad), Err(VideoError::InvalidDuration(_))),
-                "{bad}"
-            );
-        }
+        assert!(matches!(
+            VideoLength::from_timecode("24:00:01"),
+            Err(VideoError::InvalidDuration(_))
+        ));
     }
 
     #[test]

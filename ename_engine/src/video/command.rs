@@ -14,13 +14,13 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     VideoEnd, VideoError, VideoFinished, VideoLength, VideoPhase, VideoProgress, VideoRequest,
-    VideoStopRequested, check_frame_rate, check_video_path, parse_timecode,
+    VideoStopRequested, check_frame_rate, check_video_path,
 };
 use crate::{
     capture::{CaptureError, CaptureSources, restrict_source},
     command::{
         Call, CommandAppExt, CommandError, CommandSpec, JobCancelRequested, JobHandle, JobWork,
-        Jobs, OnCancel,
+        Jobs, Length, OnCancel,
     },
     wait::{SettleGate, SettleParams, SettleTimedOut, Settled},
 };
@@ -39,7 +39,7 @@ struct RecordParams {
     /// How long to record. Exactly one key: {"frames": 600} records 600 rendered frames;
     /// {"seconds": 10} records 10 s of real time; {"timecode": "00:01:30"} is hh:mm:ss. At most
     /// 24 hours.
-    duration: Duration,
+    duration: Length,
     /// Output frames per second, 1 to 240. Defaults to 30.
     #[serde(default)]
     frame_rate: Option<u32>,
@@ -47,15 +47,6 @@ struct RecordParams {
     /// uses its defaults. Recording starts once it settles; fails `not_settled` on timeout.
     #[serde(default)]
     settle: Option<SettleParams>,
-}
-
-/// A length with its unit as the key, so `10` is never read as frames when seconds were meant.
-#[derive(Deserialize, JsonSchema, Clone, Debug)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-enum Duration {
-    Frames(u32),
-    Seconds(f64),
-    Timecode(String),
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -117,9 +108,9 @@ fn record(
     let path = call.resolve_path(&params.path)?;
     check_video_path(&path).map_err(invalid)?;
     let length = match &params.duration {
-        Duration::Frames(frames) => VideoLength::from_frames(*frames),
-        Duration::Seconds(seconds) => VideoLength::from_seconds(*seconds),
-        Duration::Timecode(text) => parse_timecode(text).map(VideoLength::Time),
+        Length::Frames(frames) => VideoLength::from_frames(*frames),
+        Length::Seconds(seconds) => VideoLength::from_seconds(*seconds),
+        Length::Timecode(text) => VideoLength::from_timecode(text),
     }
     .map_err(invalid)?;
     let frame_rate = params
@@ -264,6 +255,25 @@ mod tests {
 
     fn always_busy() -> Activity {
         Activity::idle().pending("work", 1)
+    }
+
+    #[test]
+    fn duration_keeps_its_published_schema_name() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, CommandPlugin, CapturePlugin));
+        register(&mut app);
+        let registry = app.world().resource::<crate::command::CommandRegistry>();
+        let params = &registry.get("video.record").unwrap().params;
+        assert_eq!(
+            params["properties"]["duration"]["$ref"], "#/$defs/Duration",
+            "{params}"
+        );
+        assert_eq!(
+            params["$defs"]["Duration"]["oneOf"]
+                .as_array()
+                .map(Vec::len),
+            Some(3)
+        );
     }
 
     #[test]

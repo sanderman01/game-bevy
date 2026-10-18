@@ -77,7 +77,7 @@ use encoder::{
     Container, EncoderSpec, End, WriterJob, WriterShared, encoded_rect, shutdown_writers,
     spawn_writer,
 };
-pub use length::{VideoLength, parse_timecode};
+pub use length::VideoLength;
 
 /// No frame accepted for this long ends a recording as stalled.
 const STALL_TIMEOUT: Duration = Duration::from_secs(5);
