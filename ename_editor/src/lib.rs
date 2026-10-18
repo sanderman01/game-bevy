@@ -19,6 +19,8 @@ mod debug_switches;
 mod diagnostics;
 mod game_view;
 mod gizmo;
+mod input_commands;
+mod input_inject;
 mod menu;
 mod panels;
 mod selection;
@@ -89,6 +91,8 @@ impl PluginGroup for EditorPlugins {
                 file: self.viewpoints_file,
             })
             .add(capture_sequence::CaptureSequencePlugin)
+            .add(input_inject::InputInjectPlugin)
+            .add(input_commands::InputCommandsPlugin)
     }
 }
 

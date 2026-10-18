@@ -194,6 +194,8 @@ cannot become a crate that ships by accident.
 | `wait_activity` | What is still loading or building, right now. |
 | `debug_list` / `debug_get` | Debug switches (overlays, diagnostics logging, the camera's frozen origin, a game's own): category, value, allowed values, keys. See "Debug switches". |
 | `debug_set` / `debug_reset` | Set debug switches by name, or restore their launch values. No restart, no key press. |
+| `input_send` | Send keys, text, pointer moves, clicks, drags and scrolls into the game as real input, with no focus and no OS injector. See "Driving input". |
+| `input_state` | The pointer, held keys and buttons, egui's interest and what picking hovers. |
 
 Every result also carries `pid`, eight letters naming the run of the game process that answered
 it. See "Noticing a restart".
@@ -722,6 +724,65 @@ one line: `log_get_entries` with `message_contains: "debug switch"` shows them.
 
 `diagnostics.log` logs Bevy diagnostics every 5 s: `frame_times` (fps, frame time, frame count)
 or `all` (also entity count and, in the editor, render pass CPU and GPU timings).
+
+## Driving input
+
+`input_send` writes the same messages `bevy_winit` writes for real input, inside the game, so
+`bevy_input`, egui, picking, selection, the editor camera and gameplay all react as to a real
+device. It needs no window focus, never moves the user's pointer, and never raises the window.
+Never use ydotool, `kdotool windowactivate` or another OS injector on the game window.
+
+```
+input_send { "steps": [
+  {"action": "click", "x": 415, "y": 100, "in": "editor_camera"},
+  {"action": "key", "key": "KeyF"},
+  {"action": "wait", "frames": 30},
+  {"action": "leave"}
+]}
+```
+
+- Steps: `key` (with `modifiers`: `shift`, `ctrl`, `alt`, `super`), `key_down` / `key_up`,
+  `text`, `move`, `click` (`button`, `count: 2` for a double click), `button_down` /
+  `button_up`, `drag` (`from`, `to`, `frames`), `scroll` (`lines`, positive up), `motion` (raw
+  mouse motion for mouse-look), `leave`, `wait` (`frames` or `seconds`). One frame per event.
+- Keys are Bevy `KeyCode` names: `F10`, `KeyW`, `ShiftLeft`, `Equal`, `Space`.
+- Points are pixels of a full-size screenshot: `window` (the default), `editor_camera` or
+  `game_camera` via `"in"`. Pick a point from a capture of that source and pass it as is; the
+  mapping to the window, egui zoom and scale factor included, is the game's job. A cropped or
+  scaled capture must be mapped back to full size first.
+- The script is checked before it starts (`unknown_key`, `out_of_source`, `camera_inactive`).
+  If the view moves or resizes while it runs, the step fails `layout_changed` rather than
+  clicking elsewhere.
+- Keys and buttons the script pressed are always released, whether it ends (a frame after its
+  last step), fails, times out (`timeout_seconds`, default its waits and frames at 20 fps plus 10 s, at most 3600) or
+  is cancelled. Buttons are released where the script last put the pointer. If the window loses
+  keyboard focus mid-script, the script stops with `focus_lost`. One step takes at most 100000
+  frames or 3600 s. In `text`, `\n` and `\t` are Enter and Tab. Hold with `key_down`, `wait`,
+  `key_up` in one script; holds never span calls. After `job_cancel`, `job_wait` for it before
+  reading `input_state`: the release lands in the next frame.
+- The result's `real_input` counts the user's own pointer and keyboard messages during the
+  script. Non-zero means the run may have been disturbed. `already_held` lists keys that were
+  already down, so pressing them fired nothing. A key counts as down when its twin is (the
+  user's ShiftRight makes a scripted ShiftLeft a no-op), and a `text` character whose key is
+  held is skipped. Twins pressed by both the user and a script share one logical state, as with
+  two real keyboards: whichever releases first releases it for Bevy's `ButtonInput<Key>`, and
+  egui, which falls back to the physical key, may see a release early.
+- One script at a time (`input_busy`). The transform gizmo is off while a script runs.
+- Send `leave` before a screenshot: it moves the pointer out, clearing hover highlights.
+- Debug keys do not fire while egui has the keyboard; use `debug_set` for debug switches anyway.
+
+`input_state` reads the window (`size`, `scale_factor`, `focused`), the mouse pointer
+(`position` in window pixels and `over`: `scene_view`, `game_view`, `egui` or `outside`), held
+keys and buttons, egui's `wants_pointer` / `wants_keyboard` / `popup_open`, and `picking`: what
+each pointer hovers (entity, name, depth). The window itself always appears there as a depth-0
+hit with no name. Use `world_get_position` on a hovered entity for where it is.
+
+What cannot be driven:
+
+- Transform gizmo drags and `bevy_ui` `Interaction`: both read `Window::cursor_position()`,
+  which injection never writes (writing it would warp the user's pointer).
+- OS file dialogs (File > Open): another process. Use the stage commands.
+- egui panel contents cannot be read back as data: read them from screenshots.
 
 ## Commands and jobs
 

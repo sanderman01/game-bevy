@@ -8,6 +8,7 @@ use bevy::{
 
 use crate::{
     EditorSystems,
+    input_inject::InputInjector,
     panels::{ActiveViewport, UiState},
 };
 
@@ -49,10 +50,14 @@ fn handle_pick_events(
     mut click_events: MessageReader<PointerInput>,
     pointers: Query<&PointerInteraction>,
     gizmo: Res<TransformGizmoState>,
+    injector: Option<Res<InputInjector>>,
 ) {
     if ui_state.active_viewport != ActiveViewport::Scene || !ui_state.pointer_in_viewport {
         return;
     }
+    // The gizmo is off while a script runs, so its `hovered_axis` is stale from the real pointer.
+    let gizmo_veto = !injector.is_some_and(|injector| injector.is_busy())
+        && (gizmo.active || gizmo.hovered_axis.is_some());
 
     for event in click_events.read() {
         if !matches!(event.action, PointerAction::Press(PointerButton::Primary)) {
@@ -60,7 +65,7 @@ fn handle_pick_events(
         }
         // A press the gizmo is consuming must not fall through to the mesh behind the
         // handle. `hovered_axis` is cleared once a drag starts, so both are needed.
-        if gizmo.active || gizmo.hovered_axis.is_some() {
+        if gizmo_veto {
             continue;
         }
 

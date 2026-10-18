@@ -125,6 +125,18 @@ show a sub-pixel colour fringe at sharp edges that is not in the file.
 - Crop, zoom, diff and contact sheets are `magick` on the PNGs (`magick compare -metric AE`,
   `magick montage`); docs/agent-tools.md has the recipe.
 
+### Driving and reading the game window
+
+Drive the game with `input_send` and read it with `input_state` and `debug_set`, never with
+`kdotool windowactivate` or ydotool on the game window: those need focus, which takes it from the
+user.
+
+- `input_send` steps take points in pixels of a full-size capture: pick a pixel from an
+  `editor_camera` PNG and pass `"in": "editor_camera"`, no scaling or offsets.
+- End a script with `{"action": "leave"}` before a capture, so no hover highlight is in it.
+- `input_state` says what the pointer is over and what picking hovers.
+- Toggle overlays and debug views with `debug_set` (`debug_list` shows them), not keys.
+
 ### Minimized windows
 
 Rarely relevant, but worth knowing: a minimized game window runs at about half its frame rate
@@ -143,7 +155,8 @@ Use this only when MCP capture cannot do the job, and say which reason applies:
 - what needs inspecting is outside the game's own rendering, such as window decorations, OS
   dialogs or the surrounding desktop.
 
-This machine runs KDE Plasma 6 on Wayland, which decides the tool:
+Only for windows that are not the game, or a game without the MCP server. This machine runs KDE
+Plasma 6 on Wayland, which decides the tool:
 
 ```sh
 kdotool search --name 'My Bevy Game' --limit 1 windowactivate

@@ -231,6 +231,48 @@ timestamp queries.
 field on the crate's debug resource registered as a debug switch: about as many lines, listed,
 and flipped without a restart.
 
+## Input injection
+
+**In-process Bevy messages, written by the editor.** `input.send` runs a script of key, text,
+pointer, button, wheel and motion steps, one event per frame, in `First` after
+`MessageUpdateSystems` and before `PickingSystems::Input`. It writes `KeyboardInput`,
+`MouseButtonInput`, `CursorMoved`, `MouseWheel` and `MouseMotion` plus each one's `WindowEvent`
+twin, as `bevy_winit` does: `bevy_input` and egui read the typed messages, picking reads only
+`WindowEvent`. That order puts injected input in front of every consumer in the frame it is
+written. It lives in `ename_editor`, the only build with a side channel. Rejected: OS-level
+injection (ydotool, uinput, libei, XTest: a daemon or permissions, focus, screen coordinates, the
+user's pointer moves), writing `ButtonInput` directly (bypasses egui and picking, rebuilt every
+frame), and putting it in `ename_engine` (an agent feature in every release build).
+
+**Never write `Window`.** `bevy_winit` turns a changed `physical_cursor_position` into an OS
+pointer warp and `focused = true` into `focus_window()`. Either takes the desktop from the user.
+The cost: `Window::cursor_position()` readers (the transform gizmo, `bevy_ui` focus) do not see
+the injected pointer, so the gizmo is off while a script runs and refuses to start one during a
+real drag.
+
+**Ownership, not blind release.** `ButtonInput` has one bit per key, and in `First` it is still
+last frame's. The injector keeps its own view of real held input from every message, skipping
+the ids it wrote, and owns only presses it wrote for keys nobody held: per step (a `key` step's
+modifiers) and per script (`key_down`). Cleanup releases what the script owns and nothing else,
+so a real held Shift survives. A real press or release of an owned key drops ownership;
+`KeyboardFocusLost` (which `bevy_input` applies to `ButtonInput<KeyCode>` only) makes the
+injector release what it owns with real messages. State lives in a resource, so despawning the
+job's work entity, a cancel path with no `JobCancelRequested`, still cleans up.
+
+**Points are re-asserted and checked.** Picking and egui press at their last cursor position,
+which the user's mouse may move. Every press, release, drag and wheel frame writes a
+`CursorMoved` to the target first, after any real one. Each point records its source's geometry
+when the script is checked; a different geometry when its frame runs fails `layout_changed`.
+
+**Timing.** Waits and the deadline use `Instant::now()` plus an offset tests can move.
+`Time<Real>` was rejected: it can take a render-world timestamp from before a stall. A script
+finishes in `Last` of the frame its last message was written, after picking and egui read it, so
+the result's pointer and egui state are current.
+
+**No egui widget tree.** egui is temporary. `input.state` reports egui's interest and what picking
+hovers; panel contents are read from screenshots. Rejected: egui's AccessKit tree, a full task of
+code thrown away with egui.
+
 ## Early failure detection
 
 **Errors ride on every result.** The game sends a cumulative log tally (ERROR and WARN counts,

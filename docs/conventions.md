@@ -10,6 +10,15 @@ system for the game world.
 - -Z points forward, +Z points rearward
 - camera: +Z points towards you, out of the screen.
 
+## Window pixels
+
+Agent tools give screen points in physical window pixels, origin top-left: the pixels of a
+`screenshot_capture` `window` PNG. `input_send` also takes `"in": "editor_camera"` or
+`"game_camera"` for pixels of that source's full-size PNG. Bevy's `CursorMoved` and
+`PointerLocation` are logical pixels (physical divided by the window's scale factor); egui works in
+points (logical divided by its zoom). Conversions between them live in
+`ename_editor/src/input_inject/geometry.rs`.
+
 ## Assets
 
 Content assets should have an alias assigned to them in a corresponding .alias

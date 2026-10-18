@@ -9,6 +9,7 @@ use crate::{
     EditorSystems,
     camera::EditorCamera,
     capture_sequence::OverlaysHidden,
+    input_inject::InputInjector,
     panels::{ActiveViewport, UiState},
 };
 
@@ -60,8 +61,16 @@ fn tag_editor_camera_for_gizmo(
 /// The gizmo takes `window.cursor_position()` directly and knows nothing about the egui panels
 /// covering part of the window, so it only runs while the pointer is over Scene View and Scene
 /// View is the tab currently showing (not merely over where Scene View's rect was before Game
-/// View was selected).
-fn gizmo_should_run(ui_state: Res<UiState>, gizmo: Res<TransformGizmoState>) -> bool {
+/// View was selected). It is also off while an `input.send` script runs: injected clicks would
+/// meet the user's real cursor position. `input.send` refuses to start during a real drag.
+fn gizmo_should_run(
+    ui_state: Res<UiState>,
+    gizmo: Res<TransformGizmoState>,
+    injector: Option<Res<InputInjector>>,
+) -> bool {
+    if injector.is_some_and(|injector| injector.is_busy()) {
+        return false;
+    }
     (ui_state.active_viewport == ActiveViewport::Scene && ui_state.pointer_in_viewport)
         || gizmo.active
 }

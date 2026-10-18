@@ -60,6 +60,13 @@ pub(crate) struct GameViewTarget {
     camera_present: bool,
 }
 
+impl GameViewTarget {
+    /// The image's size in physical pixels, or `None` with no stage camera to show.
+    pub(crate) fn image_size(&self) -> Option<UVec2> {
+        self.camera_present.then_some(self.size)
+    }
+}
+
 fn create_game_view_target(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
