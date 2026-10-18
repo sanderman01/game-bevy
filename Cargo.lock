@@ -3108,11 +3108,13 @@ dependencies = [
 name = "ename_xtask"
 version = "0.0.0"
 dependencies = [
+ "base64",
  "ename_application",
  "ename_asset_alias",
  "ename_asset_package",
  "ename_asset_vfs",
  "futures-lite",
+ "gltf",
  "image",
  "serde",
  "serde_json",

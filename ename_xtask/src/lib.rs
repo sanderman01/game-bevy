@@ -15,6 +15,7 @@ pub mod cli;
 pub mod content_build;
 pub mod dep_src;
 pub mod fix;
+pub mod gltf_info;
 pub mod image_info;
 pub mod list;
 pub mod mv;

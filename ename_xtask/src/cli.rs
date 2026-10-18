@@ -24,6 +24,12 @@ pub enum Command {
     DepSrc { name: String },
     /// `ename_image_info <asset>...` -- size, format, channel ranges and alpha of each image.
     ImageInfo { assets: Vec<String> },
+    /// `ename_gltf_info <asset> [--mesh <substring>] [--images]` -- what is inside a glTF file.
+    GltfInfo {
+        asset: String,
+        mesh: Option<String>,
+        images: bool,
+    },
 }
 
 /// Why the command line could not be read.
@@ -34,6 +40,9 @@ pub enum CliError {
     MvNeedsTwoPaths,
     DepSrcNeedsName,
     ImageInfoNeedsAsset,
+    GltfInfoNeedsOneAsset,
+    MeshNeedsSubstring,
+    UnknownFlag(String),
 }
 
 impl Display for CliError {
@@ -41,7 +50,7 @@ impl Display for CliError {
         match self {
             Self::NoCommand => write!(
                 f,
-                "usage: cargo xtask <ename_check|ename_fix|ename_content_build|ename_content_list|ename_mv <from> <to>|ename_dep_src <crate>|ename_image_info <asset>...>"
+                "usage: cargo xtask <ename_check|ename_fix|ename_content_build|ename_content_list|ename_mv <from> <to>|ename_dep_src <crate>|ename_image_info <asset>...|ename_gltf_info <asset> [--mesh <substring>] [--images]>"
             ),
             Self::Unknown(name) => write!(f, "unknown subcommand `{name}`"),
             Self::MvNeedsTwoPaths => write!(f, "ename_mv needs a <from> and a <to> path"),
@@ -50,6 +59,12 @@ impl Display for CliError {
                 f,
                 "ename_image_info needs at least one <asset>: a path, an asset path or an alias"
             ),
+            Self::GltfInfoNeedsOneAsset => write!(
+                f,
+                "ename_gltf_info needs exactly one <asset>: a path, an asset path or an alias"
+            ),
+            Self::MeshNeedsSubstring => write!(f, "--mesh needs a <substring>"),
+            Self::UnknownFlag(flag) => write!(f, "unknown flag `{flag}`"),
         }
     }
 }
@@ -83,6 +98,34 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Command, CliError
                 return Err(CliError::ImageInfoNeedsAsset);
             }
             Ok(Command::ImageInfo { assets })
+        }
+        "ename_gltf_info" => {
+            let mut assets = Vec::new();
+            let mut mesh = None;
+            let mut images = false;
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--mesh" => {
+                        let substring = args
+                            .next()
+                            .filter(|s| !s.is_empty())
+                            .ok_or(CliError::MeshNeedsSubstring)?;
+                        mesh = Some(substring);
+                    }
+                    "--images" => images = true,
+                    flag if flag.starts_with("--") => {
+                        return Err(CliError::UnknownFlag(flag.to_owned()));
+                    }
+                    _ => assets.push(arg),
+                }
+            }
+            let [asset] =
+                <[String; 1]>::try_from(assets).map_err(|_| CliError::GltfInfoNeedsOneAsset)?;
+            Ok(Command::GltfInfo {
+                asset,
+                mesh,
+                images,
+            })
         }
         other => Err(CliError::Unknown(other.to_owned())),
     }
@@ -160,6 +203,44 @@ mod tests {
         assert_eq!(
             parse(args(&["ename_image_info"])),
             Err(CliError::ImageInfoNeedsAsset)
+        );
+    }
+
+    #[test]
+    fn gltf_info_takes_one_asset_and_flags_in_any_order() {
+        assert_eq!(
+            parse(args(&[
+                "ename_gltf_info",
+                "--images",
+                "core::a",
+                "--mesh",
+                "Tree"
+            ])),
+            Ok(Command::GltfInfo {
+                asset: "core::a".into(),
+                mesh: Some("Tree".into()),
+                images: true
+            })
+        );
+        assert_eq!(
+            parse(args(&["ename_gltf_info", "a.glb"])),
+            Ok(Command::GltfInfo {
+                asset: "a.glb".into(),
+                mesh: None,
+                images: false
+            })
+        );
+        assert_eq!(
+            parse(args(&["ename_gltf_info", "a.glb", "b.glb"])),
+            Err(CliError::GltfInfoNeedsOneAsset)
+        );
+        assert_eq!(
+            parse(args(&["ename_gltf_info", "a.glb", "--mesh"])),
+            Err(CliError::MeshNeedsSubstring)
+        );
+        assert_eq!(
+            parse(args(&["ename_gltf_info", "a.glb", "--json"])),
+            Err(CliError::UnknownFlag("--json".into()))
         );
     }
 

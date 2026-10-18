@@ -2,7 +2,9 @@
 //! Run through the `xtask` cargo alias: `cargo xtask <subcommand>` (see `.cargo/config.toml`).
 
 use ename_xtask::{
-    check, cli, content_build, dep_src, fix, image_info, list, mv, policy,
+    check, cli, content_build, dep_src, fix,
+    gltf_info::{GltfOptions, gltf_info},
+    image_info, list, mv, policy,
     read_asset::{ScanPolicy, read_asset},
 };
 use std::io::Write;
@@ -103,6 +105,31 @@ fn main() -> ExitCode {
                 ExitCode::SUCCESS
             } else {
                 ExitCode::FAILURE
+            }
+        }
+        cli::Command::GltfInfo {
+            asset,
+            mesh,
+            images,
+        } => {
+            let Some(load_order_path) = load_order_path() else {
+                return ExitCode::FAILURE;
+            };
+            let search_paths = policy::search_paths();
+            let scan = ScanPolicy {
+                asset_root: Path::new(policy::ASSET_ROOT),
+                search_paths: &search_paths,
+                load_order_path: load_order_path.as_deref(),
+            };
+            match read_asset(&asset, &scan) {
+                Ok(file) => {
+                    print!("{}", gltf_info(&file, &GltfOptions { mesh, images }));
+                    ExitCode::SUCCESS
+                }
+                Err(err) => {
+                    eprintln!("ename_gltf_info: {err}");
+                    ExitCode::FAILURE
+                }
             }
         }
     }
