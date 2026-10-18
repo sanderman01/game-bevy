@@ -21,6 +21,8 @@ acting on it.
   without sleeps, and what settle probes are.
 - [Video capture](design/video-capture.md). Why recording pipes raw frames to an `ffmpeg`
   process, how a duration is written, and when a recording ends early.
+- [Performance sampling](design/perf-sampling.md). How frame, CPU and GPU time per camera are
+  measured and attributed, how noise and machine load are reported, and the statistics panel.
 - [Floating origin](design/floating-origin.md). Who holds big_space's `FloatingOrigin`, and why the
   engine elects it rather than the stage file naming it.
 - [Input is intent](#input-is-intent)
@@ -66,6 +68,10 @@ reflected type path, and the cell partition bounds through Bevy's *default* grou
 group is, in this project, big_space's -- which is why the editor's own pointer-hit gizmos moved
 into `EditorGizmos`. Anything new that draws gizmos needs its own group too, or it disappears with
 the grid overlay.
+
+`overlay.stats` is the third overlay switch, a field of `ename_engine::perf::PerfOverlay`. It is
+not a gizmo: it spawns a bevy_ui statistics panel per view, and despawns it when off. See
+[perf-sampling.md](design/perf-sampling.md#statistics-panel).
 
 ## Bevy dependencies
 

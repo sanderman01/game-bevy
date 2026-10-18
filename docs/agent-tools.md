@@ -198,6 +198,8 @@ cannot become a crate that ships by accident.
 | `debug_set` / `debug_reset` | Set debug switches by name, or restore their launch values. No restart, no key press. |
 | `input_send` | Send keys, text, pointer moves, clicks, drags and scrolls into the game as real input, with no focus and no OS injector. See "Driving input". |
 | `input_state` | The pointer, held keys and buttons, egui's interest and what picking hovers. |
+| `perf_sample` | Measure frame, CPU and GPU time per camera and per render pass over a few windows, with run-to-run noise and machine load. See "Measuring performance". |
+| `perf_compare` | Sample two settings interleaved (A B B A) and report each metric's difference against the noise. |
 
 Every result also carries `pid`, eight letters naming the run of the game process that answered
 it. See "Noticing a restart".
@@ -737,11 +739,187 @@ Image work is left to ImageMagick, PIL or ffmpeg on the files.
 For motion: `magick montage scratch/shots/fly/*.png -tile 9x -geometry 300x+2+2 sheet.png` makes
 a contact sheet, and `magick compare -metric AE` over consecutive stills finds a pop as a spike.
 
+## Measuring performance
+
+`perf_sample` measures the running editor and answers in one JSON object. Do not scrape
+`diagnostics.log` lines or write sleep-and-grep scripts for this. Why it works the way it does is
+in [design/perf-sampling.md](design/perf-sampling.md).
+
+```
+perf_sample { "duration": {"seconds": 5}, "repeats": 3, "settle": {}, "skip_settle": false,
+              "warmup_frames": 30, "uncapped": false, "detail": "summary" }
+```
+
+Every param is optional; the values above are the defaults. `duration` is one window, written as
+in `video_record` (`frames`, `seconds` or `timecode`, at most 10 minutes). `repeats` (1 to 20)
+windows run back to back. `settle` takes `wait_settled`'s params; then the frame time must hold
+steady (the median of the last 30 frames within 5 % of the 30 before, for at most 5 s), then
+`warmup_frames` are dropped. `skip_settle: true` skips both. `detail: "full"` lists every pass and
+every diagnostic instead of the top 10 passes by GPU time and the registered counters.
+
+It is a job. Settle plus three 5 s windows can pass the 50 s tool wait; call `job_wait` again.
+Progress says `phase` (`settling`, `sampling`, `waiting_gpu`), `run` and `of`, and while settling
+the probes still `busy`. `job_cancel` returns the runs finished so far, or `cancelled` with none.
+It fails `perf_busy` while another `perf.sample` or `perf.compare` runs, and `no_frames` when a
+window rendered nothing (a minimized window).
+
+### The result
+
+Times are milliseconds, rounded to 0.01. A series reports `median`, `p95` and `noise`, plus `max`
+for `frame_ms`. `median` is the median of the run medians and `noise` is their range, `null` with
+one run. A difference smaller than `noise` means nothing.
+
+| Field | Is |
+| --- | --- |
+| `frame_ms` | The main loop's interval (`Time<Real>::delta`). With pipelined rendering this is not the cost of one frame's render. |
+| `cpu_main_ms` | Wall time of the main world's schedules, `First` to `Last`. |
+| `render_wall_ms` | Render-world wall time, first to last render set. It includes waiting for the swapchain and for present, so it is not CPU work. |
+| `gpu_ms` | GPU time per frame, every camera, egui and post-processing included. `"unavailable"` without the `TIMESTAMP_QUERY` feature. |
+| `gpu_unattributed_ms` | Per frame, `gpu_ms` minus the sum of its views. Near 0 in `game`. |
+| `views` | Per label: `count` (cameras under it in one frame), `size` (largest physical render target), `gpu_ms` and `cpu_ms` (wall time of its render schedule), each `median` and `noise`. |
+| `passes` | Bevy's render pass spans: `path`, `runs_per_frame`, `gpu_ms`, `cpu_ms`. `"unavailable"` without `RenderDiagnosticsPlugin`. |
+| `counters` | `entity_count` and every registered counter. A counter that changed during the sample reads `{median, min, max}`: it was not settled. |
+| `hitches` | `frame_ms` frames above twice their window's median: `count`, `threshold_ms`, `worst_ms`, `at_seconds`. Statistics leave them out. `hitch_counts` gives the other series' counts. |
+| `bound` | What the frame time waits on, see below. |
+| `load` | Other processes over the sample: `loadavg_1m`, `cpus`, `other_cpu_cores`, `top` (above 0.25 cores, children of the game marked `child`), `gpu_others_ms` and `gpu_top`. |
+| `window`, `focused`, `occluded`, `present_mode`, `refresh_ms` | The primary window's physical size and state, and the monitor's refresh interval. |
+| `gpu_frames_missing`, `gpu_frames_skipped` | Frames whose GPU times never came back, or were not recorded because every timer slot was in flight. |
+| `reruns` | Runs dropped and sampled again because the view changed mid-window. |
+| `warnings` | `{kind, message}` each; see below. |
+
+Other processes' GPU time comes from the kernel's DRM fdinfo on Linux. On Windows and macOS
+`gpu_others_ms` is `null`, and `loadavg_1m` is `null` on Windows. A second editor left running
+shows up in `gpu_top`.
+
+`bound` is a heuristic, first match wins: `vsync` when `vsync_capped` is warned; `gpu` when the
+`gpu_ms` median is at least 90 % of the frame median; `cpu_main` when `cpu_main_ms` is; `render`
+when `render_wall_ms` is and `gpu_ms` is under half the frame; else `unclear`. Without GPU times
+only `cpu_main` can be named.
+
+| Warning | Means |
+| --- | --- |
+| `vsync_capped` | The frame median sits within 3 % of a multiple of the refresh interval, under any present mode (a compositor can cap a window too). Frame time cannot show a change; read the CPU and GPU series, or pass `uncapped: true`. |
+| `machine_busy` | Other processes used over one core on average, or GPU time above 5 % of the window. |
+| `not_settled` | Settling timed out; sampled anyway, with what was busy. |
+| `not_steady` | The frame time was still drifting after 5 s. |
+| `hitchy` | Over 5 % of frames were hitches. The hitches are the finding. |
+| `unstable_view` | The view changed again in a re-run. |
+| `window_occluded` | The window was covered or minimized; the compositor may throttle it. |
+| `stats_panel_on` | The statistics panel was on, so its cost is in the numbers. |
+| `video_recording` | A `video_record` ran during the sample, so readback and encoder cost is in the numbers. |
+| `views_truncated` | Over 64 cameras in a frame; the rest were not timed. |
+| `no_render_diagnostics` | No `RenderDiagnosticsPlugin` in this build; `passes` is unavailable. |
+| `timestamp_budget` | Bevy ran out of its 256 timestamp queries in a frame; some passes lack `gpu_ms`. |
+| `pass_gpu_unsupported` | The device cannot time inside passes; passes report `cpu_ms` only. |
+
+`uncapped: true` switches the window to `AutoNoVsync` for the sample and back after, also on
+cancel. It changes what the user sees, so it is off by default. The swapchain rebuild is a hitch
+that settling absorbs. A compositor may still cap the window, and the warning then says so.
+
+### Views, passes and how to measure
+
+A camera's label is its `PerfViewLabel` if it has one, else `main_camera` for the camera
+`MainCameraFilter` selects, else its `Name`, else `camera <order>`. Cameras that share a label are
+summed per frame. A view's time covers its whole render schedule, shadow passes included, which
+Bevy's own pass spans do not time.
+
+A pass's time is summed per frame over every camera that ran it; `runs_per_frame` says how many.
+Bevy logs a moving average that only the first camera of a frame moves, so the summed number is
+the real cost. Passes cannot be split per camera.
+
+- **Measure in the Game View** (`editor_set_view` `game`). The Scene View's numbers include the
+  `Editor Camera` and differ from what the game renders. The editor deactivates the hidden view's
+  camera, so only one of `Editor Camera` and `main_camera` appears.
+- **Compare only samples with the same `window` and view `size`s.** Nothing pins the render size;
+  the Game View renders at the tab's size. A change of a size, the camera set or a label
+  mid-window drops that run and samples it once more.
+- On a vsync-capped window frame time stays at the refresh interval. Compare `gpu_ms`,
+  `cpu_main_ms` and the views.
+
+A game crate hooks in through `ename_engine::perf`. Put `PerfViewLabel("mirror")` on cameras it
+spawns in groups, such as cubemap faces, so they report as one view; it is reflected, so an agent
+can insert one with `world_insert_component`. Call `app.register_perf_counter(path)` for a
+diagnostic it already records, and the value appears in `counters` and as a panel row.
+
+`gpu_ms` runs from the end of `RenderGraphSystems::Begin` to just before `Submit`. A game crate
+that adds systems to the root `RenderGraph` schedule must put them in `RenderGraphSystems::Render`,
+or their GPU work may fall outside the total. Work submitted outside the graph (screenshot and
+video readback copies, a `queue.submit` in a prepare system) is not in it either.
+
+### Comparing two settings
+
+`perf_compare` runs two arms, each a list of command calls, and samples after each:
+
+```
+perf_compare {
+  "a": [{"command": "debug.set", "params": {"values": {"overlay.physics": false}}}],
+  "b": [{"command": "debug.set", "params": {"values": {"overlay.physics": true}}}],
+  "restore": [{"command": "debug.reset", "params": {"names": ["overlay.physics"]}}],
+  "rounds": 2,
+  "sample": {"duration": {"seconds": 5}}
+}
+```
+
+Each round runs `A B B A`, so linear drift (warming caches, a scene that gets slower after
+visiting other views) cancels; `order` lists what ran. `rounds` is 1 to 10, default 2. `sample`
+is `perf_sample`'s params, but each step samples one window unless `repeats` says otherwise. An
+arm's steps are its runs, so with 2 rounds each arm has 4 and `noise` is their range. Job
+commands in an arm are awaited before sampling. Each step settles again first.
+
+The result has both arms' sample results under `a` and `b`, and `diff` with `frame_ms`,
+`cpu_main_ms`, `render_wall_ms`, `gpu_ms`, `views` by label (GPU time, or CPU time without
+timestamps) and arm A's top 10 `passes`. Each entry has `a`, `b`, `diff` (b minus a; negative is
+faster), `noise` (the larger arm's) and `verdict`: `b_faster`, `b_slower` or `within_noise` when
+`|diff| <= noise`. Verdicts use the rounded numbers shown, so a 0.00 difference is never called
+faster.
+
+`restore` runs once at the end, also when a step fails or the job is cancelled. Its job commands
+are started, not awaited, and a failed one adds a `restore_failed` warning. A failing arm step
+stops the job and the error names the step. Cancelling also cancels an arm's job still running.
+
+### The statistics panel
+
+The debug switch `overlay.stats` (key `F3` in editor and release builds, View > Statistics in
+the editor) shows a panel in the top right corner of each view: the Scene View, the Game View, and
+the window in a release build. One panel per host camera: the `MainCameraFilter` camera, plus any
+camera with `StatsPanelHost` (the editor puts it on `Editor Camera`). The panel of a hidden view
+draws nothing.
+
+| Row | Shows |
+| --- | --- |
+| FPS, Frame | `1000 / frame` and `frame_ms` |
+| CPU main | `cpu_main_ms` |
+| Render (wall) | `render_wall_ms`, swapchain and present waits included |
+| CPU view, GPU view | This camera's own view times |
+| GPU frame | `gpu_ms` |
+| Entities | Entity count |
+| one row per registered counter | Its value |
+| Screen, View | The window's and this view's physical size |
+
+Values are the mean of the last 0.5 s, refreshed four times a second. A row whose value has no
+source, such as GPU rows without `TIMESTAMP_QUERY`, is hidden. Nothing like Unity's batches,
+triangles or SetPass calls is measured here, so none is shown. Clicks pass through the panel.
+
+The panel is real UI, so `screenshot_capture` and `video_record` show it. Capture sequences with
+`overlays: false` hide it. It costs a little, and samples taken while it is on carry
+`stats_panel_on`.
+
+The panel is drawn with `bevy::feathers`. `EnginePlugins` adds `FeathersCorePlugin` as a group
+member, and `PerfPlugin` inserts the dark theme only when `UiTheme` is empty; its colours are the theme tokens
+`ename.stats.bg` and `ename.stats.header.bg`. Consequences for game code:
+
+- A game that wants feathers controls adds `TabNavigationPlugin` itself. Adding `FeathersPlugins`
+  after `EnginePlugins` panics on the duplicate plugin.
+- feathers resets each window's `CursorIcon` to `DefaultCursor` every frame while no feathers
+  widget is hovered, so set the idle cursor through `DefaultCursor`, not `CursorIcon`. The editor
+  copies egui's cursor into it for this reason.
+- `F1` and `F2` are taken by `bevy/dev`'s render debug overlay.
+
 ## Debug switches
 
 A debug switch is a named toggle or mode for debugging, performance analysis or modding:
-`overlay.physics`, `overlay.grids`, `camera.freeze_origin`, `diagnostics.log`, and whatever a game
-crate registers. Set them by name; never with ydotool, a key press or `world_mutate_resources`.
+`overlay.physics`, `overlay.grids`, `overlay.stats` (the statistics panel, see "Measuring
+performance"), `camera.freeze_origin`, `diagnostics.log`, and whatever a game crate registers. Set them by name; never with ydotool, a key press or `world_mutate_resources`.
 
 - `debug_list` returns every switch with its `category`, `value`, `allowed` values,
   `launch_value`, key chords per build (`keys.editor`, `keys.release`) and description.
