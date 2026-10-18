@@ -1,0 +1,43 @@
+ename_engine/src/asset_info/failures.rs
+  s_73f100acbee58a::t_44fed97fc090df 26
+  s_73f100acbee58a::t_971ea1e8f82087 1-25,27-52
+ename_engine/tests/fixtures/asset_info/good.note
+  s_73f100acbee58a::t_b728b64f5ab654 1
+ename_engine/src/lib.rs
+  s_73f100acbee58a::t_2ce346371caafd 12
+  s_73f100acbee58a::t_eb972c34a3796c 189
+ename_engine/tests/fixtures/asset_info/bad.note
+  s_73f100acbee58a::t_b728b64f5ab654 1
+ename_engine/src/asset_info/mod.rs
+  s_73f100acbee58a::t_aca6d8ba3948d3 1-152
+  s_73f100acbee58a::t_7497d4bbe417af 153-158
+ename_engine/src/asset_info/list.rs
+  s_73f100acbee58a::t_8e2464f9091530 13,296
+  s_73f100acbee58a::t_4fbb5559f4af89 229,231
+  s_73f100acbee58a::t_1b0a9b5a57e35c 1-12,14-96,98,100-190,192-194,196,198-228,230,232-295,297-305
+  s_73f100acbee58a::t_5ec8b03c2ebf2d 97,99
+  s_73f100acbee58a::t_1d6e9462d434f4 191,195,197
+ename_engine/tests/fixtures/asset_info/shape.meshy
+  s_73f100acbee58a::t_b728b64f5ab654 1
+ename_engine/tests/asset_info.rs
+  s_73f100acbee58a::t_ca4df2bd7a601c 176-177
+  s_73f100acbee58a::t_b2278eaec444d9 5-8
+  s_73f100acbee58a::t_666645eccb00b9 1-4,9-53,70-175,178-238
+  s_73f100acbee58a::t_a701f8645ad64b 54-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "962211bc40cd8c49da3ca5d36d23e3fbb74a4931",
+  "prompts": {},
+  "sessions": {
+    "s_73f100acbee58a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c819127-4325-4a80-b7e5-047d2832ae98",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
