@@ -1,0 +1,46 @@
+ename_engine/src/perf/compare.rs
+  s_e330b98cbebc97::t_14f7ca6603f87f 416-425
+docs/design/perf-sampling.md
+  s_e330b98cbebc97::t_444eb35215f03c 57-60
+ename_engine/src/perf/sample.rs
+  s_e330b98cbebc97::t_f56980a55a272b 35-36
+  s_e330b98cbebc97::t_57432aaad66f2d 676
+  s_e330b98cbebc97::t_d47131e441c73a 749-750,753
+  s_e330b98cbebc97::t_43291966322282 771-777
+  s_e330b98cbebc97::t_3854536c77147a 215-216
+  s_e330b98cbebc97::t_03d395fc049f39 5-8
+  s_e330b98cbebc97::t_77aa313f019cd9 288
+  s_e330b98cbebc97::t_4f55fff5b5031f 654-656,659-661,665-666,669,671,673-675,677-678,685-686
+  s_e330b98cbebc97::t_06e7d62a6866f1 687
+ename_engine/src/perf/report.rs
+  s_e330b98cbebc97::t_aa1762233c9e32 138,145-156
+  s_e330b98cbebc97::t_ede127f18d495a 253,256
+  s_e330b98cbebc97::t_f56980a55a272b 8
+  s_e330b98cbebc97::t_30ed9325579a97 169-237,242-243,245-247,249-252
+  s_e330b98cbebc97::t_cbd478c899d259 113-114
+  s_e330b98cbebc97::t_86bcf508c229ef 238-241,244,248
+  s_e330b98cbebc97::t_938e84e1aac421 514-518
+ename_engine/src/perf/tests.rs
+  s_e330b98cbebc97::t_d81585347da17a 665-719
+  s_e330b98cbebc97::t_1016789f0de150 596
+  s_e330b98cbebc97::t_cfe5a084ab53bb 720-724
+docs/agent-tools.md
+  s_e330b98cbebc97::t_c20b5e59b9ab3e 763-764
+  s_e330b98cbebc97::t_49e16c76fc57f3 787,808
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "418dea412ba73e73a407f663e5b441dee39151bb",
+  "prompts": {},
+  "sessions": {
+    "s_e330b98cbebc97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17f2c035-9b9b-4c57-8fb6-463dc39f045f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
