@@ -7,6 +7,7 @@
 
 pub mod airship;
 pub mod sky;
+pub mod stats;
 
 use bevy::{app::PluginGroupBuilder, prelude::*};
 use ename_engine::{
@@ -30,6 +31,7 @@ impl PluginGroup for GamePlugins {
             .add(StartPlugin)
             .add(airship::AirshipMovementPlugin)
             .add(sky::SkyPlugin)
+            .add(stats::StatsExamplePlugin)
     }
 }
 
