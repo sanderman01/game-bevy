@@ -1,0 +1,51 @@
+ename_editor/src/cursor.rs
+  s_e330b98cbebc97::t_6d42d99bfad487 8-12,35
+  s_e330b98cbebc97::t_7149e2995ad33c 1-7,13-34,36-39
+ename_editor/src/game_view.rs
+  s_e330b98cbebc97::t_2cee49c8ed4fe9 14,137-144
+Cargo.toml
+  s_e330b98cbebc97::t_d75a9a6ffbcc99 37
+ename_engine/src/perf/tests.rs
+  s_e330b98cbebc97::t_6bec65fd2975bd 279-336,341-353,357-376,381-386
+  s_e330b98cbebc97::t_52f16c3e715268 337-340,354-356,377-380
+  s_e330b98cbebc97::t_614b43fdad3838 144,192,203
+ename_editor/src/capture_sequence/mod.rs
+  s_e330b98cbebc97::t_bb8087215f23d7 55,331,600-604,612-616,664-668
+ename_engine/src/perf/records.rs
+  s_e330b98cbebc97::t_614b43fdad3838 19,211,216
+ename_editor/src/menu.rs
+  s_e330b98cbebc97::t_2cee49c8ed4fe9 88-94
+ename_editor/src/capture_sequence/fly.rs
+  s_e330b98cbebc97::t_7e0efd10478c25 64-65
+ename_editor/src/lib.rs
+  s_e330b98cbebc97::t_6d42d99bfad487 18,80
+ename_engine/src/lib.rs
+  s_e330b98cbebc97::t_614b43fdad3838 192-193
+ename_engine/src/perf/mod.rs
+  s_e330b98cbebc97::t_614b43fdad3838 8,24-25,80-82,91,113
+ename_engine/src/perf/panel.rs
+  s_e330b98cbebc97::t_e9d3b6ba7361ae 11,175-180,188-198,225-227
+  s_e330b98cbebc97::t_52f16c3e715268 117-124,135-136
+  s_e330b98cbebc97::t_0e6463870afb58 1-10,12-116,125-134,137-174,181-187,199-224,228-407
+ename_editor/src/camera.rs
+  s_e330b98cbebc97::t_2cee49c8ed4fe9 324
+  s_e330b98cbebc97::t_0b031687ce0b43 17
+ename_editor/src/capture_sequence/viewpoints.rs
+  s_e330b98cbebc97::t_7e0efd10478c25 54-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "80d3d89d286636adf3f82883300017f5e7919927",
+  "prompts": {},
+  "sessions": {
+    "s_e330b98cbebc97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17f2c035-9b9b-4c57-8fb6-463dc39f045f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
