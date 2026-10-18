@@ -13,6 +13,7 @@ ename_asset_alias = { workspace = true, default-features = false }
 ename_asset_package = { workspace = true, default-features = false }
 ename_asset_vfs = { workspace = true, features = ["tar", "zip"] }
 futures-lite = { workspace = true }
+image = { workspace = true, features = ["jpeg"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 toml = { workspace = true }

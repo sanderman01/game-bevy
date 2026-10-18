@@ -3113,6 +3113,7 @@ dependencies = [
  "ename_asset_package",
  "ename_asset_vfs",
  "futures-lite",
+ "image",
  "serde",
  "serde_json",
  "tempfile",

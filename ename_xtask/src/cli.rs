@@ -1,7 +1,7 @@
 //! Argument parsing for the `ename_xtask` binary.
 //!
-//! No argument-parsing crate: a few flat subcommands and at most two positional arguments do not
-//! need one, and a hand-rolled parser takes a plain iterator of `String`, which a test can build
+//! No argument-parsing crate: a few flat subcommands with positional arguments and a flag or two
+//! do not need one, and a hand-rolled parser takes a plain iterator of `String`, which a test can build
 //! without touching `std::env`.
 
 use std::fmt::Display;
@@ -22,6 +22,8 @@ pub enum Command {
     Mv { from: PathBuf, to: PathBuf },
     /// `ename_dep_src <crate>` -- prints the source directory of each locked version of a crate.
     DepSrc { name: String },
+    /// `ename_image_info <asset>...` -- size, format, channel ranges and alpha of each image.
+    ImageInfo { assets: Vec<String> },
 }
 
 /// Why the command line could not be read.
@@ -31,6 +33,7 @@ pub enum CliError {
     Unknown(String),
     MvNeedsTwoPaths,
     DepSrcNeedsName,
+    ImageInfoNeedsAsset,
 }
 
 impl Display for CliError {
@@ -38,11 +41,15 @@ impl Display for CliError {
         match self {
             Self::NoCommand => write!(
                 f,
-                "usage: cargo xtask <ename_check|ename_fix|ename_content_build|ename_content_list|ename_mv <from> <to>|ename_dep_src <crate>>"
+                "usage: cargo xtask <ename_check|ename_fix|ename_content_build|ename_content_list|ename_mv <from> <to>|ename_dep_src <crate>|ename_image_info <asset>...>"
             ),
             Self::Unknown(name) => write!(f, "unknown subcommand `{name}`"),
             Self::MvNeedsTwoPaths => write!(f, "ename_mv needs a <from> and a <to> path"),
             Self::DepSrcNeedsName => write!(f, "ename_dep_src needs a <crate> name"),
+            Self::ImageInfoNeedsAsset => write!(
+                f,
+                "ename_image_info needs at least one <asset>: a path, an asset path or an alias"
+            ),
         }
     }
 }
@@ -69,6 +76,13 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Command, CliError
                 .filter(|name| !name.is_empty())
                 .ok_or(CliError::DepSrcNeedsName)?;
             Ok(Command::DepSrc { name })
+        }
+        "ename_image_info" => {
+            let assets: Vec<String> = args.filter(|asset| !asset.is_empty()).collect();
+            if assets.is_empty() {
+                return Err(CliError::ImageInfoNeedsAsset);
+            }
+            Ok(Command::ImageInfo { assets })
         }
         other => Err(CliError::Unknown(other.to_owned())),
     }
@@ -132,6 +146,20 @@ mod tests {
         assert_eq!(
             parse(args(&["ename_dep_src", ""])),
             Err(CliError::DepSrcNeedsName)
+        );
+    }
+
+    #[test]
+    fn image_info_takes_one_or_more_assets() {
+        assert_eq!(
+            parse(args(&["ename_image_info", "a.png", "core::b"])),
+            Ok(Command::ImageInfo {
+                assets: vec!["a.png".into(), "core::b".into()]
+            })
+        );
+        assert_eq!(
+            parse(args(&["ename_image_info"])),
+            Err(CliError::ImageInfoNeedsAsset)
         );
     }
 

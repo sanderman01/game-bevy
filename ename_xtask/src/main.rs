@@ -1,7 +1,10 @@
 //! `ename_xtask` -- the command line tool for this workspace's content pipeline and helpers.
 //! Run through the `xtask` cargo alias: `cargo xtask <subcommand>` (see `.cargo/config.toml`).
 
-use ename_xtask::{check, cli, content_build, dep_src, fix, list, mv, policy};
+use ename_xtask::{
+    check, cli, content_build, dep_src, fix, image_info, list, mv, policy,
+    read_asset::{ScanPolicy, read_asset},
+};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -76,6 +79,32 @@ fn main() -> ExitCode {
             }
         },
         cli::Command::DepSrc { name } => dep_src(&name),
+        cli::Command::ImageInfo { assets } => {
+            let Some(load_order_path) = load_order_path() else {
+                return ExitCode::FAILURE;
+            };
+            let search_paths = policy::search_paths();
+            let scan = ScanPolicy {
+                asset_root: Path::new(policy::ASSET_ROOT),
+                search_paths: &search_paths,
+                load_order_path: load_order_path.as_deref(),
+            };
+            let mut ok = true;
+            for asset in &assets {
+                match read_asset(asset, &scan).and_then(|file| image_info::image_info(&file)) {
+                    Ok(block) => print!("{block}"),
+                    Err(err) => {
+                        eprintln!("ename_image_info: {err}");
+                        ok = false;
+                    }
+                }
+            }
+            if ok {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
     }
 }
 

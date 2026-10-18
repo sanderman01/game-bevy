@@ -160,6 +160,19 @@ pub fn asset_path_string(path: &Path) -> String {
         .join("/")
 }
 
+/// `412 KB`, `1.4 MB`: binary units, as a file manager shows them.
+pub fn human_size(bytes: usize) -> String {
+    const KB: f64 = 1024.0;
+    let bytes = bytes as f64;
+    if bytes < KB {
+        format!("{bytes} B")
+    } else if bytes < KB * KB {
+        format!("{:.0} KB", bytes / KB)
+    } else {
+        format!("{:.1} MB", bytes / (KB * KB))
+    }
+}
+
 /// A relative path with `.` and `..` folded away, or `None` if it is absolute or climbs out.
 fn normalize(path: &Path) -> Option<PathBuf> {
     let mut out = PathBuf::new();
