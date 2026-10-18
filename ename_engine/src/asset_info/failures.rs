@@ -45,7 +45,7 @@ pub(super) fn log_failures(
         }
         log.0.push_back(LoggedFailure {
             path: failure.path.clone(),
-            error: failure.error.to_string(),
+            error: super::error_text(&failure.error),
             frame,
         });
     }

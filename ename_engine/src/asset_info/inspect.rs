@@ -19,7 +19,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::{dependency_state_name, failures::AssetLoadFailures, load_state_name, type_path};
+use super::{
+    dependency_state_name, error_text, failures::AssetLoadFailures, load_state_name, type_path,
+};
 use crate::command::{Call, CommandError};
 
 #[derive(Deserialize, JsonSchema)]
@@ -131,10 +133,10 @@ fn inspect_handle(world: &World, id: UntypedAssetId, path: &AssetPath) -> Inspec
     ));
     let errors = match &state {
         LoadState::Failed(error) => {
-            let mut chain = vec![error.to_string()];
+            let mut chain = vec![error_text(error)];
             let mut source = error.source();
             while let Some(error) = source {
-                chain.push(error.to_string());
+                chain.push(error_text(&error));
                 source = error.source();
             }
             chain

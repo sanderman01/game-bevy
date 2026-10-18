@@ -103,7 +103,12 @@ pub(super) fn report(
 ) -> Result<Report, CommandError> {
     let limit = limit(call.params.limit)?;
     let settings = scan_settings(world)?;
-    let asset_root = FileAssetReader::get_base_path().join(settings.asset_root());
+    // `BEVY_ASSET_ROOT=.` gives `<cwd>/./assets`; drop the `.`.
+    let asset_root: PathBuf = FileAssetReader::get_base_path()
+        .join(settings.asset_root())
+        .components()
+        .filter(|component| !matches!(component, std::path::Component::CurDir))
+        .collect();
     let report = world.get_resource::<ContentReport>();
     let packages = report.map_or(&[][..], |report| report.packages.as_slice());
     let search_paths = settings

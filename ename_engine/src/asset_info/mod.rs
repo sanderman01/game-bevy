@@ -90,6 +90,22 @@ fn limit(limit: Option<u32>) -> Result<usize, CommandError> {
     }
 }
 
+/// An error's message without the backtrace a `BevyError` appends when backtraces are on.
+fn error_text(error: &dyn std::fmt::Display) -> String {
+    let text = error.to_string();
+    let is_frame = |line: &str| {
+        line.trim_start()
+            .split_once(": ")
+            .is_some_and(|(n, _)| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    };
+    text.lines()
+        .take_while(|line| !is_frame(line) && !line.starts_with("note: Some \"noisy\""))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim_end()
+        .to_owned()
+}
+
 fn not_scanned() -> CommandError {
     CommandError::failed(
         "content_not_scanned",
@@ -164,7 +180,7 @@ fn handle_info(
         RecursiveDependencyLoadState::NotLoaded,
     ));
     let error = match &state {
-        LoadState::Failed(error) => Some(error.to_string()),
+        LoadState::Failed(error) => Some(error_text(error)),
         _ => None,
     };
     let previous_error = match error {
@@ -197,4 +213,16 @@ fn dropped_handle(world: &World, via: &'static str, path: &AssetPath) -> Option<
         previous_error: None,
         dropped: true,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::error_text;
+
+    #[test]
+    fn error_text_drops_an_appended_backtrace() {
+        let text = "Failed to load 'a': Expected comma\n   0: <x as y>::from\n             at a.rs:1:2\n  12: poll\nnote: Some \"noisy\" backtrace lines have been filtered out.\n";
+        assert_eq!(error_text(&text), "Failed to load 'a': Expected comma");
+        assert_eq!(error_text(&"two\nlines"), "two\nlines");
+    }
 }
