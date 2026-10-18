@@ -1,0 +1,23 @@
+example_game_lib/src/lib.rs
+  s_e330b98cbebc97::t_ed60116251f382 34
+  s_e330b98cbebc97::t_1c555d8ab28d83 10
+example_game_lib/src/stats.rs
+  s_e330b98cbebc97::t_e8d1c28df59120 1-4,6,8-19,21-27,29-30
+  s_e330b98cbebc97::t_168266a70d2c5b 5,7,20,28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9ae093dd816f23e8c9f8c0913a6efea370effda0",
+  "prompts": {},
+  "sessions": {
+    "s_e330b98cbebc97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17f2c035-9b9b-4c57-8fb6-463dc39f045f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
