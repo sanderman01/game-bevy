@@ -376,8 +376,12 @@ so `asset.list` walks `ContentIndex` and asks `AssetServer::get_path_ids` for ea
 load's root handle drops after load, so labeled sub-assets are found by walking
 `ReflectAsset::ids` of every reflect-registered asset type and filing each path under its alias
 by `without_label()`. Failures get a 256-entry log fed by `UntypedAssetLoadFailedEvent`, because
-the server forgets a failed asset once its handle drops. Error text is cut before any appended
-`BevyError` backtrace. All four commands are `Safe` and read-only and reach MCP through the
+the server forgets a failed asset once its handle drops, and a failed label never reaches
+`Assets<T>`: the log is the only place a broken `#Scene0` shows. Each entry is marked resolved
+once its path has a loaded asset again, so a recovered asset whose handle drops does not read
+as failed. Listing builds a per-path lookup of the log once per call and builds full entries only
+for what it returns, so a 131k-alias index costs two id lookups per alias. Error text is cut
+before an appended `BevyError` backtrace (an indented `0:` frame followed by an `at` line). All four commands are `Safe` and read-only and reach MCP through the
 command registry, with no change to `ename_remote` or `ename_mcp`.
 
 ## What the agent can actually see

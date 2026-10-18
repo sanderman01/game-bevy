@@ -203,7 +203,7 @@ cannot become a crate that ships by accident.
 | `content_report` | The package scan as the game sees it: asset root, search paths, load order file, packages, problems. |
 | `content_resolve` | Alias to path, path to aliases, or a substring search, each with its package. |
 | `asset_list` | Indexed assets by load state, with each failure's error and failures outside the index. |
-| `asset_inspect` | One asset's handles, states, error chain, and a summary of the loaded `Image`, `Mesh` or material. |
+| `asset_inspect` | One asset's handles, states, errors, and a summary of the loaded `Image`, `Mesh` or material. |
 
 Every result also carries `pid`, eight letters naming the run of the game process that answered
 it. See "Noticing a restart".
@@ -980,16 +980,22 @@ file, with no game running, use `cargo xtask ename_gltf_info` and `ename_image_i
   count, the load order file, then packages, disabled packages, contests and problems. A game
   started from the wrong directory shows `exists: false` on every search path here.
 - `content_resolve`: exactly one of `alias`, `path` or `contains`; each entry names its package.
-- `asset_list`: every alias in the index with its state, worst first: `failed`, `loading`,
-  `loaded`, `not_requested`. `state` filters (default `requested`, also `any`), `contains`
-  matches alias or path. Each entry lists the handles for its `alias://` path and its physical
-  path, and `labeled` counts its sub-assets (`#Mesh0`), so a glTF loaded only through
-  `#Scene0` still shows as loaded. A failure that has loaded since keeps `previous_error`; a
-  failed handle that dropped shows `dropped: true`; failures for paths no alias claims are under
-  `failures_outside_index`.
+- `asset_list`: every alias in the index, sorted by alias, with its state: the worst of
+  `failed`, `loading`, `loaded` over its handles, its labels and what they depend on, or
+  `not_requested`. A loaded asset whose dependency failed counts as `failed` and carries
+  `dependency_error`. `state` filters (default `requested`, also `any`), `contains` matches
+  alias or path. Each entry lists the handles for its `alias://` path and its physical path, and
+  each labeled path that is failing (`#Scene0` of a broken glTF); `labeled` counts its live
+  sub-assets (`#Mesh0`), so a glTF loaded only through `#Scene0` still shows as loaded. A
+  failure that has loaded since keeps `previous_error`; a failed handle that dropped shows
+  `dropped: true` until the path loads again. Unresolved failures for paths no indexed alias
+  claims (a typo in an `alias://` path, a plain path) are under `failures_outside_index`, a
+  counted list like the others.
 - `asset_inspect`: an alias with an optional label (`examples::airship#Mesh0/Primitive0`), an
   `alias://` path or a plain path. Returns the handles with their direct and recursive
-  dependency states, the error chain, and a summary: an `Image`'s size, format, mips and
+  dependency states, the error and the sources it exposes (a loader's own error is wrapped by
+  Bevy, so its message is in the first entry rather than chained), `dependency_error`, and a
+  failed handle that dropped, from the log. The summary covers an `Image`'s size, format, mips and
   sampler; a `Mesh`'s topology, counts, AABB and per-attribute min/max (vertex colour alpha
   included); a material's alpha mode, base colour and textures by path; a `Gltf`'s labels. A
   glTF's `#Material0` is a `GltfMaterial`, alive only while something holds it; the
