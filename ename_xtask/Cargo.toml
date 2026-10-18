@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "Command line tooling for the content pipeline (check, fix, list, move) and workspace helpers (dependency source)."
+description = "Command line tooling for the content pipeline (check, fix, list, move), asset inspection (glTF, images) and workspace helpers (dependency source)."
 
 [dependencies]
 base64 = { workspace = true }

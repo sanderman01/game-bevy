@@ -362,6 +362,24 @@ heading and a `Signature:` line holding a literal substring of the panic message
 The sidecar matches a panic or the last error against it and links the section. A path list in
 `ENAME_KNOWN_CRASHES` lets a downstream repo list its own file and the engine's.
 
+## Asset state
+
+**Inspection of files is offline.** `ename_gltf_info` and `ename_image_info` live in
+`ename_xtask`, not the game, so they work with no game running, on an asset that fails to load,
+and inside archives. They use `gltf` with exactly `bevy_gltf`'s features and `image` with only
+`jpeg`, so the workspace build unifies nothing new into Bevy. `gltf`'s typed API unwraps index
+references, so a file is validated first and one that fails gets a raw-JSON summary.
+
+**Asset state is enumerated through the alias index.** Bevy 0.19 keeps `AssetInfos` private,
+so `asset.list` walks `ContentIndex` and asks `AssetServer::get_path_ids` for each alias's
+`alias://` path and physical path: ids only, so listing never keeps an asset alive. A labeled
+load's root handle drops after load, so labeled sub-assets are found by walking
+`ReflectAsset::ids` of every reflect-registered asset type and filing each path under its alias
+by `without_label()`. Failures get a 256-entry log fed by `UntypedAssetLoadFailedEvent`, because
+the server forgets a failed asset once its handle drops. Error text is cut before any appended
+`BevyError` backtrace. All four commands are `Safe` and read-only and reach MCP through the
+command registry, with no change to `ename_remote` or `ename_mcp`.
+
 ## What the agent can actually see
 
 Type registration is a correctness requirement for MCP, not a convenience for the inspector. An

@@ -200,6 +200,10 @@ cannot become a crate that ships by accident.
 | `input_state` | The pointer, held keys and buttons, egui's interest and what picking hovers. |
 | `perf_sample` | Measure frame, CPU and GPU time per camera and per render pass over a few windows, with run-to-run noise and machine load. See "Measuring performance". |
 | `perf_compare` | Sample two settings interleaved (A B B A) and report each metric's difference against the noise. |
+| `content_report` | The package scan as the game sees it: asset root, search paths, load order file, packages, problems. |
+| `content_resolve` | Alias to path, path to aliases, or a substring search, each with its package. |
+| `asset_list` | Indexed assets by load state, with each failure's error and failures outside the index. |
+| `asset_inspect` | One asset's handles, states, error chain, and a summary of the loaded `Image`, `Mesh` or material. |
 
 Every result also carries `pid`, eight letters naming the run of the game process that answered
 it. See "Noticing a restart".
@@ -331,6 +335,10 @@ are in the log as ERROR entries with target `panic`.
 
 `log` on a lifecycle result (`game_start`, `game_status`, ...) is something else: the path of
 `game.log`.
+
+A failed asset load is logged at ERROR, so it shows here first. `asset_list` with
+`state: "failed"` then says which asset and why, without the backtrace; see
+[Assets and content](#assets-and-content).
 
 ## Working with a frozen world
 
@@ -959,6 +967,41 @@ member, and `PerfPlugin` inserts the dark theme only when `UiTheme` is empty; it
   widget is hovered, so set the idle cursor through `DefaultCursor`, not `CursorIcon`. The editor
   copies egui's cursor into it for this reason.
 - `F1` and `F2` are taken by `bevy/dev`'s render debug overlay.
+
+## Assets and content
+
+Four read-only commands answer what the running game scanned and loaded. For what is inside a
+file, with no game running, use `cargo xtask ename_gltf_info` and `ename_image_info`
+([assets-packages.md](assets-packages.md#tooling)): the file says what was authored,
+`asset_inspect` what Bevy made of it.
+
+- `content_report`: `scan` (`running` until the package scan is done), the absolute
+  `asset_root` and `BEVY_ASSET_ROOT` if set, each search path with `exists` and its package
+  count, the load order file, then packages, disabled packages, contests and problems. A game
+  started from the wrong directory shows `exists: false` on every search path here.
+- `content_resolve`: exactly one of `alias`, `path` or `contains`; each entry names its package.
+- `asset_list`: every alias in the index with its state, worst first: `failed`, `loading`,
+  `loaded`, `not_requested`. `state` filters (default `requested`, also `any`), `contains`
+  matches alias or path. Each entry lists the handles for its `alias://` path and its physical
+  path, and `labeled` counts its sub-assets (`#Mesh0`), so a glTF loaded only through
+  `#Scene0` still shows as loaded. A failure that has loaded since keeps `previous_error`; a
+  failed handle that dropped shows `dropped: true`; failures for paths no alias claims are under
+  `failures_outside_index`.
+- `asset_inspect`: an alias with an optional label (`examples::airship#Mesh0/Primitive0`), an
+  `alias://` path or a plain path. Returns the handles with their direct and recursive
+  dependency states, the error chain, and a summary: an `Image`'s size, format, mips and
+  sampler; a `Mesh`'s topology, counts, AABB and per-attribute min/max (vertex colour alpha
+  included); a material's alpha mode, base colour and textures by path; a `Gltf`'s labels. A
+  glTF's `#Material0` is a `GltfMaterial`, alive only while something holds it; the
+  `StandardMaterial` that renders is `#Material0/std`.
+
+Limits: Bevy keeps its asset table private, so `asset_list` enumerates the alias index and
+reaches labeled sub-assets only of reflect-registered types (`Image`, `Mesh`,
+`StandardMaterial`, `AnimationClip` in Bevy 0.19.1; not `WorldAsset` or the `Gltf*` types).
+Assets made in code (`Assets::add`) are not listed. The failure log keeps the last 256 failures.
+Each list takes `limit` (1 to 500, default 50) and reports `truncated`. After editing an asset
+file, wait for the reload's log line before listing: the file watcher runs after
+`wait_settled` returns.
 
 ## Debug switches
 

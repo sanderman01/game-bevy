@@ -73,3 +73,7 @@ See [docs/code-style.md](docs/code-style.md). Read it before writing Rust code. 
 ## Assets and config
 
 - **Never edit or commit binary assets, unless specifically requested.**  When a change requires one, give the user precise in-editor steps and values to set.
+- Read a `.glb` or image with `cargo xtask ename_gltf_info` / `ename_image_info`, not by hand
+  ([assets-packages.md](docs/assets-packages.md#tooling)). Ask the running game what loaded or
+  failed with `asset_list` and `asset_inspect`
+  ([agent-tools.md](docs/agent-tools.md#assets-and-content)).

@@ -1,5 +1,5 @@
-//! `ename_xtask` -- the command line tool for this workspace's content pipeline, plus workspace
-//! helpers such as `ename_dep_src`.
+//! `ename_xtask` -- the command line tool for this workspace's content pipeline, asset inspection
+//! (`ename_gltf_info`, `ename_image_info`), and workspace helpers such as `ename_dep_src`.
 //!
 //! Depends on `ename_asset_alias` and `ename_asset_package` with `default-features = false`, so it
 //! never links Bevy, and reads the same tree the running game does through `StdVfs` instead of an

@@ -100,3 +100,20 @@ with [archives](assets-archives.md) mounted), so what it reports matches what th
 - `cargo xtask ename_mv <from> <to>` -- moves an asset and its `.meta`, `.alias` and `.license` sidecars together,
   using `git mv` where possible so history follows the rename. Refuses paths inside an archive.
 - `cargo xtask ename_content_build` -- stub; will bake `content-index.ron` for a shipping build.
+- `cargo xtask ename_gltf_info <asset> [--mesh <substring>] [--images]` -- what is inside a
+  `.glb` or `.gltf`: scene bounds, nodes, each attribute's range read from the data (vertex
+  colour alpha included), materials, images, and notes on what Bevy will render differently:
+  vertex alpha under a `MASK` cutoff, a primitive without `NORMAL`, a textured material without
+  its UV set, an image type that needs a Bevy feature (`jpeg`), a required extension `bevy_gltf`
+  cannot load. A malformed file gets a summary of its raw JSON instead of a panic.
+- `cargo xtask ename_image_info <asset>...` -- size, pixel format, per-channel range and mean,
+  the alpha distribution (cut out or blended), 16-bit ranges, and the `.meta` settings.
+
+`<asset>` is a filesystem path, a path under the asset root (also inside an archive), or an alias
+such as `examples::airship`. In the running game, `content_report`, `content_resolve`,
+`asset_list` and `asset_inspect` say what was scanned and loaded; see
+[agent-tools.md](agent-tools.md#assets-and-content).
+
+The load order file is found in the example's persistent data directory. A game with its own
+names sets `ENAME_ORGANISATION_NAME` and `ENAME_PROJECT_NAME` (both or neither), for example in
+its `.cargo/config.toml` `[env]`.
