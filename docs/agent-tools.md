@@ -892,16 +892,16 @@ draws nothing.
 | Row | Shows |
 | --- | --- |
 | FPS, Frame | `1000 / frame` and `frame_ms` |
-| CPU main | `cpu_main_ms` |
-| Render (wall) | `render_wall_ms`, swapchain and present waits included |
-| CPU view, GPU view | This camera's own view times |
-| GPU frame | `gpu_ms` |
+| CPU | `cpu_main_ms`, the main schedule's wall time |
+| GPU | `gpu_ms`, the whole frame's GPU time |
 | Entities | Entity count |
-| one row per registered counter | Its value |
-| Screen, View | The window's and this view's physical size |
+| View | This view's physical size |
+
+The panel stays small on purpose; `perf_sample` reports the rest (render wall time, per-view
+times, passes, counters).
 
 Values are the mean of the last 0.5 s, refreshed four times a second. A row whose value has no
-source, such as GPU rows without `TIMESTAMP_QUERY`, is hidden. Nothing like Unity's batches,
+source, such as the GPU row without `TIMESTAMP_QUERY`, is hidden. Nothing like Unity's batches,
 triangles or SetPass calls is measured here, so none is shown. Clicks pass through the panel.
 
 The panel is real UI, so `screenshot_capture` and `video_record` show it. Capture sequences with
