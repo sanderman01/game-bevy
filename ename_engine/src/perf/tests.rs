@@ -738,3 +738,461 @@ mod report {
         );
     }
 }
+
+mod panel_content {
+    use std::time::Instant;
+
+    use bevy::{ecs::system::SystemIdMarker, prelude::*};
+
+    use crate::{
+        command::CommandPlugin,
+        debug_switch::{DebugSwitchPlugin, DebugSwitchValue, DebugSwitchWorldExt},
+        perf::{
+            PerfPlugin, StatsCells, StatsFpsSection, StatsPanelHost, StatsPanelOf, StatsRow,
+            StatsSceneSection, StatsSection, StatsTimingSection,
+            gpu_timer::GpuFrame,
+            panel::{
+                content::{self, Layout, StatsPanelValues, StatsWarning, StatsWarnings},
+                refresh_panels,
+            },
+            records::{MainFrame, PerfRecords, Stamped},
+        },
+    };
+
+    /// No feathers: panels get values but no UI, which is all these need.
+    fn app() -> (App, Entity) {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            CommandPlugin,
+            DebugSwitchPlugin,
+            PerfPlugin,
+        ));
+        app.finish();
+        app.cleanup();
+        let host = app
+            .world_mut()
+            .spawn((Camera::default(), StatsPanelHost, Name::new("host a")))
+            .id();
+        app.world_mut()
+            .set_debug_switch("overlay.stats", DebugSwitchValue::Bool(true), "test")
+            .unwrap();
+        app.update();
+        (app, host)
+    }
+
+    fn layout(app: &mut App) -> Layout {
+        content::layout(app.world_mut(), &mut StatsWarnings::default())
+    }
+
+    fn name(app: &App, entity: Entity) -> String {
+        app.world().get::<Name>(entity).unwrap().to_string()
+    }
+
+    /// Section names with their row labels, in panel order.
+    fn outline(app: &mut App) -> Vec<(String, Vec<String>)> {
+        let layout = layout(app);
+        layout
+            .0
+            .iter()
+            .map(|section| {
+                let rows = section.rows.iter().map(|row| row.label.to_string());
+                (name(app, section.entity), rows.collect())
+            })
+            .collect()
+    }
+
+    fn section<T: Component>(app: &mut App) -> Entity {
+        let world = app.world_mut();
+        world
+            .query_filtered::<Entity, With<T>>()
+            .single(world)
+            .unwrap()
+    }
+
+    fn refresh(app: &mut App) {
+        refresh_panels(app.world_mut());
+    }
+
+    fn values(app: &mut App, host: Entity) -> &StatsPanelValues {
+        let world = app.world_mut();
+        let panel = world
+            .query::<(Entity, &StatsPanelOf)>()
+            .iter(world)
+            .find(|(_, of)| of.0 == host)
+            .map(|(panel, _)| panel)
+            .unwrap();
+        app.world().get::<StatsPanelValues>(panel).unwrap()
+    }
+
+    fn cells(app: &mut App, host: Entity, row: Entity) -> Option<Vec<String>> {
+        values(app, host).row(row).map(<[String]>::to_vec)
+    }
+
+    fn warned(app: &App, row: Entity, warning: StatsWarning) -> usize {
+        let warnings = &app.world().resource::<StatsWarnings>().0;
+        warnings.iter().filter(|w| **w == (row, warning)).count()
+    }
+
+    fn text(text: &'static str) -> impl Fn(In<Entity>) -> Option<StatsCells> {
+        move |_| Some(StatsCells::one(text))
+    }
+
+    fn strings(cells: &[&str]) -> Option<Vec<String>> {
+        Some(cells.iter().map(|cell| cell.to_string()).collect())
+    }
+
+    #[test]
+    fn sections_and_rows_sort_by_order_with_ties_in_child_order() {
+        let (mut app, _) = app();
+        let world = app.world_mut();
+        world.spawn((
+            StatsSection::titled("A", 5),
+            children![
+                StatsRow::system("a1", 10, text("1")),
+                StatsRow::system("a2", 0, text("2")),
+                StatsRow::system("a3", 10, text("3")),
+            ],
+        ));
+        world.spawn(StatsSection::titled("B", 5));
+        world.spawn(StatsSection::titled("C", -1));
+        app.update();
+        let outline = outline(&mut app);
+        let sections: Vec<&str> = outline.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(sections, ["C", "FPS", "A", "B", "Timing", "Scene"]);
+        assert_eq!(outline[2].1, ["a2", "a1", "a3"]);
+        assert_eq!(outline[4].1, ["Frame", "CPU", "GPU"]);
+        assert_eq!(outline[5].1, ["Entities", "View"]);
+    }
+
+    #[test]
+    fn rows_added_and_despawned_at_runtime_follow() {
+        let (mut app, host) = app();
+        let scene = section::<StatsSceneSection>(&mut app);
+        let row = app
+            .world_mut()
+            .spawn((StatsRow::system("Extra", 20, text("x")), ChildOf(scene)))
+            .id();
+        refresh(&mut app);
+        assert_eq!(outline(&mut app)[2].1, ["Entities", "View", "Extra"]);
+        assert_eq!(cells(&mut app, host, row), strings(&["x"]));
+
+        app.world_mut().despawn(row);
+        refresh(&mut app);
+        assert_eq!(outline(&mut app)[2].1, ["Entities", "View"]);
+        assert_eq!(cells(&mut app, host, row), None);
+    }
+
+    #[test]
+    fn a_row_moves_with_its_parent() {
+        let (mut app, _) = app();
+        let scene = section::<StatsSceneSection>(&mut app);
+        let fps = section::<StatsFpsSection>(&mut app);
+        let row = app
+            .world_mut()
+            .spawn((StatsRow::system("Moving", 5, text("m")), ChildOf(scene)))
+            .id();
+        assert_eq!(outline(&mut app)[2].1, ["Entities", "Moving", "View"]);
+        app.world_mut().entity_mut(row).insert(ChildOf(fps));
+        let outline = outline(&mut app);
+        assert_eq!(outline[0].1, ["FPS", "Moving"]);
+        assert_eq!(outline[2].1, ["Entities", "View"]);
+    }
+
+    #[test]
+    fn field_edits_and_child_swaps_change_the_layout() {
+        let (mut app, _) = app();
+        let section = app
+            .world_mut()
+            .spawn((
+                StatsSection::titled("Edits", 100),
+                children![
+                    StatsRow::system("one", 0, text("1")),
+                    StatsRow::system("two", 0, text("2")),
+                ],
+            ))
+            .id();
+        app.update();
+        let before = layout(&mut app);
+        let rows = &before.0.last().unwrap().rows;
+        let (first, second) = (rows[0].entity, rows[1].entity);
+
+        app.world_mut().get_mut::<StatsRow>(first).unwrap().order = 1;
+        let reordered = layout(&mut app);
+        assert_ne!(reordered, before);
+        assert_eq!(outline(&mut app)[3].1, ["two", "one"]);
+        app.world_mut().get_mut::<StatsRow>(first).unwrap().order = 0;
+        assert_eq!(layout(&mut app), before);
+
+        app.world_mut().get_mut::<StatsRow>(second).unwrap().label = "deux".into();
+        assert_ne!(layout(&mut app), before);
+        app.world_mut().get_mut::<StatsRow>(second).unwrap().label = "two".into();
+        assert_eq!(layout(&mut app), before);
+
+        app.world_mut()
+            .get_mut::<Children>(section)
+            .unwrap()
+            .swap(0, 1);
+        assert_ne!(layout(&mut app), before);
+        assert_eq!(outline(&mut app)[3].1, ["two", "one"]);
+    }
+
+    #[test]
+    fn a_despawned_section_takes_its_rows() {
+        let (mut app, _) = app();
+        let section = app
+            .world_mut()
+            .spawn((
+                StatsSection::titled("Gone", 100),
+                children![StatsRow::system("row", 0, text("r"))],
+            ))
+            .id();
+        app.update();
+        let row = layout(&mut app).0.last().unwrap().rows[0].entity;
+        app.world_mut().despawn(section);
+        assert!(app.world().get_entity(row).is_err());
+        assert_eq!(outline(&mut app).len(), 3);
+    }
+
+    #[test]
+    fn removed_rows_leave_no_system_entities() {
+        let (mut app, _) = app();
+        let scene = section::<StatsSceneSection>(&mut app);
+        let count = |app: &mut App| {
+            let world = app.world_mut();
+            world.query::<&SystemIdMarker>().iter(world).count()
+        };
+        refresh(&mut app);
+        app.update();
+        let base = count(&mut app);
+        for _ in 0..3 {
+            let row = app
+                .world_mut()
+                .spawn((StatsRow::system("Temp", 50, text("t")), ChildOf(scene)))
+                .id();
+            refresh(&mut app);
+            assert_eq!(count(&mut app), base + 1);
+            app.world_mut().despawn(row);
+            app.update();
+            assert_eq!(count(&mut app), base);
+        }
+    }
+
+    #[derive(Resource)]
+    struct Missing;
+
+    #[test]
+    fn a_failing_or_removed_system_hides_its_row_and_warns_once() {
+        let (mut app, host) = app();
+        let scene = section::<StatsSceneSection>(&mut app);
+        let failing = app
+            .world_mut()
+            .spawn((
+                StatsRow::system("Failing", 50, |_: In<Entity>, _: Res<Missing>| {
+                    Some(StatsCells::one("never"))
+                }),
+                ChildOf(scene),
+            ))
+            .id();
+        refresh(&mut app);
+        refresh(&mut app);
+        assert_eq!(cells(&mut app, host, failing), None);
+        assert_eq!(warned(&app, failing, StatsWarning::Failed), 1);
+
+        let systems = |app: &mut App| {
+            let world = app.world_mut();
+            let mut systems: Vec<Entity> = world
+                .query_filtered::<Entity, With<SystemIdMarker>>()
+                .iter(world)
+                .collect();
+            systems.sort();
+            systems
+        };
+        let before = systems(&mut app);
+        let removed = app
+            .world_mut()
+            .spawn((StatsRow::system("Removed", 60, text("r")), ChildOf(scene)))
+            .id();
+        refresh(&mut app);
+        assert_eq!(cells(&mut app, host, removed), strings(&["r"]));
+        let added: Vec<Entity> = systems(&mut app)
+            .into_iter()
+            .filter(|system| !before.contains(system))
+            .collect();
+        assert_eq!(added.len(), 1);
+        app.world_mut().despawn(added[0]);
+        refresh(&mut app);
+        refresh(&mut app);
+        assert_eq!(cells(&mut app, host, removed), None);
+        assert_eq!(warned(&app, removed, StatsWarning::Failed), 1);
+    }
+
+    #[test]
+    fn a_row_can_differ_per_host() {
+        let (mut app, a) = app();
+        let b = app
+            .world_mut()
+            .spawn((Camera::default(), StatsPanelHost, Name::new("host b")))
+            .id();
+        app.update();
+        let scene = section::<StatsSceneSection>(&mut app);
+        let row = app
+            .world_mut()
+            .spawn((
+                StatsRow::system("Host", 50, |In(host): In<Entity>, names: Query<&Name>| {
+                    Some(StatsCells::one(names.get(host).ok()?.as_str()))
+                }),
+                ChildOf(scene),
+            ))
+            .id();
+        refresh(&mut app);
+        assert_eq!(cells(&mut app, a, row), strings(&["host a"]));
+        assert_eq!(cells(&mut app, b, row), strings(&["host b"]));
+    }
+
+    #[test]
+    fn a_cell_count_mismatch_is_joined_into_the_last_column_and_warns_once() {
+        let (mut app, host) = app();
+        let timing = section::<StatsTimingSection>(&mut app);
+        let scene = section::<StatsSceneSection>(&mut app);
+        let three = app
+            .world_mut()
+            .spawn((
+                StatsRow::system("Three", 50, |_: In<Entity>| {
+                    Some(StatsCells::from(["a", "b", "c"]))
+                }),
+                ChildOf(timing),
+            ))
+            .id();
+        let two = app
+            .world_mut()
+            .spawn((
+                StatsRow::system("Two", 50, |_: In<Entity>| {
+                    Some(StatsCells::from(["x", "y"]))
+                }),
+                ChildOf(scene),
+            ))
+            .id();
+        refresh(&mut app);
+        refresh(&mut app);
+        assert_eq!(cells(&mut app, host, three), strings(&["", "a b c"]));
+        assert_eq!(cells(&mut app, host, two), strings(&["x y"]));
+        assert_eq!(warned(&app, three, StatsWarning::Cells), 1);
+        assert_eq!(warned(&app, two, StatsWarning::Cells), 1);
+    }
+
+    #[test]
+    fn a_section_whose_rows_all_hide_is_hidden() {
+        let (mut app, host) = app();
+        let section = app
+            .world_mut()
+            .spawn((
+                StatsSection::titled("Quiet", 100).with_header(["", "value"]),
+                children![
+                    StatsRow::system("none", 0, |_: In<Entity>| None),
+                    StatsRow::system("skipped", 10, |_: In<Entity>, _: Single<&Missing>| {
+                        Some(StatsCells::one("never"))
+                    }),
+                ],
+            ))
+            .id();
+        refresh(&mut app);
+        let layout = layout(&mut app);
+        let quiet = layout.0.iter().find(|s| s.entity == section).unwrap();
+        assert!(!values(&mut app, host).shows(quiet));
+        // `Skipped` is not a failure.
+        assert_eq!(app.world().resource::<StatsWarnings>().0.len(), 0);
+
+        app.world_mut()
+            .spawn((StatsRow::system("some", 20, text("1")), ChildOf(section)));
+        refresh(&mut app);
+        let layout = self::layout(&mut app);
+        let quiet = layout.0.iter().find(|s| s.entity == section).unwrap();
+        assert!(values(&mut app, host).shows(quiet));
+    }
+
+    #[test]
+    fn a_row_without_a_section_is_ignored_and_warns_once() {
+        let (mut app, host) = app();
+        let loose = app
+            .world_mut()
+            .spawn(StatsRow::system("Loose", 0, text("l")))
+            .id();
+        let parent = app.world_mut().spawn_empty().id();
+        let misplaced = app
+            .world_mut()
+            .spawn((StatsRow::system("Misplaced", 0, text("m")), ChildOf(parent)))
+            .id();
+        refresh(&mut app);
+        refresh(&mut app);
+        let outline = outline(&mut app);
+        assert!(outline.iter().all(|(_, rows)| rows.len() <= 3));
+        assert_eq!(cells(&mut app, host, loose), None);
+        assert_eq!(cells(&mut app, host, misplaced), None);
+        assert_eq!(warned(&app, loose, StatsWarning::Unplaced), 1);
+        assert_eq!(warned(&app, misplaced, StatsWarning::Unplaced), 1);
+    }
+
+    #[test]
+    fn built_in_rows_cover_the_last_120_frames() {
+        let (mut app, host) = app();
+        let at = Instant::now();
+        let mut records = app.world_mut().resource_mut::<PerfRecords>();
+        records.clear();
+        for frame in 0..130_u64 {
+            // The first ten fall outside the window.
+            let old = frame < 10;
+            let record = MainFrame {
+                frame,
+                frame_ms: if old {
+                    1000.0
+                } else if frame == 70 {
+                    40.0
+                } else {
+                    10.0
+                },
+                cpu_main_ms: if frame == 80 { 5.0 } else { 2.0 },
+                entity_count: Some(frame as f64),
+                counters: Vec::new(),
+            };
+            records.main.push_back(Stamped {
+                arrived: frame,
+                at,
+                record,
+            });
+            let record = GpuFrame {
+                frame,
+                total_ms: if old { 99.0 } else { 1.5 },
+                views: Vec::new(),
+                untimed_views: 0,
+            };
+            records.gpu.push_back(Stamped {
+                arrived: frame,
+                at,
+                record,
+            });
+        }
+        refresh(&mut app);
+        let row = |app: &mut App, label: &str| {
+            let world = app.world_mut();
+            world
+                .query::<(Entity, &StatsRow)>()
+                .iter(world)
+                .find(|(_, row)| row.label == label)
+                .unwrap()
+                .0
+        };
+        // Mean frame (119 * 10 + 40) / 120 = 10.25 ms: 97.56 FPS, truncated.
+        let fps = row(&mut app, "FPS");
+        assert_eq!(cells(&mut app, host, fps), strings(&["97"]));
+        let frame = row(&mut app, "Frame");
+        assert_eq!(cells(&mut app, host, frame), strings(&["10.00", "40.00"]));
+        let cpu = row(&mut app, "CPU");
+        assert_eq!(cells(&mut app, host, cpu), strings(&["2.00", "5.00"]));
+        let gpu = row(&mut app, "GPU");
+        assert_eq!(cells(&mut app, host, gpu), strings(&["1.50", "1.50"]));
+        let entities = row(&mut app, "Entities");
+        assert_eq!(cells(&mut app, host, entities), strings(&["129"]));
+    }
+}

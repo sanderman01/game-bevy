@@ -21,7 +21,11 @@ use std::{borrow::Cow, sync::mpsc::channel};
 
 use bevy::{diagnostic::DiagnosticPath, prelude::*, render::diagnostic::RenderDiagnosticsPlugin};
 
-pub use panel::{PerfOverlay, StatsPanelHost, StatsPanelOf, StatsPanels};
+pub use panel::{
+    PerfOverlay, StatsCells, StatsContent, StatsFpsSection, StatsPanelHost, StatsPanelOf,
+    StatsPanels, StatsRow, StatsRowSource, StatsRowSystem, StatsSceneSection, StatsSection,
+    StatsTimingSection,
+};
 
 use gpu_timer::TimestampSupport;
 use records::{PerfCounters, RecordReceiver};

@@ -1,34 +1,44 @@
 //! The statistics panel: a feathers pane per host camera, top right of its viewport, showing the
-//! last [`PANEL_FRAMES`] frames of [`PerfRecords`]. Behind the `overlay.stats` debug switch (`F3`).
+//! [`StatsSection`]s and [`StatsRow`]s under the [`StatsContent`] root. The built-in rows cover
+//! the last [`PANEL_FRAMES`] frames of `PerfRecords`. Behind the `overlay.stats` debug switch
+//! (`F3`). `panel/content.rs` says how other code adds sections and rows.
+
+pub(crate) mod builtin;
+pub(crate) mod content;
 
 use std::time::Duration;
 
 use bevy::{
-    ecs::entity::{EntityHashMap, EntityHashSet},
+    ecs::entity::EntityHashSet,
     feathers::{
         FeathersCorePlugin,
         constants::fonts,
-        containers::{flex_spacer, pane, pane_body, pane_header},
+        containers::{pane, pane_body, pane_header},
         dark_theme::create_dark_theme,
         display::{label, label_dim},
         theme::{ThemeBackgroundColor, ThemeToken, ThemedText, UiTheme},
         tokens,
     },
     prelude::*,
+    scene::{SpawnSceneError, WorldSceneExt},
     text::{FontSize, FontSourceTemplate},
     time::common_conditions::on_real_timer,
 };
 
-use super::{records::PerfRecords, stats::Summary};
+pub use builtin::{StatsFpsSection, StatsSceneSection, StatsTimingSection};
+pub use content::{
+    StatsCells, StatsContent, StatsRow, StatsRowSource, StatsRowSystem, StatsSection,
+};
+
+use content::{Layout, StatsPanelValues, StatsWarnings};
+
 use crate::{
     camera::MainCameraFilter,
     debug_switch::{DebugSwitchAppExt, DebugSwitchSpec, KeyChord},
 };
 
-/// How many of the newest frames the panel's values cover.
+/// How many of the newest frames the built-in values cover.
 pub(super) const PANEL_FRAMES: usize = 120;
-/// Header over the timing rows' `median max` values, as wide as they are.
-const COLUMNS: &str = "median    max";
 /// How often the values are re-texted.
 const REFRESH: Duration = Duration::from_millis(250);
 /// Above game UI.
@@ -63,26 +73,23 @@ pub struct StatsPanelOf(pub Entity);
 #[relationship_target(relationship = StatsPanelOf, linked_spawn)]
 pub struct StatsPanels(Vec<Entity>);
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum Row {
-    #[default]
-    Fps,
-    Frame,
-    Cpu,
-    Gpu,
-    Entities,
-    View,
+/// The pane body the sections are built into.
+#[derive(Component, Clone, Copy, Debug, Default)]
+struct StatsPanelBody;
+
+/// On a panel root: the layout its body was built from, and the nodes built for it.
+#[derive(Component, Debug)]
+struct BuiltBody {
+    layout: Layout,
+    sections: BuiltSections,
 }
 
-/// A row of the panel; hidden while its value has no source.
-#[derive(Component, Clone, Copy, Debug, Default)]
-struct StatsRow(Row);
-
-/// The value text of a [`StatsRow`], its child.
-#[derive(Component, Clone, Copy, Debug, Default)]
-struct StatsValue;
+/// Per section of a layout: its grid node, and per row the label and value cells.
+type BuiltSections = Vec<(Entity, Vec<Vec<Entity>>)>;
 
 pub(super) fn build(app: &mut App) {
+    content::build(app);
+    builtin::build(app);
     app.init_resource::<PerfOverlay>()
         .register_type::<PerfOverlay>()
         .register_type::<StatsPanelHost>()
@@ -95,7 +102,16 @@ pub(super) fn build(app: &mut App) {
             .key(KeyChord::new(KeyCode::F3)),
             "stats",
         )
-        .add_systems(Update, reconcile_panels);
+        .add_systems(
+            Update,
+            (
+                reconcile_panels,
+                refresh_panels.run_if((|overlay: Res<PerfOverlay>| overlay.stats).and_then(
+                    on_real_timer(REFRESH).or_else(any_match_filter::<Added<StatsPanelOf>>),
+                )),
+            )
+                .chain(),
+        );
 }
 
 /// Feathers draws the panel; without `FeathersCorePlugin` the roots stay empty.
@@ -108,14 +124,8 @@ pub(super) fn finish(app: &mut App) {
     {
         *theme = UiTheme(create_dark_theme());
     }
-    app.add_observer(fill_panel).add_systems(
-        Update,
-        (
-            add_stats_colors.run_if(resource_changed::<UiTheme>),
-            refresh_panels
-                .run_if(on_real_timer(REFRESH).or_else(any_match_filter::<Added<StatsRow>>)),
-        ),
-    );
+    app.add_observer(fill_panel)
+        .add_systems(Update, add_stats_colors.run_if(resource_changed::<UiTheme>));
 }
 
 /// Adds the panel's colours to a theme that lacks them, derived from its pane colours.
@@ -181,17 +191,8 @@ pub(crate) fn reconcile(
     (despawn, spawn)
 }
 
-/// Builds the feathers pane into a new panel root.
+/// Builds the feathers pane into a new panel root; the refresh fills its body.
 fn fill_panel(add: On<Add, StatsPanelOf>, mut commands: Commands) {
-    let rows = |rows: &[(Row, &str)]| -> Vec<_> {
-        rows.iter()
-            .map(|(kind, name)| row(*kind, (*name).to_owned()))
-            .collect()
-    };
-    let fps = rows(&[(Row::Fps, "FPS")]);
-    let timing = rows(&[(Row::Frame, "Frame"), (Row::Cpu, "CPU"), (Row::Gpu, "GPU")]);
-    let scene = rows(&[(Row::Entities, "Entities"), (Row::View, "View")]);
-
     commands.entity(add.entity).apply_scene(bsn! {
         Node {
             position_type: PositionType::Absolute,
@@ -215,72 +216,13 @@ fn fill_panel(add: On<Add, StatsPanelOf>, mut commands: Commands) {
                         pane_body()
                         Node { row_gap: px(6), padding: px(6) }
                         ThemeBackgroundColor(STATS_BG)
+                        StatsPanelBody
                         click_through()
-                        Children [
-                            (group() Children [ {fps} ]),
-                            (group() Children [ (timing_header()), {timing} ]),
-                            (group() Children [ {scene} ]),
-                        ]
                     ),
                 ]
             ),
         ]
     });
-}
-
-fn group() -> impl Scene {
-    bsn! {
-        Node {
-            display: Display::Flex,
-            flex_direction: FlexDirection::Column,
-            row_gap: px(1),
-        }
-        click_through()
-    }
-}
-
-fn row(kind: Row, name: String) -> impl Scene {
-    bsn! {
-        Node {
-            display: Display::None,
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            column_gap: px(12),
-        }
-        StatsRow({kind})
-        click_through()
-        Children [
-            (label_dim(name) TextFont { font_size: TEXT_SIZE } click_through()),
-            (flex_spacer() click_through()),
-            (
-                label("")
-                TextFont { font: FontSourceTemplate::Handle(fonts::MONO), font_size: TEXT_SIZE }
-                StatsValue
-                click_through()
-            ),
-        ]
-    }
-}
-
-/// Names the two value columns of the timing rows; `COLUMNS` matches their width.
-fn timing_header() -> impl Scene {
-    bsn! {
-        Node {
-            flex_direction: FlexDirection::Row,
-            align_items: AlignItems::Center,
-            column_gap: px(12),
-        }
-        click_through()
-        Children [
-            (label_dim("ms") TextFont { font_size: TEXT_SIZE } click_through()),
-            (flex_spacer() click_through()),
-            (
-                label_dim(COLUMNS)
-                TextFont { font: FontSourceTemplate::Handle(fonts::MONO), font_size: TEXT_SIZE }
-                click_through()
-            ),
-        ]
-    }
 }
 
 /// bevy_ui treats a node without `Pickable` as blocking, so every panel node needs this to let
@@ -291,102 +233,208 @@ fn click_through() -> impl Scene {
     }
 }
 
-/// The panel values of one host, `None` where the source is missing.
-#[derive(Default)]
-struct Values {
-    fps: Option<f64>,
-    frame_ms: Option<Summary>,
-    cpu_main_ms: Option<Summary>,
-    gpu_ms: Option<Summary>,
-    entities: Option<f64>,
-    view: Option<UVec2>,
-}
-
-impl Values {
-    fn of(records: &PerfRecords) -> Self {
-        let frame_ms = last_frames(records.main.iter().map(|m| m.record.frame_ms));
-        let mean_frame_ms =
-            (!frame_ms.is_empty()).then(|| frame_ms.iter().sum::<f64>() / frame_ms.len() as f64);
-        Self {
-            fps: mean_frame_ms.filter(|ms| *ms > 0.0).map(|ms| 1000.0 / ms),
-            frame_ms: Summary::of(&frame_ms),
-            cpu_main_ms: Summary::of(&last_frames(
-                records.main.iter().map(|m| m.record.cpu_main_ms),
-            )),
-            gpu_ms: Summary::of(&last_frames(records.gpu.iter().map(|g| g.record.total_ms))),
-            entities: records.main.back().and_then(|m| m.record.entity_count),
-            view: None,
+/// Every refresh: the content's layout, each panel's values, and the panels' UI, rebuilt where
+/// the layout changed. Exclusive, since row systems run with `run_system_with`.
+pub(crate) fn refresh_panels(world: &mut World) {
+    builtin::update_summary(world);
+    let mut warnings = world.remove_resource::<StatsWarnings>().unwrap_or_default();
+    warnings.prune(world);
+    let layout = content::layout(world, &mut warnings);
+    let mut panels = world.query::<(Entity, &StatsPanelOf)>();
+    let panels: Vec<(Entity, Entity)> = panels
+        .iter(world)
+        .map(|(panel, of)| (panel, of.0))
+        .collect();
+    for (panel, host) in panels {
+        // Hidden views stay current too, so switching views never shows an empty panel.
+        if world.get::<Camera>(host).is_none() {
+            continue;
         }
+        let values = content::values(world, &layout, host, &mut warnings);
+        // A row's system may have despawned the panel.
+        if world.get_entity(panel).is_err() {
+            continue;
+        }
+        sync_body(world, panel, &layout, &values);
+        world.entity_mut(panel).insert(values);
     }
-
-    fn text(&self, row: Row) -> Option<String> {
-        let ms =
-            |value: Option<Summary>| value.map(|s| format!("{:>6.2} {:>6.2}", s.median, s.max));
-        match row {
-            Row::Fps => self.fps.map(|fps| format!("{}", fps.trunc())),
-            Row::Frame => ms(self.frame_ms),
-            Row::Cpu => ms(self.cpu_main_ms),
-            Row::Gpu => ms(self.gpu_ms),
-            Row::Entities => self.entities.map(|count| format!("{count:.0}")),
-            Row::View => self.view.map(|size| format!("{} × {}", size.x, size.y)),
-        }
-    }
+    world.insert_resource(warnings);
 }
 
-/// The newest [`PANEL_FRAMES`] values of a series, oldest first.
-fn last_frames(values: impl DoubleEndedIterator<Item = f64>) -> Vec<f64> {
-    let mut last: Vec<f64> = values.rev().take(PANEL_FRAMES).collect();
-    last.reverse();
-    last
-}
-
-/// Re-texts the rows of every panel, writing only what changed.
-fn refresh_panels(
-    records: Res<PerfRecords>,
-    hosts: Query<&Camera>,
-    panels: Query<&StatsPanelOf>,
-    parents: Query<&ChildOf>,
-    mut rows: Query<(Entity, &StatsRow, &mut Node, &Children)>,
-    mut texts: Query<&mut Text, With<StatsValue>>,
-) {
-    let mut values = EntityHashMap::<Option<Values>>::default();
-    for (entity, row, mut node, children) in &mut rows {
-        let Some(host) = parents
-            .iter_ancestors(entity)
-            .find_map(|ancestor| panels.get(ancestor).ok())
-            .map(|of| of.0)
-        else {
-            continue;
-        };
-        let host_values = values.entry(host).or_insert_with(|| {
-            // Hidden views stay current too, so switching views never shows an empty panel.
-            let camera = hosts.get(host).ok()?;
-            Some(Values {
-                view: camera.physical_viewport_size(),
-                ..Values::of(&records)
-            })
-        });
-        let Some(host_values) = host_values else {
-            continue;
-        };
-        let text = host_values.text(row.0);
-        let display = if text.is_some() {
-            Display::Flex
-        } else {
-            Display::None
-        };
-        if node.display != display {
-            node.display = display;
-        }
-        let Some(text) = text else {
-            continue;
-        };
-        for child in children {
-            if let Ok(mut value) = texts.get_mut(*child)
-                && value.0 != text
-            {
-                value.0.clone_from(&text);
+/// The body of `panel`, once feathers has built the pane.
+fn panel_body(world: &mut World, panel: Entity) -> Option<Entity> {
+    let mut bodies = world.query_filtered::<Entity, With<StatsPanelBody>>();
+    bodies.iter(world).find(|&body| {
+        let mut entity = body;
+        while let Some(parent) = world.get::<ChildOf>(entity) {
+            entity = parent.parent();
+            if entity == panel {
+                return true;
             }
         }
+        false
+    })
+}
+
+/// Rebuilds the body when its layout is stale, then writes values and visibility.
+fn sync_body(world: &mut World, panel: Entity, layout: &Layout, values: &StatsPanelValues) {
+    let Some(body) = panel_body(world, panel) else {
+        return;
+    };
+    if world
+        .get::<BuiltBody>(panel)
+        .is_none_or(|built| built.layout != *layout)
+    {
+        world.entity_mut(panel).remove::<BuiltBody>();
+        match build_body(world, body, layout) {
+            Ok(sections) => {
+                world.entity_mut(panel).insert(BuiltBody {
+                    layout: layout.clone(),
+                    sections,
+                });
+            }
+            Err(error) => {
+                warn!("Statistics panel {panel}: could not build its rows: {error}");
+                return;
+            }
+        }
+    }
+    let Some(built) = world.get::<BuiltBody>(panel) else {
+        return;
+    };
+    let sections = built.sections.clone();
+    for (section, (node, rows)) in layout.0.iter().zip(sections) {
+        let shown = values.shows(section);
+        set_display(
+            world,
+            node,
+            if shown { Display::Grid } else { Display::None },
+        );
+        for (row, cells) in section.rows.iter().zip(rows) {
+            let row_values = values.row(row.entity);
+            let display = if row_values.is_some() {
+                Display::Flex
+            } else {
+                Display::None
+            };
+            for (column, cell) in cells.into_iter().enumerate() {
+                set_display(world, cell, display);
+                if let Some(text) =
+                    row_values.and_then(|v| column.checked_sub(1).and_then(|c| v.get(c)))
+                    && let Some(mut value) = world.get_mut::<Text>(cell)
+                    && value.0 != *text
+                {
+                    value.0.clone_from(text);
+                }
+            }
+        }
+    }
+}
+
+fn set_display(world: &mut World, node: Entity, display: Display) {
+    if let Some(mut node) = world.get_mut::<Node>(node)
+        && node.display != display
+    {
+        node.display = display;
+    }
+}
+
+/// Despawns the body's children and spawns one grid per section, hidden until valued.
+fn build_body(
+    world: &mut World,
+    body: Entity,
+    layout: &Layout,
+) -> Result<BuiltSections, SpawnSceneError> {
+    world.entity_mut(body).despawn_related::<Children>();
+    let mut sections = Vec::new();
+    for section in &layout.0 {
+        let columns = u16::try_from(section.columns).unwrap_or(u16::MAX);
+        let grid = world
+            .spawn((
+                Node {
+                    display: Display::None,
+                    grid_template_columns: vec![
+                        RepeatedGridTrack::flex(1, 1.0),
+                        RepeatedGridTrack::auto(columns),
+                    ],
+                    column_gap: px(12),
+                    row_gap: px(1),
+                    ..default()
+                },
+                Pickable::IGNORE,
+                ChildOf(body),
+            ))
+            .id();
+        if let Some(title) = &section.title {
+            let title = spawn_cell(world, grid, small(title.to_string()), JustifySelf::Start)?;
+            if let Some(mut node) = world.get_mut::<Node>(title) {
+                node.grid_column = GridPlacement::span(columns.saturating_add(1));
+            }
+        }
+        if let Some(header) = &section.header {
+            // Padded, so the rows start on a line of their own.
+            let mut header = header.iter().map(|text| text.to_string());
+            let first = header.next().unwrap_or_default();
+            spawn_cell(world, grid, small_dim(first), JustifySelf::Start)?;
+            for _ in 0..section.columns {
+                let text = header.next().unwrap_or_default();
+                spawn_cell(world, grid, mono_dim(text), JustifySelf::End)?;
+            }
+        }
+        let mut rows = Vec::new();
+        for row in &section.rows {
+            let mut cells = vec![spawn_cell(
+                world,
+                grid,
+                small_dim(row.label.to_string()),
+                JustifySelf::Start,
+            )?];
+            for _ in 0..section.columns {
+                cells.push(spawn_cell(world, grid, mono(), JustifySelf::End)?);
+            }
+            for &cell in &cells {
+                set_display(world, cell, Display::None);
+            }
+            rows.push(cells);
+        }
+        sections.push((grid, rows));
+    }
+    Ok(sections)
+}
+
+fn spawn_cell(
+    world: &mut World,
+    grid: Entity,
+    scene: impl Scene,
+    justify: JustifySelf,
+) -> Result<Entity, SpawnSceneError> {
+    let mut cell = world.spawn_scene(scene)?;
+    cell.insert((Pickable::IGNORE, ChildOf(grid)));
+    let id = cell.id();
+    if let Some(mut node) = world.get_mut::<Node>(id) {
+        node.justify_self = justify;
+    }
+    Ok(id)
+}
+
+fn small(text: String) -> impl Scene {
+    bsn! { label(text) TextFont { font_size: TEXT_SIZE } }
+}
+
+fn small_dim(text: String) -> impl Scene {
+    bsn! { label_dim(text) TextFont { font_size: TEXT_SIZE } }
+}
+
+fn mono_dim(text: String) -> impl Scene {
+    bsn! {
+        label_dim(text)
+        TextFont { font: FontSourceTemplate::Handle(fonts::MONO), font_size: TEXT_SIZE }
+    }
+}
+
+fn mono() -> impl Scene {
+    bsn! {
+        label("")
+        TextFont { font: FontSourceTemplate::Handle(fonts::MONO), font_size: TEXT_SIZE }
     }
 }
