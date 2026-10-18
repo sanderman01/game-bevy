@@ -1,0 +1,43 @@
+ename_engine/src/perf/gpu_timer.rs
+  s_e330b98cbebc97::t_ee3acc7ba66f99 1-38,41-135,137-145,147-396,405-409,411-588,590-603,608-638,644-666
+  s_e330b98cbebc97::t_8a539ff43e1c52 39-40,589,604-607,639-643
+  s_e330b98cbebc97::t_6d594f5094cb20 136,146,397-404,410
+ename_editor/src/lib.rs
+  s_e330b98cbebc97::t_4f64cf54778a68 80
+Cargo.toml
+  s_e330b98cbebc97::t_210b0475ba13ad 91-93
+ename_engine/Cargo.toml
+  s_e330b98cbebc97::t_3faab5ca4cd326 33
+ename_engine/src/perf/passes.rs
+  s_e330b98cbebc97::t_6d594f5094cb20 44,55
+  s_e330b98cbebc97::t_cecd151f94ecea 118
+  s_e330b98cbebc97::t_94e14fd8cb3f0b 93,95-96,98
+  s_e330b98cbebc97::t_8cad41a7868d3d 1-15,17-43,45-54,56-71,73-81,83-84,87-92,94,97,99-117,119-149
+  s_e330b98cbebc97::t_b9a838608e24fa 16,72,82,85-86
+ename_engine/src/perf/mod.rs
+  s_e330b98cbebc97::t_8a539ff43e1c52 21
+  s_e330b98cbebc97::t_001246dcc571c8 2-5,7-9,18-20,22-136
+ename_engine/src/lib.rs
+  s_e330b98cbebc97::t_a3785e7e837513 191-192
+ename_engine/src/perf/tests.rs
+  s_e330b98cbebc97::t_8a539ff43e1c52 137-278
+ename_engine/src/perf/records.rs
+  s_e330b98cbebc97::t_716fcc12bae945 1-117,119-222
+  s_e330b98cbebc97::t_3c52d3a20dc22d 118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ccce5eeaeacd9798573dfd685f5c4da025cfa094",
+  "prompts": {},
+  "sessions": {
+    "s_e330b98cbebc97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17f2c035-9b9b-4c57-8fb6-463dc39f045f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
