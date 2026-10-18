@@ -1,7 +1,7 @@
 //! The statistics panel: a feathers pane per host camera, top right of its viewport, showing the
-//! mean of the last 0.5 s of [`PerfRecords`]. Behind the `overlay.stats` debug switch (`F3`).
+//! last [`PANEL_FRAMES`] frames of [`PerfRecords`]. Behind the `overlay.stats` debug switch (`F3`).
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use bevy::{
     ecs::entity::{EntityHashMap, EntityHashSet},
@@ -19,14 +19,16 @@ use bevy::{
     time::common_conditions::on_real_timer,
 };
 
-use super::records::PerfRecords;
+use super::{records::PerfRecords, stats::Summary};
 use crate::{
     camera::MainCameraFilter,
     debug_switch::{DebugSwitchAppExt, DebugSwitchSpec, KeyChord},
 };
 
-/// The window the panel's values are averaged over.
-const MEAN_WINDOW: Duration = Duration::from_millis(500);
+/// How many of the newest frames the panel's values cover.
+pub(super) const PANEL_FRAMES: usize = 120;
+/// Header over the timing rows' `median max` values, as wide as they are.
+const COLUMNS: &str = "median    max";
 /// How often the values are re-texted.
 const REFRESH: Duration = Duration::from_millis(250);
 /// Above game UI.
@@ -186,12 +188,8 @@ fn fill_panel(add: On<Add, StatsPanelOf>, mut commands: Commands) {
             .map(|(kind, name)| row(*kind, (*name).to_owned()))
             .collect()
     };
-    let timing = rows(&[
-        (Row::Fps, "FPS"),
-        (Row::Frame, "Frame"),
-        (Row::Cpu, "CPU"),
-        (Row::Gpu, "GPU"),
-    ]);
+    let fps = rows(&[(Row::Fps, "FPS")]);
+    let timing = rows(&[(Row::Frame, "Frame"), (Row::Cpu, "CPU"), (Row::Gpu, "GPU")]);
     let scene = rows(&[(Row::Entities, "Entities"), (Row::View, "View")]);
 
     commands.entity(add.entity).apply_scene(bsn! {
@@ -219,7 +217,8 @@ fn fill_panel(add: On<Add, StatsPanelOf>, mut commands: Commands) {
                         ThemeBackgroundColor(STATS_BG)
                         click_through()
                         Children [
-                            (group() Children [ {timing} ]),
+                            (group() Children [ {fps} ]),
+                            (group() Children [ (timing_header()), {timing} ]),
                             (group() Children [ {scene} ]),
                         ]
                     ),
@@ -263,6 +262,27 @@ fn row(kind: Row, name: String) -> impl Scene {
     }
 }
 
+/// Names the two value columns of the timing rows; `COLUMNS` matches their width.
+fn timing_header() -> impl Scene {
+    bsn! {
+        Node {
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            column_gap: px(12),
+        }
+        click_through()
+        Children [
+            (label_dim("ms") TextFont { font_size: TEXT_SIZE } click_through()),
+            (flex_spacer() click_through()),
+            (
+                label_dim(COLUMNS)
+                TextFont { font: FontSourceTemplate::Handle(fonts::MONO), font_size: TEXT_SIZE }
+                click_through()
+            ),
+        ]
+    }
+}
+
 /// bevy_ui treats a node without `Pickable` as blocking, so every panel node needs this to let
 /// clicks reach the scene.
 fn click_through() -> impl Scene {
@@ -274,39 +294,36 @@ fn click_through() -> impl Scene {
 /// The panel values of one host, `None` where the source is missing.
 #[derive(Default)]
 struct Values {
-    frame_ms: Option<f64>,
-    cpu_main_ms: Option<f64>,
-    gpu_ms: Option<f64>,
+    fps: Option<f64>,
+    frame_ms: Option<Summary>,
+    cpu_main_ms: Option<Summary>,
+    gpu_ms: Option<Summary>,
     entities: Option<f64>,
     view: Option<UVec2>,
 }
 
 impl Values {
-    fn of(records: &PerfRecords, now: Instant) -> Self {
-        let recent = |at: Instant| now.saturating_duration_since(at) <= MEAN_WINDOW;
-        let main: Vec<_> = records.main.iter().filter(|m| recent(m.at)).collect();
+    fn of(records: &PerfRecords) -> Self {
+        let frame_ms = last_frames(records.main.iter().map(|m| m.record.frame_ms));
+        let mean_frame_ms =
+            (!frame_ms.is_empty()).then(|| frame_ms.iter().sum::<f64>() / frame_ms.len() as f64);
         Self {
-            frame_ms: mean(main.iter().map(|m| m.record.frame_ms)),
-            cpu_main_ms: mean(main.iter().map(|m| m.record.cpu_main_ms)),
-            gpu_ms: mean(
-                records
-                    .gpu
-                    .iter()
-                    .filter(|g| recent(g.at))
-                    .map(|g| g.record.total_ms),
-            ),
+            fps: mean_frame_ms.filter(|ms| *ms > 0.0).map(|ms| 1000.0 / ms),
+            frame_ms: Summary::of(&frame_ms),
+            cpu_main_ms: Summary::of(&last_frames(
+                records.main.iter().map(|m| m.record.cpu_main_ms),
+            )),
+            gpu_ms: Summary::of(&last_frames(records.gpu.iter().map(|g| g.record.total_ms))),
             entities: records.main.back().and_then(|m| m.record.entity_count),
             view: None,
         }
     }
 
     fn text(&self, row: Row) -> Option<String> {
-        let ms = |value: Option<f64>| value.map(|ms| format!("{ms:.2} ms"));
+        let ms =
+            |value: Option<Summary>| value.map(|s| format!("{:>6.2} {:>6.2}", s.median, s.max));
         match row {
-            Row::Fps => self
-                .frame_ms
-                .filter(|ms| *ms > 0.0)
-                .map(|ms| format!("{:.1}", 1000.0 / ms)),
+            Row::Fps => self.fps.map(|fps| format!("{}", fps.trunc())),
             Row::Frame => ms(self.frame_ms),
             Row::Cpu => ms(self.cpu_main_ms),
             Row::Gpu => ms(self.gpu_ms),
@@ -316,9 +333,11 @@ impl Values {
     }
 }
 
-fn mean(values: impl Iterator<Item = f64>) -> Option<f64> {
-    let (sum, count) = values.fold((0.0, 0u32), |(sum, count), v| (sum + v, count + 1));
-    (count > 0).then(|| sum / f64::from(count))
+/// The newest [`PANEL_FRAMES`] values of a series, oldest first.
+fn last_frames(values: impl DoubleEndedIterator<Item = f64>) -> Vec<f64> {
+    let mut last: Vec<f64> = values.rev().take(PANEL_FRAMES).collect();
+    last.reverse();
+    last
 }
 
 /// Re-texts the rows of every panel, writing only what changed.
@@ -330,7 +349,6 @@ fn refresh_panels(
     mut rows: Query<(Entity, &StatsRow, &mut Node, &Children)>,
     mut texts: Query<&mut Text, With<StatsValue>>,
 ) {
-    let now = Instant::now();
     let mut values = EntityHashMap::<Option<Values>>::default();
     for (entity, row, mut node, children) in &mut rows {
         let Some(host) = parents
@@ -345,7 +363,7 @@ fn refresh_panels(
             let camera = hosts.get(host).ok()?;
             Some(Values {
                 view: camera.physical_viewport_size(),
-                ..Values::of(&records, now)
+                ..Values::of(&records)
             })
         });
         let Some(host_values) = host_values else {

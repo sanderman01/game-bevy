@@ -891,16 +891,17 @@ draws nothing.
 
 | Row | Shows |
 | --- | --- |
-| FPS, Frame | `1000 / frame` and `frame_ms` |
-| CPU | `cpu_main_ms`, the main schedule's wall time |
-| GPU | `gpu_ms`, the whole frame's GPU time |
+| FPS | `1000 /` the mean `frame_ms`, truncated to a whole number |
+| Frame | `frame_ms`, median and max |
+| CPU | `cpu_main_ms`, the main schedule's wall time, median and max |
+| GPU | `gpu_ms`, the whole frame's GPU time, median and max |
 | Entities | Entity count |
 | View | This view's physical size |
 
 The panel stays small on purpose; `perf_sample` reports the rest (render wall time, per-view
 times, passes, counters).
 
-Values are the mean of the last 0.5 s, refreshed four times a second. A row whose value has no
+Values cover the last 120 frames, refreshed four times a second. A row whose value has no
 source, such as the GPU row without `TIMESTAMP_QUERY`, is hidden. Nothing like Unity's batches,
 triangles or SetPass calls is measured here, so none is shown. Clicks pass through the panel.
 

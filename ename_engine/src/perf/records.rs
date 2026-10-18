@@ -18,9 +18,10 @@ use bevy::{
 use super::{
     PerfDemand, PerfDemandHolder, PerfFrame, PerfOverlay,
     gpu_timer::{CpuFrame, GpuFrame, RenderRecord},
+    panel::PANEL_FRAMES,
 };
 
-/// Records are kept at least this long, so the panel's 0.5 s mean always has its frames.
+/// Records are kept at least this long.
 const MIN_RECORD_AGE: Duration = Duration::from_secs(1);
 
 /// Keeps records for this long while its entity lives, for a consumer that reads a whole window
@@ -192,14 +193,23 @@ pub(super) fn collect_records(
     mut receiver: ResMut<RecordReceiver>,
     frame: Res<PerfFrame>,
     ages: Query<&PerfRecordAge>,
+    overlay: Res<PerfOverlay>,
 ) {
     let now = Instant::now();
-    let keep = ages
+    while let Ok(record) = receiver.0.get().try_recv() {
+        records.push(frame.0, now, record);
+    }
+    let mut keep = ages
         .iter()
         .map(|age| age.0)
         .fold(MIN_RECORD_AGE, Duration::max);
-    while let Ok(record) = receiver.0.get().try_recv() {
-        records.push(frame.0, now, record);
+    // The panel needs its last frames however slow they came.
+    if overlay.stats
+        && let Some(oldest) = records
+            .main
+            .get(records.main.len().saturating_sub(PANEL_FRAMES))
+    {
+        keep = keep.max(now.saturating_duration_since(oldest.at));
     }
     records.prune(now, keep);
 }
