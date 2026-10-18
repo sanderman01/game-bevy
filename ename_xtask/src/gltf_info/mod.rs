@@ -21,7 +21,7 @@ use gltf::{
     material::AlphaMode,
     mesh::Mode,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// What the `bevy_gltf` this workspace is built with accepts in `extensionsRequired`: `gltf`
 /// refuses to load anything else, and this crate uses `bevy_gltf`'s exact `gltf` features.
@@ -40,8 +40,16 @@ pub struct GltfOptions {
     pub images: bool,
 }
 
+/// One file's report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GltfReport {
+    pub text: String,
+    /// `false` when the file was malformed and only its raw JSON was summarized.
+    pub read_fully: bool,
+}
+
 /// The whole report for one file.
-pub fn gltf_info(file: &AssetFile, options: &GltfOptions) -> String {
+pub fn gltf_info(file: &AssetFile, options: &GltfOptions) -> GltfReport {
     let container = if file.bytes.starts_with(b"glTF") {
         "glb"
     } else {
@@ -52,10 +60,29 @@ pub fn gltf_info(file: &AssetFile, options: &GltfOptions) -> String {
         file.name(),
         human_size(file.bytes.len())
     );
-    let gltf = match Gltf::from_slice_without_validation(&file.bytes) {
-        Ok(gltf) => gltf,
-        Err(err) => return raw_report(header, file, &[err.to_string()]),
-    };
+    let problems = raw::preflight(&file.bytes);
+    if !problems.is_empty() {
+        return raw_report(header, file, &problems);
+    }
+    // Last resort: `gltf` unwraps in places no check here foresaw.
+    match without_panicking(|| typed_report(&header, file, options)) {
+        Ok(Ok(text)) => GltfReport {
+            text,
+            read_fully: true,
+        },
+        Ok(Err(errors)) => raw_report(header, file, &errors),
+        Err(panic) => raw_report(header, file, &[format!("gltf panicked: {panic}")]),
+    }
+}
+
+/// The report through `gltf`'s typed API, or the errors that make that unsafe.
+fn typed_report(
+    header: &str,
+    file: &AssetFile,
+    options: &GltfOptions,
+) -> Result<String, Vec<String>> {
+    let gltf =
+        Gltf::from_slice_without_validation(&file.bytes).map_err(|err| vec![err.to_string()])?;
     let mut unsupported = Vec::new();
     let mut fatal = Vec::new();
     let root = gltf.as_json();
@@ -69,12 +96,28 @@ pub fn gltf_info(file: &AssetFile, options: &GltfOptions) -> String {
     });
     if !fatal.is_empty() {
         fatal.extend(unsupported);
-        return raw_report(header, file, &fatal);
+        return Err(fatal);
     }
-    Report::new(&gltf.document, gltf.blob.as_deref(), file, options).render(header)
+    Ok(Report::new(&gltf.document, gltf.blob.as_deref(), file, options).render(header.to_owned()))
 }
 
-fn raw_report(header: String, file: &AssetFile, errors: &[String]) -> String {
+/// Runs `f`, turning a panic into its message, with the default hook silenced so the panic does
+/// not also print.
+fn without_panicking<T>(f: impl FnOnce() -> T) -> Result<T, String> {
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+    std::panic::set_hook(hook);
+    result.map_err(|payload| {
+        payload
+            .downcast_ref::<&str>()
+            .map(|s| (*s).to_owned())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic".to_owned())
+    })
+}
+
+fn raw_report(header: String, file: &AssetFile, errors: &[String]) -> GltfReport {
     let mut out = vec![format!(
         "{header}  (not read through gltf; summary from the raw JSON)"
     )];
@@ -86,7 +129,10 @@ fn raw_report(header: String, file: &AssetFile, errors: &[String]) -> String {
         Err(err) => out.push(format!("  ! JSON unreadable: {err}")),
     }
     out.push(String::new());
-    out.join("\n")
+    GltfReport {
+        text: out.join("\n"),
+        read_fully: false,
+    }
 }
 
 /// Per-channel range of one attribute's data.
@@ -212,8 +258,27 @@ impl<'a> Report<'a> {
             .into_iter()
             .map(|scene| {
                 let mut bounds = Bounds::default();
-                for node in scene.nodes() {
-                    self.node_bounds(&node, IDENTITY, &mut bounds, 0);
+                let mut visited = Visited::default();
+                // An explicit stack: a long chain of nodes must not overflow the call stack.
+                let mut stack: Vec<(Node, Mat4)> =
+                    scene.nodes().map(|node| (node, IDENTITY)).collect();
+                while let Some((node, parent)) = stack.pop() {
+                    // `gltf` validates indices, not the hierarchy: a cycle passes, so each node
+                    // is visited once.
+                    if !visited.insert(node.index()) {
+                        continue;
+                    }
+                    let world = mul(&parent, &node.transform().matrix());
+                    self.mesh_bounds(&node, &world, &mut bounds);
+                    stack.extend(node.children().map(|child| (child, world)));
+                }
+                if let Some(node) = visited.repeated {
+                    self.notes.push(format!(
+                        "scene {}: node {node} is reached more than once (a cycle, or a child of \
+                         two parents); Bevy rejects such a hierarchy, and these bounds count each \
+                         node once.",
+                        scene.index()
+                    ));
                 }
                 let marker = if Some(scene.index()) == default {
                     " (default)"
@@ -230,12 +295,8 @@ impl<'a> Report<'a> {
             .collect()
     }
 
-    fn node_bounds(&mut self, node: &Node, parent: Mat4, bounds: &mut Bounds, depth: usize) {
-        // A cycle fails validation, but stay bounded on anything that slipped through.
-        if depth > 256 {
-            return;
-        }
-        let world = mul(&parent, &node.transform().matrix());
+    /// Adds the corners of `node`'s mesh, placed by `world`, to `bounds`.
+    fn mesh_bounds(&mut self, node: &Node, world: &Mat4, bounds: &mut Bounds) {
         if let Some(mesh) = node.mesh() {
             for primitive in mesh.primitives() {
                 let Some(positions) = primitive.get(&Semantic::Positions) else {
@@ -256,12 +317,9 @@ impl<'a> Report<'a> {
                             range.max[axis]
                         }
                     };
-                    bounds.add(transform_point(&world, [pick(0), pick(1), pick(2)]));
+                    bounds.add(transform_point(world, [pick(0), pick(1), pick(2)]));
                 }
             }
-        }
-        for child in node.children() {
-            self.node_bounds(&child, world, bounds, depth + 1);
         }
     }
 
@@ -270,8 +328,9 @@ impl<'a> Report<'a> {
         let mut listed = 0;
         let total = self.document.nodes().len();
         for scene in self.document.scenes() {
+            let mut visited = Visited::default();
             for node in scene.nodes() {
-                node_lines(&node, 1, &mut lines, &mut listed);
+                node_lines(&node, 1, &mut lines, &mut listed, &mut visited);
             }
         }
         if listed < total {
@@ -572,8 +631,32 @@ fn section(out: &mut Vec<String>, title: &str, lines: Vec<String>) {
     out.extend(lines);
 }
 
-fn node_lines(node: &Node, depth: usize, lines: &mut Vec<String>, listed: &mut usize) {
-    if *listed >= NODE_LIMIT || depth > 256 {
+/// Nodes seen in one scene's walk, and the first one reached twice.
+#[derive(Default)]
+struct Visited {
+    seen: HashSet<usize>,
+    repeated: Option<usize>,
+}
+
+impl Visited {
+    /// Whether `node` is new; records the first repeat.
+    fn insert(&mut self, node: usize) -> bool {
+        let new = self.seen.insert(node);
+        if !new && self.repeated.is_none() {
+            self.repeated = Some(node);
+        }
+        new
+    }
+}
+
+fn node_lines(
+    node: &Node,
+    depth: usize,
+    lines: &mut Vec<String>,
+    listed: &mut usize,
+    visited: &mut Visited,
+) {
+    if *listed >= NODE_LIMIT || !visited.insert(node.index()) {
         return;
     }
     *listed += 1;
@@ -601,7 +684,7 @@ fn node_lines(node: &Node, depth: usize, lines: &mut Vec<String>, listed: &mut u
         vector(&translation)
     ));
     for child in node.children() {
-        node_lines(&child, depth + 1, lines, listed);
+        node_lines(&child, depth + 1, lines, listed, visited);
     }
 }
 

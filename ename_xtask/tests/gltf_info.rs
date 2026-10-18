@@ -83,16 +83,77 @@ fn document() -> Value {
 }
 
 fn report(bytes: &[u8], options: &GltfOptions) -> String {
+    let (text, read_fully) = report_and_status(bytes, options);
+    assert_eq!(
+        read_fully,
+        !text.contains("summary from the raw JSON"),
+        "{text}"
+    );
+    text
+}
+
+fn report_and_status(bytes: &[u8], options: &GltfOptions) -> (String, bool) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("test.glb");
     std::fs::write(&path, bytes).unwrap();
-    let policy = ScanPolicy {
-        asset_root: dir.path(),
-        search_paths: &[],
-        load_order_path: None,
-    };
+    let policy = ScanPolicy::new(dir.path(), &[], None);
     let file = read_asset(path.to_str().unwrap(), &policy).unwrap();
-    gltf_info(&file, options)
+    let report = gltf_info(&file, options);
+    (report.text, report.read_fully)
+}
+
+#[test]
+fn a_cycle_in_the_hierarchy_is_a_note_not_a_hang() {
+    let mut document = document();
+    document["nodes"][0]["children"] = json!([0, 0]);
+    let out = report(&glb(&document, &bin()), &GltfOptions::default());
+    assert!(
+        out.contains("! scene 0: node 0 is reached more than once"),
+        "{out}"
+    );
+}
+
+#[test]
+fn a_huge_accessor_count_is_refused_before_allocating() {
+    let mut document = document();
+    // No buffer view, so nothing bounds the count but the tool's own limit.
+    document["accessors"][1] = json!({
+        "componentType": 5126, "count": 1_u64 << 40, "type": "VEC4",
+        "sparse": {
+            "count": 1,
+            "indices": {"bufferView": 0, "componentType": 5125},
+            "values": {"bufferView": 0}
+        }
+    });
+    let out = report(&glb(&document, &bin()), &GltfOptions::default());
+    assert!(out.contains("is more than this tool reads"), "{out}");
+}
+
+#[test]
+fn inputs_gltf_panics_on_fall_back_to_the_raw_summary() {
+    let mut position_out_of_range = document();
+    position_out_of_range["meshes"][0]["primitives"][0]["attributes"]["POSITION"] = json!(9);
+    let mut image_without_source = document();
+    image_without_source["images"] = json!([{}]);
+    let mut view_without_mime = document();
+    view_without_mime["images"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("mimeType");
+    for (document, problem) in [
+        (position_out_of_range, "POSITION accessor 9 does not exist"),
+        (image_without_source, "neither uri nor bufferView"),
+        (view_without_mime, "bufferView without mimeType"),
+    ] {
+        let (out, read_fully) = report_and_status(&glb(&document, &bin()), &GltfOptions::default());
+        assert!(!read_fully);
+        assert!(out.contains(problem), "{out}");
+    }
+    let mut short_header = glb(&document(), &bin());
+    short_header[8..12].copy_from_slice(&4_u32.to_le_bytes());
+    let (out, read_fully) = report_and_status(&short_header, &GltfOptions::default());
+    assert!(!read_fully);
+    assert!(out.contains("GLB header declares 4 bytes"), "{out}");
 }
 
 #[test]

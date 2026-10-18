@@ -81,11 +81,7 @@ fn a_file_block_includes_the_meta_sidecar() {
     )
     .unwrap();
     std::fs::write(root.path().join("b.png"), rgba_png()).unwrap();
-    let policy = ScanPolicy {
-        asset_root: root.path(),
-        search_paths: &[],
-        load_order_path: None,
-    };
+    let policy = ScanPolicy::new(root.path(), &[], None);
     let block = image_info(&read_asset("a.png", &policy).unwrap()).unwrap();
     assert!(block.starts_with("a.png  png 4x1  rgba8  "), "{block}");
     assert!(

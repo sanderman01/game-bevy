@@ -36,14 +36,21 @@ fn zip(files: &[(&str, &[u8])]) -> Vec<u8> {
 
 fn read(root: &TempDir, arg: &str) -> Result<ename_xtask::read_asset::AssetFile, ReadError> {
     let search_paths = ["basegame".to_owned()];
-    read_asset(
-        arg,
-        &ScanPolicy {
-            asset_root: root.path(),
-            search_paths: &search_paths,
-            load_order_path: None,
-        },
-    )
+    read_asset(arg, &ScanPolicy::new(root.path(), &search_paths, None))
+}
+
+#[test]
+fn a_label_or_a_drive_relative_sibling_is_refused() {
+    let root = tree();
+    assert!(matches!(
+        read(&root, "core::ship#Mesh0"),
+        Err(ReadError::Label(_))
+    ));
+    let file = read(&root, "basegame/core/ships/ship.gltf").unwrap();
+    assert!(matches!(
+        file.read_sibling("/etc/passwd"),
+        Err(ReadError::OutsideRoot(_))
+    ));
 }
 
 fn tree() -> TempDir {

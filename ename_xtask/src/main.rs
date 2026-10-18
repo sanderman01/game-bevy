@@ -5,7 +5,7 @@ use ename_xtask::{
     check, cli, content_build, dep_src, fix,
     gltf_info::{GltfOptions, gltf_info},
     image_info, list, mv, policy,
-    read_asset::{ScanPolicy, read_asset},
+    read_asset::{ScanPolicy, is_alias, read_asset},
 };
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -82,15 +82,15 @@ fn main() -> ExitCode {
         },
         cli::Command::DepSrc { name } => dep_src(&name),
         cli::Command::ImageInfo { assets } => {
-            let Some(load_order_path) = load_order_path() else {
+            let Some(load_order_path) = load_order_path_for(&assets) else {
                 return ExitCode::FAILURE;
             };
             let search_paths = policy::search_paths();
-            let scan = ScanPolicy {
-                asset_root: Path::new(policy::ASSET_ROOT),
-                search_paths: &search_paths,
-                load_order_path: load_order_path.as_deref(),
-            };
+            let scan = ScanPolicy::new(
+                Path::new(policy::ASSET_ROOT),
+                &search_paths,
+                load_order_path.as_deref(),
+            );
             let mut ok = true;
             for asset in &assets {
                 match read_asset(asset, &scan).and_then(|file| image_info::image_info(&file)) {
@@ -112,19 +112,25 @@ fn main() -> ExitCode {
             mesh,
             images,
         } => {
-            let Some(load_order_path) = load_order_path() else {
+            let Some(load_order_path) = load_order_path_for(std::slice::from_ref(&asset)) else {
                 return ExitCode::FAILURE;
             };
             let search_paths = policy::search_paths();
-            let scan = ScanPolicy {
-                asset_root: Path::new(policy::ASSET_ROOT),
-                search_paths: &search_paths,
-                load_order_path: load_order_path.as_deref(),
-            };
+            let scan = ScanPolicy::new(
+                Path::new(policy::ASSET_ROOT),
+                &search_paths,
+                load_order_path.as_deref(),
+            );
             match read_asset(&asset, &scan) {
                 Ok(file) => {
-                    print!("{}", gltf_info(&file, &GltfOptions { mesh, images }));
-                    ExitCode::SUCCESS
+                    let report = gltf_info(&file, &GltfOptions { mesh, images });
+                    print!("{}", report.text);
+                    // A file only summarized from its raw JSON is a malformed one.
+                    if report.read_fully {
+                        ExitCode::SUCCESS
+                    } else {
+                        ExitCode::FAILURE
+                    }
                 }
                 Err(err) => {
                     eprintln!("ename_gltf_info: {err}");
@@ -153,6 +159,16 @@ fn load_order_path() -> Option<Option<PathBuf>> {
             eprintln!("{err}");
             None
         }
+    }
+}
+
+/// [`load_order_path`], read only when one of `assets` is an alias: a plain path needs no scan,
+/// so a broken name override must not stop it.
+fn load_order_path_for(assets: &[String]) -> Option<Option<PathBuf>> {
+    if assets.iter().any(|asset| is_alias(asset)) {
+        load_order_path()
+    } else {
+        Some(None)
     }
 }
 

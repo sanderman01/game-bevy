@@ -1,18 +1,44 @@
 //! Reading the asset an inspection subcommand was pointed at: a filesystem path, a path under the
 //! asset root (also inside a mounted archive), or an alias such as `examples::airship`.
 
+use ename_asset_alias::ContentIndex;
 use ename_asset_package::build_index;
 use ename_asset_vfs::{ArchiveVfs, Vfs, VfsError};
 use std::{
+    cell::OnceCell,
     fmt,
     path::{Component, Path, PathBuf},
 };
 
-/// What the content scan needs to resolve an alias. Only read for an argument with `::`.
+/// What the content scan needs to resolve an alias. The scan runs once, on the first alias.
 pub struct ScanPolicy<'a> {
-    pub asset_root: &'a Path,
-    pub search_paths: &'a [String],
-    pub load_order_path: Option<&'a Path>,
+    asset_root: &'a Path,
+    search_paths: &'a [String],
+    load_order_path: Option<&'a Path>,
+    index: OnceCell<ContentIndex>,
+}
+
+impl<'a> ScanPolicy<'a> {
+    pub fn new(
+        asset_root: &'a Path,
+        search_paths: &'a [String],
+        load_order_path: Option<&'a Path>,
+    ) -> Self {
+        Self {
+            asset_root,
+            search_paths,
+            load_order_path,
+            index: OnceCell::new(),
+        }
+    }
+
+    fn index(&self) -> &ContentIndex {
+        self.index.get_or_init(|| {
+            let (scan, _) =
+                crate::scan::scan(self.asset_root, self.search_paths, self.load_order_path);
+            build_index(&scan).0
+        })
+    }
 }
 
 /// One asset's bytes, and where to read the files next to it (a `.bin`, a `.meta`).
@@ -35,6 +61,8 @@ enum Location {
 pub enum ReadError {
     NotFound(String),
     UnknownAlias(String),
+    /// `alias#Label`: labels name what the game's loader makes, not a file.
+    Label(String),
     /// A sibling reference that leaves the asset root or is absolute.
     OutsideRoot(String),
     Io {
@@ -51,6 +79,11 @@ impl fmt::Display for ReadError {
                 "{arg}: not a file, nor a path under the asset root or an alias"
             ),
             Self::UnknownAlias(alias) => write!(f, "{alias}: no package claims this alias"),
+            Self::Label(arg) => write!(
+                f,
+                "{arg}: a label names a sub-asset the game's loader makes; give the file \
+                 without it, or ask the running game with `asset_inspect`"
+            ),
             Self::OutsideRoot(path) => write!(f, "{path}: leaves the asset root"),
             Self::Io { path, message } => write!(f, "{path}: {message}"),
         }
@@ -115,14 +148,12 @@ impl AssetFile {
 /// root (with or without the root's own prefix), which also reaches into mounted archives.
 pub fn read_asset(arg: &str, policy: &ScanPolicy) -> Result<AssetFile, ReadError> {
     let vfs = || ArchiveVfs::new(policy.asset_root);
-    if arg.contains("::") {
-        let (scan, _) = crate::scan::scan(
-            policy.asset_root,
-            policy.search_paths,
-            policy.load_order_path,
-        );
-        let (index, _) = build_index(&scan);
-        let path = index
+    if is_alias(arg) {
+        if arg.contains('#') {
+            return Err(ReadError::Label(arg.to_owned()));
+        }
+        let path = policy
+            .index()
             .resolve(arg)
             .ok_or_else(|| ReadError::UnknownAlias(arg.to_owned()))?
             .to_path_buf();
@@ -150,6 +181,11 @@ pub fn read_asset(arg: &str, policy: &ScanPolicy) -> Result<AssetFile, ReadError
         Err(ReadError::NotFound(_)) => Err(ReadError::NotFound(arg.to_owned())),
         Err(err) => Err(err),
     }
+}
+
+/// Whether `arg` is read as an alias, which is what needs the content scan and its load order.
+pub fn is_alias(arg: &str) -> bool {
+    arg.contains("::")
 }
 
 /// `path` with `/` separators, the way Bevy prints an asset path.
@@ -191,10 +227,14 @@ fn normalize(path: &Path) -> Option<PathBuf> {
     Some(out)
 }
 
-/// A sibling reference must stay relative; on disk it may still climb with `..`.
+/// A sibling reference must stay relative; on disk it may still climb with `..`. A Windows drive
+/// prefix (`C:x`, relative to that drive's current directory) counts as leaving.
 fn relative_path(relative: &str) -> Result<PathBuf, ReadError> {
     let path = Path::new(relative);
-    if path.is_absolute() || path.has_root() {
+    let rooted = path
+        .components()
+        .any(|component| matches!(component, Component::Prefix(_) | Component::RootDir));
+    if path.is_absolute() || rooted {
         return Err(ReadError::OutsideRoot(relative.to_owned()));
     }
     Ok(path.to_path_buf())

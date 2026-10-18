@@ -23,6 +23,67 @@ pub(super) fn json_bytes(bytes: &[u8]) -> Result<&[u8], String> {
         .ok_or_else(|| "GLB's JSON chunk is truncated".to_owned())
 }
 
+/// What `gltf` 1.4.1 panics on instead of reporting, checked on the raw bytes and JSON first: a GLB
+/// length below its own header (`Glb::from_slice` subtracts unchecked), a `POSITION` accessor out
+/// of range (validation indexes it directly), and an image without a `uri` or a `bufferView`
+/// without a `mimeType` (`Image::source` unwraps both).
+pub(super) fn preflight(bytes: &[u8]) -> Vec<String> {
+    let mut problems = Vec::new();
+    if bytes.starts_with(b"glTF") {
+        let declared = bytes
+            .get(8..12)
+            .map(|b| u32::from_le_bytes(b.try_into().unwrap()) as usize);
+        match declared {
+            Some(length) if (12..=bytes.len()).contains(&length) => {}
+            Some(length) => problems.push(format!(
+                "GLB header declares {length} bytes; the file has {}",
+                bytes.len()
+            )),
+            None => problems.push("GLB header is truncated".to_owned()),
+        }
+    }
+    let Ok(json) = json_bytes(bytes)
+        .and_then(|json| serde_json::from_slice::<Value>(json).map_err(|err| err.to_string()))
+    else {
+        // `gltf` reports unparseable JSON as an error of its own.
+        return problems;
+    };
+    let accessors = json
+        .get("accessors")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    let meshes = json.get("meshes").and_then(Value::as_array);
+    for (m, mesh) in meshes.into_iter().flatten().enumerate() {
+        let primitives = mesh.get("primitives").and_then(Value::as_array);
+        for (p, primitive) in primitives.into_iter().flatten().enumerate() {
+            let position = primitive.pointer("/attributes/POSITION");
+            if let Some(index) = position.and_then(Value::as_u64)
+                && index as usize >= accessors
+            {
+                problems.push(format!(
+                    "meshes[{m}].primitives[{p}]: POSITION accessor {index} does not exist \
+                     ({accessors} accessors)"
+                ));
+            }
+        }
+    }
+    let images = json.get("images").and_then(Value::as_array);
+    for (i, image) in images.into_iter().flatten().enumerate() {
+        match (
+            image.get("bufferView"),
+            image.get("uri"),
+            image.get("mimeType"),
+        ) {
+            (Some(_), _, None) => {
+                problems.push(format!("images[{i}]: bufferView without mimeType"));
+            }
+            (None, None, _) => problems.push(format!("images[{i}]: neither uri nor bufferView")),
+            _ => {}
+        }
+    }
+    problems
+}
+
 /// Counts, names, MIME types and extensions, one fact per line.
 pub(super) fn summary(json: &Value) -> Vec<String> {
     let mut lines = Vec::new();

@@ -103,6 +103,10 @@ fn percent_decode(uri: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// Most values one accessor is read into: 64 Mi `f32`s, 256 MiB. Only an accessor without a
+/// buffer view (all zeros plus sparse values) can claim more than its file holds.
+const MAX_VALUES: usize = 1 << 26;
+
 /// Every element's components, flat (`count * components` values), as `f32`. Normalized integer
 /// types are mapped to 0..1 or -1..1, as a shader would see them.
 pub(super) fn read(accessor: &Accessor, buffers: &Buffers) -> Result<Vec<f32>, String> {
@@ -114,11 +118,22 @@ pub(super) fn read(accessor: &Accessor, buffers: &Buffers) -> Result<Vec<f32>, S
     let element_size = components * component_size;
     let count = accessor.count();
     let normalized = accessor.normalized();
-    let mut values = vec![0.0; count * components];
-    if let Some(view) = accessor.view() {
-        let bytes = buffers.view(&view)?;
-        let stride = view.stride().unwrap_or(element_size);
-        check_fits(bytes.len(), accessor.offset(), stride, element_size, count)?;
+    // Checked before allocating: `count` is whatever the file claims.
+    let dense = match accessor.view() {
+        Some(view) => {
+            let bytes = buffers.view(&view)?;
+            let stride = view.stride().unwrap_or(element_size);
+            check_fits(bytes.len(), accessor.offset(), stride, element_size, count)?;
+            Some((bytes, stride))
+        }
+        None => None,
+    };
+    let total = count
+        .checked_mul(components)
+        .filter(|total| *total <= MAX_VALUES)
+        .ok_or_else(|| format!("{count} elements is more than this tool reads"))?;
+    let mut values = vec![0.0; total];
+    if let Some((bytes, stride)) = dense {
         for element in 0..count {
             let at = accessor.offset() + element * stride;
             read_element(

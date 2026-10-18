@@ -2,7 +2,7 @@
 //! the alpha distribution, plus the `.meta` settings Bevy loads it with.
 
 use crate::read_asset::{AssetFile, ReadError, human_size};
-use image::{ColorType, DynamicImage, ImageFormat};
+use image::{ColorType, DynamicImage, GenericImageView, ImageFormat};
 use std::fmt::Write;
 
 /// One channel's range and mean, normalized to 0..1.
@@ -71,26 +71,20 @@ fn summarize_image(format: &'static str, image: &DynamicImage) -> ImageSummary {
         1 | 2 => &['l'],
         _ => &['r', 'g', 'b'],
     };
-    let pixels = image.to_rgba32f();
-    let count = f64::from(image.width()) * f64::from(image.height());
+    let totals = accumulate(image);
+    let count = totals.pixels as f64;
     let stats = |channel: usize| {
-        let mut min = f32::INFINITY;
-        let mut max = f32::NEG_INFINITY;
-        let mut sum = 0.0_f64;
-        for pixel in pixels.pixels() {
-            let value = pixel.0[channel];
-            min = min.min(value);
-            max = max.max(value);
-            sum += f64::from(value);
-        }
-        if count == 0.0 {
-            min = 0.0;
-            max = 0.0;
+        if totals.pixels == 0 {
+            return ChannelStats {
+                min: 0.0,
+                max: 0.0,
+                mean: 0.0,
+            };
         }
         ChannelStats {
-            min,
-            max,
-            mean: (sum / count.max(1.0)) as f32,
+            min: totals.min[channel],
+            max: totals.max[channel],
+            mean: (totals.sum[channel] / count) as f32,
         }
     };
     let channels = names
@@ -99,22 +93,12 @@ fn summarize_image(format: &'static str, image: &DynamicImage) -> ImageSummary {
         .map(|(index, name)| (*name, stats(index)))
         .collect();
     let alpha = color.has_alpha().then(|| {
-        let (mut at_zero, mut at_one) = (0_u64, 0_u64);
-        for pixel in pixels.pixels() {
-            let value = pixel.0[3];
-            if value <= 0.0 {
-                at_zero += 1;
-            } else if value >= 1.0 {
-                at_one += 1;
-            }
-        }
         let share = |n: u64| (n as f64 / count.max(1.0)) as f32;
-        let between = count as u64 - at_zero - at_one;
         AlphaStats {
             range: stats(3),
-            at_zero: share(at_zero),
-            at_one: share(at_one),
-            between: share(between),
+            at_zero: share(totals.alpha_zero),
+            at_one: share(totals.alpha_one),
+            between: share(totals.pixels - totals.alpha_zero - totals.alpha_one),
         }
     });
     ImageSummary {
@@ -126,6 +110,77 @@ fn summarize_image(format: &'static str, image: &DynamicImage) -> ImageSummary {
         alpha,
         native_16: native_16(image),
     }
+}
+
+/// Running min, max and sum of each RGBA channel (luma in `r`, `g` and `b`), 0..1, and the alpha
+/// shares.
+struct Totals {
+    pixels: u64,
+    min: [f32; 4],
+    max: [f32; 4],
+    sum: [f64; 4],
+    alpha_zero: u64,
+    alpha_one: u64,
+}
+
+impl Totals {
+    fn add(&mut self, rgba: [f32; 4]) {
+        self.pixels += 1;
+        for (c, value) in rgba.into_iter().enumerate() {
+            self.min[c] = self.min[c].min(value);
+            self.max[c] = self.max[c].max(value);
+            self.sum[c] += f64::from(value);
+        }
+        if rgba[3] <= 0.0 {
+            self.alpha_zero += 1;
+        } else if rgba[3] >= 1.0 {
+            self.alpha_one += 1;
+        }
+    }
+}
+
+/// One pass over the pixels without a converted copy: an 8k RGBA image as `f32` would be 1 GiB.
+fn accumulate(image: &DynamicImage) -> Totals {
+    let mut totals = Totals {
+        pixels: 0,
+        min: [f32::INFINITY; 4],
+        max: [f32::NEG_INFINITY; 4],
+        sum: [0.0; 4],
+        alpha_zero: 0,
+        alpha_one: 0,
+    };
+    let mut add_samples = |samples: &[u16], channels: usize| {
+        for pixel in samples.chunks_exact(channels) {
+            let value = |c: usize| f32::from(pixel[c]) / 65535.0;
+            totals.add(match channels {
+                1 => [value(0), value(0), value(0), 1.0],
+                2 => [value(0), value(0), value(0), value(1)],
+                3 => [value(0), value(1), value(2), 1.0],
+                _ => [value(0), value(1), value(2), value(3)],
+            });
+        }
+    };
+    match image {
+        DynamicImage::ImageLuma16(image) => add_samples(image.as_raw(), 1),
+        DynamicImage::ImageLumaA16(image) => add_samples(image.as_raw(), 2),
+        DynamicImage::ImageRgb16(image) => add_samples(image.as_raw(), 3),
+        DynamicImage::ImageRgba16(image) => add_samples(image.as_raw(), 4),
+        // 8-bit converts per pixel without loss; anything else is rare enough to copy.
+        DynamicImage::ImageLuma8(_)
+        | DynamicImage::ImageLumaA8(_)
+        | DynamicImage::ImageRgb8(_)
+        | DynamicImage::ImageRgba8(_) => {
+            for (_, _, pixel) in image.pixels() {
+                totals.add(pixel.0.map(|v| f32::from(v) / 255.0));
+            }
+        }
+        _ => {
+            for pixel in image.to_rgba32f().pixels() {
+                totals.add(pixel.0);
+            }
+        }
+    }
+    totals
 }
 
 /// Each channel's range in its own 16-bit units, for the formats that have them.
