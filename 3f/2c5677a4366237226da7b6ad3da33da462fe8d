@@ -1,0 +1,34 @@
+ename_engine/tests/asset_info.rs
+  s_73f100acbee58a::t_de92bd21a74db8 72-83
+  s_73f100acbee58a::t_9743979c09e431 409-410
+  s_73f100acbee58a::t_3a4c1620028069 106
+  s_73f100acbee58a::t_7da8ee53c8bee1 406-408
+  s_73f100acbee58a::t_a45f6cbd47ebef 411-413
+  s_73f100acbee58a::t_26ffc840dcc54a 11,361-405,414-422
+ename_engine/src/asset_info/inspect.rs
+  s_73f100acbee58a::t_0d8fa793699800 167
+  s_73f100acbee58a::t_6d4d2dd8c90b82 1-9,11-166,168-194,201-265,267-409
+  s_73f100acbee58a::t_e66464b549cba4 195-200
+  s_73f100acbee58a::t_30d0f7e2274bb3 266
+  s_73f100acbee58a::t_4d41301395534e 10
+ename_engine/src/asset_info/mod.rs
+  s_73f100acbee58a::t_57cee1cc0e3644 2-3
+  s_73f100acbee58a::t_db73298bfc7a06 13
+  s_73f100acbee58a::t_949806f37d938e 68-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3f2c5677a4366237226da7b6ad3da33da462fe8d",
+  "prompts": {},
+  "sessions": {
+    "s_73f100acbee58a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c819127-4325-4a80-b7e5-047d2832ae98",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
