@@ -1,0 +1,30 @@
+ename_remote/src/lib.rs
+  s_98ee18e46e18e2::t_a68e1933d86253 96-106
+  s_98ee18e46e18e2::t_e52c4881f0c3b6 120-123
+  s_98ee18e46e18e2::t_a75c516e91a199 26-27,29-30
+  s_98ee18e46e18e2::t_17915b84446ad4 53
+ename_remote/src/coerce.rs
+  s_98ee18e46e18e2::t_094374edeccc99 70-72,81
+ename_engine/src/bigspace/grid.rs
+  s_98ee18e46e18e2::t_b9ea534453d8a3 74-96
+ename_remote/src/components.rs
+  s_98ee18e46e18e2::t_d4f452e2c1ee16 504-507,509-511,516,521-537
+  s_98ee18e46e18e2::t_d48d42912e10b3 1-503,508,512-515,517-520,538-783
+  s_98ee18e46e18e2::t_bab4b6730bb37c 784-797
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "90dd8dbdd36eddddd7840cf2f4088d9fc47038c6",
+  "prompts": {},
+  "sessions": {
+    "s_98ee18e46e18e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8a5f0e8a-b9be-45bb-bd80-e1e8ce438335",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
