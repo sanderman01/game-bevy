@@ -1,0 +1,58 @@
+ename_xtask/src/gltf_info/raw.rs
+  s_73f100acbee58a::t_d8280761c96f41 71-76
+  s_73f100acbee58a::t_66202e35043b0b 1-70,77-97
+Cargo.toml
+  s_73f100acbee58a::t_7e7c5ff03b077a 69-83
+  s_73f100acbee58a::t_425572ac887522 37-38
+ename_xtask/src/gltf_info/accessor.rs
+  s_73f100acbee58a::t_d8280761c96f41 144-150,222-226
+  s_73f100acbee58a::t_f44370b4eeac26 1-143,151-221,227-259
+ename_xtask/src/main.rs
+  s_73f100acbee58a::t_8312ca72179798 5-7
+  s_73f100acbee58a::t_2be550cd86b563 110-134
+ename_xtask/Cargo.toml
+  s_73f100acbee58a::t_df3952338f0ff4 17
+  s_73f100acbee58a::t_4fcb7ee0d57687 11
+ename_xtask/tests/gltf_info.rs
+  s_73f100acbee58a::t_82ab279bc4f3da 1-12,14-16,18-106,111-122,124-138,144-145,151-159,163-172,177-178,183-198,203-211,216-223,228
+  s_73f100acbee58a::t_de9656625d4196 13,17,123
+  s_73f100acbee58a::t_91a150469155ca 139
+  s_73f100acbee58a::t_9b95d1577db83c 148
+  s_73f100acbee58a::t_bea7a5f1011e3d 107-110,140-143,146-147,149-150,160-162,173-176,179-182,199-202,212-215,224-227
+ename_xtask/src/cli.rs
+  s_73f100acbee58a::t_d8280761c96f41 122-123,212-218
+  s_73f100acbee58a::t_3465eb78cba851 53
+  s_73f100acbee58a::t_3e07841d7ca25f 27-32
+  s_73f100acbee58a::t_fae996702b2321 62-67
+  s_73f100acbee58a::t_8f0f52bfd993de 210-211,219-246
+  s_73f100acbee58a::t_5c64d1a57efcca 43-45
+  s_73f100acbee58a::t_30066071c2b3eb 102-121,124-129
+  s_73f100acbee58a::t_83a8d047435a47 209
+ename_xtask/src/gltf_info/mod.rs
+  s_73f100acbee58a::t_cbb4bb86b11479 400-402
+  s_73f100acbee58a::t_604f829e4ec6e3 567-574
+  s_73f100acbee58a::t_70f52951d4a1db 367
+  s_73f100acbee58a::t_41e2aaca43a9a6 160-167
+  s_73f100acbee58a::t_3320224be2cc87 1-159,170-366,368-390,392-399,403-479,484-566,575-613,618-707,713-773
+  s_73f100acbee58a::t_d8280761c96f41 168-169,391,480-483,614-617,708-712
+ename_xtask/src/lib.rs
+  s_73f100acbee58a::t_b61c486788ee90 18
+Cargo.lock
+  s_73f100acbee58a::t_a6824f500c96ea 3111,3117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "130ac11a7a58268ce7fed342d68bafa90026f65b",
+  "prompts": {},
+  "sessions": {
+    "s_73f100acbee58a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c819127-4325-4a80-b7e5-047d2832ae98",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
