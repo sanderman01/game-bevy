@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use bevy::{
     diagnostic::EntityCountDiagnosticsPlugin,
-    ecs::entity::EntityHashMap,
+    ecs::entity::{EntityHashMap, EntityHashSet},
     feathers::{
         FeathersCorePlugin,
         constants::fonts,
@@ -149,25 +149,42 @@ fn reconcile_panels(
     if !overlay.stats && panels.is_empty() {
         return;
     }
-    let wanted: Vec<Entity> = if overlay.stats {
-        hosts.iter().chain(main_camera.single().ok()).collect()
-    } else {
-        Vec::new()
-    };
-    for (panel, host) in &panels {
-        if !wanted.contains(&host.0) {
-            commands.entity(panel).despawn();
+    let wanted = overlay
+        .stats
+        .then(|| hosts.iter().chain(main_camera.single().ok()))
+        .into_iter()
+        .flatten();
+    let panels = panels.iter().map(|(panel, of)| (panel, of.0));
+    let (despawn, spawn) = reconcile(wanted, panels);
+    for panel in despawn {
+        commands.entity(panel).despawn();
+    }
+    for host in spawn {
+        commands.spawn((
+            Name::new("Statistics panel"),
+            StatsPanelOf(host),
+            UiTargetCamera(host),
+        ));
+    }
+}
+
+/// The `(panel, host)` pairs to despawn and the hosts to give a panel, so each wanted host has
+/// exactly one. A host can be wanted twice: the main camera may also be a `StatsPanelHost`.
+pub(crate) fn reconcile(
+    wanted: impl IntoIterator<Item = Entity>,
+    panels: impl IntoIterator<Item = (Entity, Entity)>,
+) -> (Vec<Entity>, Vec<Entity>) {
+    let mut missing: EntityHashSet = wanted.into_iter().collect();
+    let mut despawn = Vec::new();
+    for (panel, host) in panels {
+        // The first panel of a wanted host stays; later ones and unwanted ones go.
+        if !missing.remove(&host) {
+            despawn.push(panel);
         }
     }
-    for host in wanted {
-        if !panels.iter().any(|(_, of)| of.0 == host) {
-            commands.spawn((
-                Name::new("Statistics panel"),
-                StatsPanelOf(host),
-                UiTargetCamera(host),
-            ));
-        }
-    }
+    let mut spawn: Vec<Entity> = missing.into_iter().collect();
+    spawn.sort();
+    (despawn, spawn)
 }
 
 /// Builds the feathers pane into a new panel root.

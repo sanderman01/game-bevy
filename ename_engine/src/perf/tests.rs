@@ -383,6 +383,31 @@ mod panel {
         set_stats(&mut app, false);
         assert!(panel_hosts(&mut app).is_empty());
     }
+
+    #[test]
+    fn a_main_camera_that_is_also_a_host_gets_one_panel() {
+        let mut app = app();
+        let main = app
+            .world_mut()
+            .spawn((Camera::default(), MainCamera, StatsPanelHost))
+            .id();
+        set_stats(&mut app, true);
+        assert_eq!(panel_hosts(&mut app), [main]);
+        app.update();
+        assert_eq!(panel_hosts(&mut app), [main]);
+    }
+
+    #[test]
+    fn reconcile_keeps_one_panel_per_wanted_host() {
+        use crate::perf::panel::reconcile;
+
+        let [a, b, c, p1, p2, p3] =
+            [1, 2, 3, 11, 12, 13].map(|index| Entity::from_raw_u32(index).unwrap());
+        // `a` wanted twice and doubled, `b` unwanted, `c` new.
+        let (despawn, spawn) = reconcile([a, a, c], [(p1, a), (p2, a), (p3, b)]);
+        assert_eq!(despawn, [p2, p3]);
+        assert_eq!(spawn, [c]);
+    }
 }
 
 mod load {
