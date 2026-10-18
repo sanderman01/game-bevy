@@ -85,6 +85,13 @@ fn debug_overlay_items(ui: &mut egui::Ui, world: &mut World) {
         "Big Space Grid Gizmos",
         "big_space's grid axes and the bounds of the cells around the origin.",
     );
+    switch_checkbox(
+        ui,
+        world,
+        "overlay.stats",
+        "Statistics",
+        "Frame, CPU and GPU times per view, top right of each view (F3).",
+    );
 }
 
 /// A checkbox over a bool debug switch, disabled while the switch does not apply. Writes go

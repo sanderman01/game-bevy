@@ -5,6 +5,7 @@
 //! render world's extraction check run.
 
 mod gpu_timer;
+mod panel;
 mod passes;
 mod records;
 #[cfg_attr(
@@ -19,6 +20,8 @@ mod tests;
 use std::{borrow::Cow, sync::mpsc::channel};
 
 use bevy::{diagnostic::DiagnosticPath, prelude::*, render::diagnostic::RenderDiagnosticsPlugin};
+
+pub use panel::{PerfOverlay, StatsPanelHost, StatsPanelOf, StatsPanels};
 
 use gpu_timer::TimestampSupport;
 use records::{PerfCounters, RecordReceiver};
@@ -53,8 +56,6 @@ impl PerfAppExt for App {
 /// Whether timing is on, derived in `First` from its sources each frame.
 #[derive(Resource, Default)]
 pub(crate) struct PerfDemand {
-    /// The statistics panel's source.
-    pub(crate) panel: bool,
     on: bool,
 }
 
@@ -76,8 +77,9 @@ fn advance_frame(mut frame: ResMut<PerfFrame>) {
     frame.0 += 1;
 }
 
-/// The engine's perf timing: [`PerfFrame`], the render world's GPU timer, the frame records and
-/// [`PerfViewLabel`]. In `EnginePlugins`, so editor and release builds both have it.
+/// The engine's perf timing: [`PerfFrame`], the render world's GPU timer, the frame records,
+/// [`PerfViewLabel`] and the `overlay.stats` statistics panel, drawn with feathers when
+/// `FeathersCorePlugin` is added. In `EnginePlugins`, so editor and release builds both have it.
 pub struct PerfPlugin;
 
 impl Plugin for PerfPlugin {
@@ -86,6 +88,7 @@ impl Plugin for PerfPlugin {
         let support = TimestampSupport::default();
         gpu_timer::build(app, sender, support.clone());
         records::build(app);
+        panel::build(app);
         app.register_type::<PerfViewLabel>()
             .register_type::<PerfDemandHolder>()
             .init_resource::<PerfDemand>()
@@ -107,6 +110,7 @@ impl Plugin for PerfPlugin {
 
     fn finish(&self, app: &mut App) {
         records::finish(app);
+        panel::finish(app);
     }
 }
 

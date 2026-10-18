@@ -52,6 +52,7 @@ use ename_engine::{
     capture::{CaptureError, CaptureSource, CaptureSystems},
     command::{CommandError, JobCancelRequested, JobHandle, JobId, Jobs, RunId},
     debug_overlay::DebugOverlays,
+    perf::PerfOverlay,
     screenshot::{SavedScreenshot, ScreenshotError, ScreenshotFinished, ScreenshotRequest},
     time::TimeControl,
     video::{
@@ -327,6 +328,7 @@ struct SavedState {
 
 struct SavedOverlays {
     debug: Option<DebugOverlays>,
+    stats: Option<PerfOverlay>,
     pick_marker: Option<bool>,
 }
 
@@ -595,6 +597,11 @@ fn save_state(
                 overlays.grids = false;
                 was
             });
+        let stats = world.get_resource_mut::<PerfOverlay>().map(|mut overlay| {
+            let was = *overlay;
+            overlay.stats = false;
+            was
+        });
         let pick_marker = world
             .get_resource_mut::<GizmoConfigStore>()
             .map(|mut store| {
@@ -602,7 +609,11 @@ fn save_state(
                 std::mem::replace(&mut config.enabled, false)
             });
         world.insert_resource(OverlaysHidden);
-        SavedOverlays { debug, pick_marker }
+        SavedOverlays {
+            debug,
+            stats,
+            pick_marker,
+        }
     });
     SavedState {
         view,
@@ -649,6 +660,11 @@ fn restore_state(
             && let Some(mut current) = world.get_resource_mut::<DebugOverlays>()
         {
             *current = debug;
+        }
+        if let Some(stats) = overlays.stats
+            && let Some(mut current) = world.get_resource_mut::<PerfOverlay>()
+        {
+            *current = stats;
         }
         if let Some(enabled) = overlays.pick_marker
             && let Some(mut store) = world.get_resource_mut::<GizmoConfigStore>()

@@ -61,7 +61,8 @@ struct FlyParams {
     /// Put the camera back where it was afterwards. Defaults to true.
     #[serde(default)]
     restore: Option<bool>,
-    /// Keep the editor's debug overlays, transform gizmo and pick marker in the captures.
+    /// Keep the editor's debug overlays, statistics panel, transform gizmo and pick marker in the
+    /// captures.
     /// Defaults to false.
     #[serde(default)]
     overlays: Option<bool>,

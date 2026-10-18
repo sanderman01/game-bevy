@@ -14,6 +14,7 @@ use ename_engine::bigspace::{
     FrozenOrigin, Grid, GridCameraSystems, GridFollowCamera, Grids, set_origin_frozen,
 };
 use ename_engine::debug_switch::{DebugSwitchAppExt, DebugSwitchSpec};
+use ename_engine::perf::StatsPanelHost;
 
 use crate::panels::{ActiveViewport, UiState};
 
@@ -320,6 +321,7 @@ fn spawn_editor_camera(mut commands: Commands, settings: Res<EditorCameraSetting
             ..default()
         }),
         spawn_transform,
+        StatsPanelHost,
         Name::new("Editor Camera"),
     ));
 }

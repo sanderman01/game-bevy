@@ -11,7 +11,7 @@
 //! the editor's business.
 
 use bevy::{
-    camera::RenderTarget,
+    camera::{ImageRenderTarget, RenderTarget},
     prelude::*,
     render::render_resource::{Extent3d, TextureFormat},
     window::PrimaryWindow,
@@ -134,8 +134,14 @@ fn resize_game_view(
         return;
     }
 
-    if render_target.as_image() != Some(&target.image) {
-        *render_target = RenderTarget::Image(target.image.clone().into());
+    // The window's scale, as bevy_ui uses for the Scene View, so UI on this camera has the same
+    // physical size in both views.
+    let image_target = ImageRenderTarget {
+        handle: target.image.clone(),
+        scale_factor: window.scale_factor(),
+    };
+    if !matches!(&*render_target, RenderTarget::Image(current) if *current == image_target) {
+        *render_target = RenderTarget::Image(image_target);
     }
     // A viewport carves a rect out of the target; the image *is* the tab, so there is nothing to
     // carve. A stage authored with one, or a save made by an older editor, would crop the view.

@@ -141,7 +141,7 @@ mod demand {
     use bevy::prelude::*;
 
     use crate::perf::{
-        PerfDemand, PerfDemandHolder, PerfFrame, PerfPlugin,
+        PerfDemand, PerfDemandHolder, PerfFrame, PerfOverlay, PerfPlugin,
         records::{MainFrame, PerfRecords, Stamped},
     };
 
@@ -189,7 +189,7 @@ mod demand {
     #[test]
     fn demand_follows_the_panel() {
         let mut app = app();
-        app.world_mut().resource_mut::<PerfDemand>().panel = true;
+        app.world_mut().resource_mut::<PerfOverlay>().stats = true;
         app.update();
         assert!(on(&app));
         // A holder ending while the panel stays on keeps the records.
@@ -200,7 +200,7 @@ mod demand {
         assert!(on(&app));
         assert_eq!(app.world().resource::<PerfRecords>().main.len(), 3);
 
-        app.world_mut().resource_mut::<PerfDemand>().panel = false;
+        app.world_mut().resource_mut::<PerfOverlay>().stats = false;
         app.update();
         assert!(!on(&app));
     }
@@ -274,5 +274,113 @@ mod passes {
             Some(PassWarning::PassGpuUnsupported)
         );
         assert_eq!(group(3, 0).warning(None), None);
+    }
+}
+
+mod panel {
+    use bevy::prelude::*;
+
+    use crate::{
+        camera::MainCamera,
+        command::CommandPlugin,
+        debug_switch::{DebugSwitchPlugin, DebugSwitchValue, DebugSwitchWorldExt},
+        perf::{PerfPlugin, StatsPanelHost, StatsPanelOf},
+    };
+
+    // No `FeathersCorePlugin`: the roots stay empty, which is all the reconcile needs.
+    fn app() -> App {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            CommandPlugin,
+            DebugSwitchPlugin,
+            PerfPlugin,
+        ));
+        app.finish();
+        app.cleanup();
+        app
+    }
+
+    fn set_stats(app: &mut App, on: bool) {
+        app.world_mut()
+            .set_debug_switch("overlay.stats", DebugSwitchValue::Bool(on), "test")
+            .unwrap();
+        app.update();
+    }
+
+    /// Hosts with a panel root, sorted.
+    fn panel_hosts(app: &mut App) -> Vec<Entity> {
+        let world = app.world_mut();
+        let mut hosts: Vec<Entity> = world
+            .query::<&StatsPanelOf>()
+            .iter(world)
+            .map(|of| of.0)
+            .collect();
+        hosts.sort();
+        hosts
+    }
+
+    fn root_of(app: &mut App, host: Entity) -> Entity {
+        let world = app.world_mut();
+        world
+            .query::<(Entity, &StatsPanelOf)>()
+            .iter(world)
+            .find(|(_, of)| of.0 == host)
+            .map(|(root, _)| root)
+            .unwrap()
+    }
+
+    #[test]
+    fn panels_follow_the_switch_and_their_hosts() {
+        let mut app = app();
+        let marked = app
+            .world_mut()
+            .spawn((Camera::default(), StatsPanelHost))
+            .id();
+        let main = app.world_mut().spawn((Camera::default(), MainCamera)).id();
+        app.world_mut().spawn(Camera::default());
+        app.update();
+        assert!(panel_hosts(&mut app).is_empty());
+
+        set_stats(&mut app, true);
+        let mut both = vec![marked, main];
+        both.sort();
+        assert_eq!(panel_hosts(&mut app), both);
+        // Reconciling again spawns no second root.
+        app.update();
+        assert_eq!(panel_hosts(&mut app), both);
+
+        app.world_mut()
+            .entity_mut(marked)
+            .remove::<StatsPanelHost>();
+        app.update();
+        assert_eq!(panel_hosts(&mut app), [main]);
+
+        // A second main camera: the filter no longer selects one.
+        let second = app.world_mut().spawn((Camera::default(), MainCamera)).id();
+        app.update();
+        assert!(panel_hosts(&mut app).is_empty());
+        app.world_mut().despawn(second);
+        app.update();
+        assert_eq!(panel_hosts(&mut app), [main]);
+
+        let root = root_of(&mut app, main);
+        app.world_mut().despawn(root);
+        assert!(app.world().get_entity(main).is_ok());
+
+        app.update();
+        let root = root_of(&mut app, main);
+        app.world_mut().despawn(main);
+        assert!(app.world().get_entity(root).is_err());
+
+        let host = app
+            .world_mut()
+            .spawn((Camera::default(), StatsPanelHost))
+            .id();
+        app.update();
+        assert_eq!(panel_hosts(&mut app), [host]);
+        set_stats(&mut app, false);
+        assert!(panel_hosts(&mut app).is_empty());
     }
 }

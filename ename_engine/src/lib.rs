@@ -189,6 +189,8 @@ impl PluginGroup for EnginePlugins {
             .add(capture::CapturePlugin)
             .add(screenshot::ScreenshotPlugin)
             .add(video::VideoPlugin)
+            // A member, so a game can disable or replace it; `PerfPlugin` draws its panel with it.
+            .add(bevy::feathers::FeathersCorePlugin)
             .add(perf::PerfPlugin);
         // After `DefaultPlugins`, because it resizes the buffer `LogPlugin` just built.
         group.add(log::LogBufferPlugin {

@@ -16,7 +16,7 @@ use bevy::{
 };
 
 use super::{
-    PerfDemand, PerfDemandHolder, PerfFrame,
+    PerfDemand, PerfDemandHolder, PerfFrame, PerfOverlay,
     gpu_timer::{CpuFrame, GpuFrame, RenderRecord},
 };
 
@@ -208,11 +208,12 @@ pub(super) fn collect_records(
 /// what the render world sent before is dropped.
 pub(super) fn update_demand(
     holders: Query<(), With<PerfDemandHolder>>,
+    overlay: Res<PerfOverlay>,
     mut demand: ResMut<PerfDemand>,
     mut records: ResMut<PerfRecords>,
     mut receiver: ResMut<RecordReceiver>,
 ) {
-    let on = demand.panel || !holders.is_empty();
+    let on = overlay.stats || !holders.is_empty();
     if demand.on == on {
         return;
     }
