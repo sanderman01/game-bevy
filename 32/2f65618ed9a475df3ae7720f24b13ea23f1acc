@@ -1,0 +1,27 @@
+docs/agent-tools.md
+  s_e330b98cbebc97::t_08c8d22cf92e48 742-833,836-907,909-917
+  s_e330b98cbebc97::t_4d531b53e76a0a 201-202
+  s_e330b98cbebc97::t_fcc004e8bed451 921-922
+  s_e330b98cbebc97::t_7195a45dd701d2 834-835,908
+docs/design/perf-sampling.md
+  s_e330b98cbebc97::t_db53c20cf8e928 1-99
+docs/design.md
+  s_e330b98cbebc97::t_a5a90dea4ad142 72-75
+  s_e330b98cbebc97::t_d350f4bbe29df6 24-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "322f65618ed9a475df3ae7720f24b13ea23f1acc",
+  "prompts": {},
+  "sessions": {
+    "s_e330b98cbebc97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17f2c035-9b9b-4c57-8fb6-463dc39f045f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
