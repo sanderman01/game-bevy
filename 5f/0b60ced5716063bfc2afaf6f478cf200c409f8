@@ -1,0 +1,30 @@
+docs/agent-tools.md
+  s_e330b98cbebc97::t_ca3bba825ba064 904
+  s_e330b98cbebc97::t_401f35a65c33d9 895-896,898-901
+ename_engine/src/perf/panel.rs
+  s_e330b98cbebc97::t_91e421e318e9b0 69-70
+  s_e330b98cbebc97::t_77d1d37012a6d6 344-345
+  s_e330b98cbebc97::t_3af987dbe8664a 324
+  s_e330b98cbebc97::t_16925aa2f62ee4 348
+  s_e330b98cbebc97::t_e3d8d38ab876cc 22
+  s_e330b98cbebc97::t_71ac5c899331de 183,192-193,195
+  s_e330b98cbebc97::t_fa7c4738637353 91
+  s_e330b98cbebc97::t_9e053611cc615b 223
+  s_e330b98cbebc97::t_a0b5366f7f67c8 279,285,291-298,311-312,314
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5f0b60ced5716063bfc2afaf6f478cf200c409f8",
+  "prompts": {},
+  "sessions": {
+    "s_e330b98cbebc97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17f2c035-9b9b-4c57-8fb6-463dc39f045f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
