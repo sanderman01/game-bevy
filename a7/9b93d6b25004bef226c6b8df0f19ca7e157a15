@@ -1,0 +1,50 @@
+ename_engine/src/asset_info/failures.rs
+  s_73f100acbee58a::t_fa72a356a84fac 4,7,12-13,18,23-24,31-38,54,56,60-73
+  s_73f100acbee58a::t_648000bcf94e25 74
+ename_engine/src/asset_info/mod.rs
+  s_73f100acbee58a::t_9bb4529a440b60 239-240
+  s_73f100acbee58a::t_4604d6ffe914a3 237,241
+  s_73f100acbee58a::t_9e7cfc10ca8545 6-10,18-20,27,41-42,67,76-77,97-117,120-127,138-175,177-180,182-195,199,201-202,206-207,209,212-214,223-236,238,242-271,275-283,307-312
+  s_73f100acbee58a::t_fa0b075339d76a 176,181
+ename_engine/src/asset_info/inspect.rs
+  s_73f100acbee58a::t_29f75ca183f694 178
+  s_73f100acbee58a::t_53efa6d8a34a3b 365-370
+  s_73f100acbee58a::t_cbb8fa1d66d85c 1-3,21,44,46-49,52-54,58-60,73,76-98,100-101,117,119-122,124,129-132,136,141,143-149,152-157,177,179-180,184,186-189,191-192,194-195
+  s_73f100acbee58a::t_6e8ac5504bf691 16
+  s_73f100acbee58a::t_f3a7b91f174d85 134-135
+  s_73f100acbee58a::t_7343ba1e9b8972 176
+  s_73f100acbee58a::t_93df9093bd8e1a 99
+ename_engine/src/asset_info/list.rs
+  s_73f100acbee58a::t_4f8d01d269078a 1-2,4-7,10,18-19,32,49-69,76-77,96-98,100,132-167,171-173,176-184,186-190,193-197,201-204,207-211,217-219,223-239,241,243-250,252-285,287-300,302-303,307-331,333-392,397,420
+  s_73f100acbee58a::t_2a4be8ea72f103 399,401-402,404,429,434
+ename_engine/src/asset_info/content.rs
+  s_73f100acbee58a::t_e27f5d762b782d 217-218
+  s_73f100acbee58a::t_3583578c43a29b 11
+  s_73f100acbee58a::t_f5724d8a20d735 250,253-254
+  s_73f100acbee58a::t_4575b8c694a8cd 214-216,219-232
+ename_engine/tests/asset_info.rs
+  s_73f100acbee58a::t_a74c3d9f681f8e 244-246
+  s_73f100acbee58a::t_bf7d9ed2fbad7e 220
+  s_73f100acbee58a::t_a442c7ad439f83 93-123,125-128,133,140,144-145,152
+  s_73f100acbee58a::t_c9351264dfd44d 261-336,341-345,351-393,623
+  s_73f100acbee58a::t_a2d019bfa2e3ce 260,337-340,346-350,595-610,612-622
+  s_73f100acbee58a::t_a38add885df51a 611
+ename_engine/tests/fixtures/asset_info/p.parent
+  s_73f100acbee58a::t_bf7d9ed2fbad7e 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a79b93d6b25004bef226c6b8df0f19ca7e157a15",
+  "prompts": {},
+  "sessions": {
+    "s_73f100acbee58a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c819127-4325-4a80-b7e5-047d2832ae98",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
