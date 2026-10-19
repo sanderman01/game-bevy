@@ -46,6 +46,7 @@ impl Plugin for PhysicsIntegrationPlugin {
                 ),
             )
             .add_observer(collider_grid_transform::mark_ancestors_of_new_collider)
-            .add_observer(collider_grid_transform::mark_ancestors_of_reparented);
+            .add_observer(collider_grid_transform::mark_ancestors_of_reparented)
+            .add_observer(collider_grid_transform::restart_detached);
     }
 }

@@ -40,35 +40,21 @@ pub fn on_grid_looking_to(
     (coord, tr)
 }
 
-/// One level of big_space's propagation: the pose of an entity with `local` (and `cell`, read only
-/// when its parent is a grid) in a frame where its parent's contents frame is `parent`. A grid
-/// places its contents through their cell; any other parent multiplies as usual, scale included.
-pub fn place_in_parent(
-    parent: &Transform,
+/// big_space's rule for one level: an entity's `local` transform as its parent's contents see it.
+/// A grid parent places its contents through their `cell`; any other parent takes `local` as is.
+/// The caller composes the result with the parent's contents frame, in which a grid's own scale
+/// never appears: it applies to the grid entity, not to what the grid contains.
+pub fn local_in_parent(
     parent_grid: Option<&Grid>,
     cell: &CellCoord,
     local: &Transform,
 ) -> Transform {
-    let step = match parent_grid {
+    match parent_grid {
         Some(grid) => Transform {
             translation: grid.grid_position(cell, local),
             ..*local
         },
         None => *local,
-    };
-    *parent * step
-}
-
-/// The frame an entity's children are placed in, given its own pose: that pose, except that a
-/// grid's own scale applies to the grid entity but never to its contents.
-pub fn contents_frame(own: Transform, is_grid: bool) -> Transform {
-    if is_grid {
-        Transform {
-            scale: Vec3::ONE,
-            ..own
-        }
-    } else {
-        own
     }
 }
 

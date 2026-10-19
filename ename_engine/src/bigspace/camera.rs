@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use big_space::camera::camera_controller;
 use big_space::prelude::{BigSpace, BigSpaceCameraController, CellCoord, FloatingOrigin, Grid};
 
-use super::grid::{contents_frame, place_in_parent};
+use super::grid::local_in_parent;
 
 /// Attach this to any entity that should automatically become a child of the nearest root
 /// `Grid` (an entity carrying both `BigSpace` and `Grid`) when one exists, and a parentless root
@@ -242,38 +242,40 @@ type LinkData = (
 );
 
 /// Where `entity` is in its root grid's frame, composed the way big_space propagates: local
-/// `Transform`s multiply as usual, a grid places its contents through their cell and contributes
-/// only its rotation and translation (never its scale), and the root grid's own `Transform` and
+/// `Transform`s compose as affines, as Bevy's propagation does, a grid places its contents through
+/// their cell and contributes only its rotation and translation (never its scale), and the root
+/// grid's own `Transform` and
 /// anything above it are ignored. Absolute when no grid is above `entity`. A missing `Transform`
 /// is the identity and a missing `CellCoord` is cell zero.
 ///
 /// Never `GlobalTransform`: inside a grid it is floating-origin-relative, and for an entity moved
 /// or detached earlier this frame it is stale until propagation runs.
 fn true_pose(entity: Entity, links: &Query<LinkData>) -> (Vec3, Quat) {
-    let pose = own_pose(entity, links);
-    (pose.translation, pose.rotation)
+    let (_, rotation, translation) = own_pose(entity, links).to_scale_rotation_translation();
+    (translation, rotation)
 }
 
-/// [`true_pose`] with scale, built top-down with big_space's per-level rule
-/// ([`place_in_parent`], [`contents_frame`]).
-fn own_pose(entity: Entity, links: &Query<LinkData>) -> Transform {
+/// [`true_pose`] as an affine, built top-down with big_space's grid rule ([`local_in_parent`]).
+fn own_pose(entity: Entity, links: &Query<LinkData>) -> GlobalTransform {
     let (transform, cell, child_of, _) = links.get(entity).unwrap_or_default();
     let local = transform.copied().unwrap_or_default();
     let Some(parent) = child_of.map(ChildOf::parent) else {
-        return local;
+        return local.into();
     };
     let (frame, parent_grid) = contents_of(parent, links);
-    place_in_parent(
-        &frame,
+    frame.mul_transform(local_in_parent(
         parent_grid,
         &cell.copied().unwrap_or_default(),
         &local,
-    )
+    ))
 }
 
 /// The frame `entity`'s children are placed in, and its `Grid` if it is one. The outermost grid's
 /// contents frame is the root frame itself.
-fn contents_of<'a>(entity: Entity, links: &'a Query<LinkData>) -> (Transform, Option<&'a Grid>) {
+fn contents_of<'a>(
+    entity: Entity,
+    links: &'a Query<LinkData>,
+) -> (GlobalTransform, Option<&'a Grid>) {
     let grid = links.get(entity).ok().and_then(|(.., grid)| grid);
     let outermost_grid = grid.is_some()
         && !std::iter::successors(Some(entity), |&current| {
@@ -285,9 +287,16 @@ fn contents_of<'a>(entity: Entity, links: &'a Query<LinkData>) -> (Transform, Op
         .skip(1)
         .any(|ancestor| links.get(ancestor).is_ok_and(|(.., grid)| grid.is_some()));
     let frame = if outermost_grid {
-        Transform::IDENTITY
+        GlobalTransform::IDENTITY
+    } else if grid.is_some() {
+        // A grid's own scale is not applied to its contents. Grids sit only in grids, whose
+        // contents frames have no scale, so this pose has no shear to lose.
+        let (_, rotation, translation) = own_pose(entity, links).to_scale_rotation_translation();
+        Transform::from_translation(translation)
+            .with_rotation(rotation)
+            .into()
     } else {
-        contents_frame(own_pose(entity, links), grid.is_some())
+        own_pose(entity, links)
     };
     (frame, grid)
 }

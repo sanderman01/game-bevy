@@ -1412,3 +1412,33 @@ fn a_scaled_ship_grids_own_collider_takes_its_scale() {
         "AABB half extent {half_extent}"
     );
 }
+
+#[test]
+fn detaching_a_holder_from_a_scaled_parent_unscales_its_collider() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    let root = scene.root;
+    let cell = scene.origin_cell();
+    let world = scene.app.world_mut();
+    let scaled = world
+        .spawn((ChildOf(root), cell, Transform::from_scale(Vec3::splat(2.0))))
+        .id();
+    let holder = world.spawn((ChildOf(scaled), Transform::default())).id();
+    world.spawn((
+        Name::new("held"),
+        ChildOf(holder),
+        Transform::default(),
+        RigidBody::Static,
+        Collider::sphere(0.5),
+    ));
+    scene.settle();
+    let (before, ..) = collider_state(&mut scene, "held");
+    assert_collider_transform(before, Vec3::ZERO, Vec3::splat(2.0), "before");
+
+    scene.at_tick(2, move |world| {
+        world.entity_mut(holder).remove::<ChildOf>();
+    });
+    scene.run_past_action(2);
+
+    let (after, ..) = collider_state(&mut scene, "held");
+    assert_collider_transform(after, Vec3::ZERO, Vec3::ONE, "after");
+}

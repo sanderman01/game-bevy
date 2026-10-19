@@ -20,7 +20,7 @@
 //! avian also runs. A missing `Transform` is the identity.
 //!
 //! Grids follow big_space's rule, the same one `bigspace::camera` places followers with
-//! (`bigspace::grid::place_in_parent` and `contents_frame`): an entity directly in a grid is
+//! (`bigspace::grid::local_in_parent`): an entity directly in a grid is
 //! placed through its cell, and a grid's scale applies to the grid entity itself but never to its
 //! contents. So the owning body is kept across grid boundaries: a vehicle whose body is a grid,
 //! with sub-grids and cell-placed holders below it, gets every collider's offset through every
@@ -45,12 +45,15 @@ use avian3d::prelude::{ColliderOf, ColliderTransform, RigidBody, Rotation};
 use bevy::{ecs::query::QueryData, prelude::*};
 use big_space::prelude::{CellCoord, Grid};
 
-use crate::bigspace::grid::{contents_frame, place_in_parent};
+use crate::bigspace::grid::local_in_parent;
 
-/// On every ancestor of a collider, grids included (a body can be a grid, with grids below it), so the propagation can start at a
-/// changed ancestor and walk down to colliders only. Kept current when a collider gains its body
-/// and when a collider or marked entity is reparented. Never removed: a stale marker costs a
-/// wasted walk when that entity changes, nothing else.
+/// On every ancestor of a collider, grids included (a body can be a grid, with grids below it),
+/// so the propagation can start at a changed ancestor and walk down to colliders only. Kept
+/// current when a collider gains its body and when a collider or marked entity is reparented.
+/// Never removed: a stale marker costs a wasted walk when that entity changes, nothing else.
+///
+/// Re-inserted on a collider or marked entity that loses its parent, which makes it a start:
+/// nothing else changes on it then, but its subtree's accumulator does.
 #[derive(Component)]
 pub(crate) struct ColliderAncestor;
 
@@ -61,6 +64,17 @@ pub(crate) fn mark_ancestors_of_new_collider(
     marked: Query<(), With<ColliderAncestor>>,
 ) {
     mark_ancestors(insert.entity, commands, &parents, &marked);
+}
+
+pub(crate) fn restart_detached(
+    remove: On<Remove, ChildOf>,
+    mut commands: Commands,
+    walked: Query<(), Marked>,
+) {
+    if walked.contains(remove.entity) {
+        // `try_`: the entity may be despawning.
+        commands.entity(remove.entity).try_insert(ColliderAncestor);
+    }
 }
 
 pub(crate) fn mark_ancestors_of_reparented(
@@ -98,13 +112,13 @@ pub(crate) struct Node {
     cell: Option<Ref<'static, CellCoord>>,
     grid: Option<&'static Grid>,
     is_body: Has<RigidBody>,
-    marked: Has<ColliderAncestor>,
+    marked: Option<Ref<'static, ColliderAncestor>>,
 }
 
 impl NodeItem<'_, '_> {
     /// Whether a walk descends into this entity.
     fn on_walk(&self) -> bool {
-        self.marked || self.collider_of.is_some()
+        self.marked.is_some() || self.collider_of.is_some()
     }
 
     /// Whether this entity is a start that is not a mere `ColliderTransform` rewrite.
@@ -113,6 +127,7 @@ impl NodeItem<'_, '_> {
             && (self.transform.as_ref().is_some_and(Ref::is_changed)
                 || self.child_of.as_ref().is_some_and(Ref::is_changed)
                 || self.cell.as_ref().is_some_and(Ref::is_changed)
+                || self.marked.as_ref().is_some_and(Ref::is_changed)
                 || self.collider_of.as_ref().is_some_and(Ref::is_changed))
     }
 
@@ -127,6 +142,7 @@ type Moved = Or<(
     Changed<ChildOf>,
     Changed<CellCoord>,
     Changed<ColliderOf>,
+    Changed<ColliderAncestor>,
 )>;
 /// Colliders whose `ColliderTransform` someone other than this system wrote since its last run.
 type Rewritten = (With<ColliderOf>, Changed<ColliderTransform>);
@@ -161,9 +177,9 @@ pub(crate) fn propagate_collider_transforms(
 }
 
 /// avian's propagation accumulator: an entity's pose relative to the nearest rigid body above it
-/// (scale relative to the nearest grid above that), valid once `below_body` is set. Composed with
-/// big_space's per-level rule ([`place_in_parent`], [`contents_frame`]), which is avian's own
-/// rule wherever no grid is involved.
+/// (scale relative to the nearest grid above that), valid once `below_body` is set. Each level is
+/// placed with big_space's grid rule ([`local_in_parent`]) and composed componentwise as avian
+/// does (`Transform` multiplication), with a grid's own scale left out of its contents' frame.
 #[derive(Clone, Copy)]
 struct Accumulated {
     pose: Transform,
@@ -183,12 +199,15 @@ impl Accumulated {
     fn then(self, parent_grid: Option<&Grid>, node: &NodeItem<'_, '_>) -> Self {
         let local = node.transform.as_deref().copied().unwrap_or_default();
         let cell = node.cell.as_deref().copied().unwrap_or_default();
-        let placed = place_in_parent(
-            &contents_frame(self.pose, self.is_grid),
-            parent_grid,
-            &cell,
-            &local,
-        );
+        let frame = if self.is_grid {
+            Transform {
+                scale: Vec3::ONE,
+                ..self.pose
+            }
+        } else {
+            self.pose
+        };
+        let placed = frame * local_in_parent(parent_grid, &cell, &local);
         let (pose, below_body) = if node.is_body {
             (Transform::from_scale(placed.scale), true)
         } else {

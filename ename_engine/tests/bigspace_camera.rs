@@ -679,3 +679,49 @@ fn a_root_grids_own_transform_does_not_move_a_rescued_camera() {
 
     assert_rescued(&app, camera);
 }
+
+#[test]
+fn a_camera_under_a_scaled_then_turned_parent_attaches_where_it_renders() {
+    let mut app = test_app();
+    let root = app
+        .world_mut()
+        .spawn(big_space::bundles::BigSpaceRootBundle::default())
+        .id();
+    let stretched = app
+        .world_mut()
+        .spawn((
+            CellCoord::default(),
+            Transform::from_xyz(5.0, 0.0, 0.0).with_scale(Vec3::new(2.0, 1.0, 1.0)),
+            ChildOf(root),
+        ))
+        .id();
+    let turned = app
+        .world_mut()
+        .spawn((
+            Transform::from_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)),
+            ChildOf(stretched),
+        ))
+        .id();
+    let camera = app
+        .world_mut()
+        .spawn((
+            GridFollowCamera,
+            Transform::from_xyz(1.0, 0.0, 0.0),
+            ChildOf(turned),
+        ))
+        .id();
+    app.update();
+    app.update();
+
+    // The turn maps local X onto Y, which the stretch along X leaves alone, as an affine does.
+    let entity = app.world().entity(camera);
+    assert_eq!(entity.get::<ChildOf>().map(ChildOf::parent), Some(root));
+    let position = app.world().get::<Grid>(root).unwrap().grid_position(
+        entity.get::<CellCoord>().unwrap(),
+        entity.get::<Transform>().unwrap(),
+    );
+    assert!(
+        position.distance(Vec3::new(5.0, 1.0, 0.0)) < 1e-3,
+        "attached at {position}"
+    );
+}
