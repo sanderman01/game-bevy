@@ -1,0 +1,28 @@
+docs/design/floating-origin.md
+  s_dcfdee2845fb20::t_17c4faed8680f0 104-107
+ename_engine/tests/bigspace_camera.rs
+  s_dcfdee2845fb20::t_bc12849ef1cf05 529-531
+  s_dcfdee2845fb20::t_dd0ad351f2788c 493-528,532-549
+ename_engine/src/bigspace/camera.rs
+  s_dcfdee2845fb20::t_2c77d55ba028b7 235-258
+  s_dcfdee2845fb20::t_b81c379de6a3e7 84-95,100
+  s_dcfdee2845fb20::t_6754b14bf1073d 99,102
+  s_dcfdee2845fb20::t_c3a8fa9d7bd79b 72-75
+  s_dcfdee2845fb20::t_b2b138a92d7412 104,108-109,112-115,119-121,124-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "39614a3b87831ab758a18ce45ea32380f9668dcb",
+  "prompts": {},
+  "sessions": {
+    "s_dcfdee2845fb20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "00ad8add-1ac1-4866-b197-cea8026ac809",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
