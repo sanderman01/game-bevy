@@ -86,11 +86,13 @@ earlier one defers. No hand-written `ApplyDeferred`.
 
 ## When a grid goes away
 
-A `GridFollowCamera` is a child of its grid, so a grid's despawn would take the camera with it.
-Two observers on `Grid` rescue it instead, through one function: `On<Despawn, Grid>` and
-`On<Remove, Grid>`. Each reads the still-present `Grid` to place the camera at its world pose,
-takes it out of the grid's `Children`, and queues the detach (no `ChildOf` or `CellCoord`, a plain
-`Transform`, a frozen anchor despawned).
+A `GridFollowCamera` is a descendant of its grid, so a grid's despawn would take the camera with
+it. Two observers on `Grid` rescue it instead, through one function: `On<Despawn, Grid>` and
+`On<Remove, Grid>`. Each finds every follower below the grid, at any depth, places it at its pose
+in the root grid's frame while every enclosing grid is still readable, takes it out of its
+parent's `Children`, and queues the detach (no `ChildOf` or `CellCoord`, a plain `Transform`, a
+frozen anchor despawned). Rescuing at any depth matters for a cascade: despawning a root reaches a
+sub-grid only after the root is gone, too late to read the root's cell offset.
 
 The despawn observer is what makes every path safe. Bevy runs `Despawn` observers before any
 `on_despawn` hook, and it is `Children::on_despawn` that queues the despawn of every child, so the
@@ -102,10 +104,12 @@ finds no followers left.
 
 `sync_grid_attachment` reattaches the camera when a root grid appears. A camera detached earlier in
 the same frame still has a floating-origin-relative `GlobalTransform`, so the camera's position is
-composed from local `Transform`s up its whole hierarchy, through every enclosing grid's cell, into
-the root grid's frame (the grid-despawn rescue places it the same way, so a camera in a sub-grid
-does not land at sub-grid-local coordinates). Root grids are ranked by distance from that position to each root's own `Transform`, as if all
-roots shared one absolute frame; on a tie the camera stays on its current grid.
+composed from local `Transform`s up its hierarchy the way big_space propagates: through every
+enclosing grid's cell, with a grid contributing its rotation and translation but never its scale,
+and stopping in the root grid's frame, since big_space ignores the root's own `Transform`. The
+rescue places it the same way. A follower keeps its root-frame coordinates when it moves to another
+root; the roots' `Transform`s only rank them, by distance from that position, and on a tie the
+camera stays on its current grid.
 
 ## Physics in a recentering world
 
@@ -124,4 +128,6 @@ Collider-to-body transforms (`ColliderTransform`) have the same problem twice ov
 them from `GlobalTransform`s on every `ColliderOf` insert, which is cell-less or stale for anything
 new, and its propagation starts only at a hierarchy root with a `Transform`, which a stage's root
 grid does not have. `physics::collider_grid_transform` propagates them itself before each step,
-composing from local `Transform`s the way avian does, which never involves the cell.
+composing from local `Transform`s the way avian does, which never involves the cell, except that
+accumulation restarts at every grid, as big_space's does. It starts only from changed colliders and
+their marked ancestors, so a tick in which nothing moved costs a change-tick scan.
