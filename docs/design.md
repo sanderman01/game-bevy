@@ -53,8 +53,9 @@ camera claims the keyboard and the gizmo's W/E/R/X shortcuts stand down.
 
 ## Debug overlays
 
-avian3d's `PhysicsDebugPlugin` and big_space's `BigSpaceDebugPlugins` are always installed, and
-both overlays start off. `ename_engine::debug_overlay::DebugOverlays` holds both, registered as
+avian3d's `PhysicsDebugPlugin` and big_space's `BigSpaceDebugPlugins` are always installed, as
+members of `EnginePlugins` of their own (not inside `PhysicsIntegrationPlugin`, which then runs in
+headless tests without gizmos), and both overlays start off. `ename_engine::debug_overlay::DebugOverlays` holds both, registered as
 the debug switches `overlay.physics` and `overlay.grids` (see
 [agent-tooling.md](design/agent-tooling.md#debug-switches)); the editor's `View` menu, the
 `debug.*` commands and any key a game binds all go through that registry. Installing them unconditionally and

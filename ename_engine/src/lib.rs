@@ -184,6 +184,8 @@ impl PluginGroup for EnginePlugins {
             .add(camera::ground::CameraGroundPlugin)
             .add(stage::StagePlugin)
             .add(physics::PhysicsIntegrationPlugin)
+            // Kept out of `PhysicsIntegrationPlugin`, which then needs no gizmos to run headless.
+            .add(avian3d::debug_render::PhysicsDebugPlugin)
             .add(time::TimeControlPlugin)
             .add(command::CommandPlugin)
             .add(asset_info::AssetInfoPlugin)

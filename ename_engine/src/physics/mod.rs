@@ -1,25 +1,31 @@
 //! Physics integration: avian3d configured to work inside big_space grids.
 
 mod collider_grid_transform;
+mod grid_propagate;
 mod grid_writeback;
 
 use avian3d::{
-    PhysicsPlugins, debug_render::PhysicsDebugPlugin, physics_transform::PhysicsTransformConfig,
+    PhysicsPlugins,
+    physics_transform::{PhysicsTransformConfig, PhysicsTransformSystems},
     prelude::PhysicsSystems,
 };
 use bevy::prelude::*;
 
 use crate::bigspace::GridSystems;
 
-/// Adds avian3d, and replaces its `position_to_transform` writeback with one that survives
-/// an entity being recentered into another grid cell.
+/// Adds avian3d, and replaces its transform propagation before the step and its
+/// `position_to_transform` writeback after it with grid-aware versions: bodies keep every tick of
+/// motion on frames with several fixed ticks, and survive being recentered into another cell.
+///
+/// Needs no rendering or gizmos, so headless tests can use it as is. avian's
+/// `PhysicsDebugPlugin` is a separate member of [`EnginePlugins`](crate::EnginePlugins).
 pub struct PhysicsIntegrationPlugin;
 
 impl Plugin for PhysicsIntegrationPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(PhysicsPlugins::default())
-            .add_plugins(PhysicsDebugPlugin)
             .insert_resource(PhysicsTransformConfig {
+                // Replaced by grid_propagate::propagate_grid_bodies.
                 propagate_before_physics: false,
                 transform_to_position: true,
                 // Replaced by grid_writeback::physics_position_to_transform.
@@ -28,7 +34,13 @@ impl Plugin for PhysicsIntegrationPlugin {
             })
             .add_systems(
                 FixedPostUpdate,
-                grid_writeback::physics_position_to_transform.after(PhysicsSystems::Writeback),
+                (
+                    grid_propagate::propagate_grid_bodies
+                        .in_set(PhysicsSystems::Prepare)
+                        .after(PhysicsTransformSystems::Propagate)
+                        .before(PhysicsTransformSystems::TransformToPosition),
+                    grid_writeback::physics_position_to_transform.after(PhysicsSystems::Writeback),
+                ),
             )
             .add_systems(
                 PostUpdate,
