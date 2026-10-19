@@ -74,6 +74,7 @@ impl Plugin for GridFollowPlugin {
             .add_systems(
                 PostUpdate,
                 (
+                    forget_moved_detached_poses,
                     sync_grid_attachment.run_if(grid_attachment_may_change),
                     elect_floating_origins,
                 )
@@ -94,6 +95,24 @@ fn grid_attachment_may_change(
     removed_grids: RemovedComponents<Grid>,
 ) -> bool {
     !(new_roots.is_empty() && new_followers.is_empty() && removed_grids.is_empty())
+}
+
+/// Drops a [`DetachedPose`] whose `Transform` was written after it. Ahead of
+/// [`sync_grid_attachment`], the one reader that can see a stale one; whatever moves a parentless
+/// follower runs in `Update` or after this point, in time for the next frame.
+fn forget_moved_detached_poses(
+    mut commands: Commands,
+    detached: Query<(Entity, Ref<DetachedPose>, Ref<Transform>)>,
+    ticks: bevy::ecs::system::SystemChangeTick,
+) {
+    for (entity, pose, transform) in &detached {
+        if transform
+            .last_changed()
+            .is_newer_than(pose.last_changed(), ticks.this_run())
+        {
+            commands.entity(entity).remove::<DetachedPose>();
+        }
+    }
 }
 
 /// Re-evaluates every [`GridFollowCamera`]'s attachment.
@@ -249,8 +268,9 @@ type LinkData = (
 /// On a follower its grid's loss left parentless: the root-frame pose it was rescued at, in `f64`,
 /// and the `Transform` written from it. A parentless `Transform` is `f32`, which cannot hold a
 /// far cell's metre; while that `Transform` is untouched, reattaching uses this instead, so a hot
-/// reload far out puts the follower back exactly. Moving it (free flight) makes the `Transform`
-/// the truth again.
+/// reload far out puts the follower back exactly. Any later write to the `Transform` (free
+/// flight, a camera command) makes it the truth again: [`forget_moved_detached_poses`] drops
+/// this then, by change tick rather than by value, so moving away and back is no return to it.
 #[derive(Component, Clone, Copy, Debug)]
 struct DetachedPose {
     position: DVec3,
@@ -330,9 +350,7 @@ fn own_pose(entity: Entity, links: &Query<LinkData>) -> Pose {
     let (transform, cell, child_of, _, detached) = links.get(entity).unwrap_or_default();
     let local = transform.copied().unwrap_or_default();
     let parent = child_of.map(ChildOf::parent);
-    if let Some(detached) =
-        detached.filter(|detached| parent.is_none() && detached.written == local)
-    {
+    if let Some(detached) = detached.filter(|_| parent.is_none()) {
         return Pose {
             affine: DAffine3::from_rotation_translation(detached.rotation, detached.position),
             rotation: detached.rotation,

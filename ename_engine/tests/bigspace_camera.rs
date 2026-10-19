@@ -927,3 +927,48 @@ fn a_camera_far_out_keeps_its_metre_across_its_grid_being_replaced() {
         position.x
     );
 }
+
+#[test]
+fn a_rescued_camera_moved_away_and_back_reattaches_from_its_transform() {
+    let mut app = test_app();
+    let far_root = || big_space::bundles::BigSpaceRootBundle {
+        grid: Grid::new(1024.0, 0.0),
+        ..Default::default()
+    };
+    let root = app.world_mut().spawn(far_root()).id();
+    let camera = app
+        .world_mut()
+        .spawn((
+            GridFollowCamera,
+            CellCoord::new(16_384, 0, 0),
+            Transform::from_xyz(1.0, 0.0, 0.0),
+            ChildOf(root),
+        ))
+        .id();
+    app.update();
+    app.update();
+    app.world_mut().despawn(root);
+    app.update();
+
+    // Flown away and back to the same f32 value: the Transform is the truth now, not the
+    // pose the rescue kept.
+    let rescued = *app.world().get::<Transform>(camera).unwrap();
+    app.world_mut()
+        .get_mut::<Transform>(camera)
+        .unwrap()
+        .translation
+        .x += 5000.0;
+    app.update();
+    *app.world_mut().get_mut::<Transform>(camera).unwrap() = rescued;
+    app.update();
+
+    let root = app.world_mut().spawn(far_root()).id();
+    app.update();
+    app.update();
+    let entity = app.world().entity(camera);
+    let position = app.world().get::<Grid>(root).unwrap().grid_position_double(
+        entity.get::<CellCoord>().unwrap(),
+        entity.get::<Transform>().unwrap(),
+    );
+    assert_eq!(position.x, f64::from(rescued.translation.x));
+}
