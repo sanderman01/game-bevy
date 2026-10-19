@@ -5,8 +5,8 @@
 use std::time::Duration;
 
 use avian3d::prelude::{
-    AngularVelocity, Collider, Gravity, LinearVelocity, PhysicsSystems, Position, RigidBody,
-    Rotation,
+    AngularVelocity, Collider, ColliderAabb, ColliderTransform, Gravity, LinearVelocity,
+    PhysicsSystems, Position, RigidBody, Rotation, Sleeping,
 };
 use bevy::{
     asset::AssetPlugin,
@@ -610,4 +610,259 @@ fn a_body_added_to_a_placed_collider_stays_at_its_cell() {
         );
         assert_placed(&scene, &format!("{body:?}: the body"));
     }
+}
+
+type WorldEdit = Box<dyn FnOnce(&mut World) + Send + Sync>;
+
+/// A world edit run once, in `FixedUpdate`, on the `tick`th fixed tick after it was scheduled.
+#[derive(Resource)]
+struct AtTick {
+    tick: u32,
+    seen: u32,
+    action: Option<WorldEdit>,
+}
+
+fn run_at_tick(world: &mut World) {
+    let mut at = world.resource_mut::<AtTick>();
+    at.seen += 1;
+    if at.seen < at.tick {
+        return;
+    }
+    if let Some(action) = at.action.take() {
+        action(world);
+    }
+}
+
+impl Scene {
+    /// Runs `action` in `FixedUpdate` on the `tick`th fixed tick from now, mid-frame when the
+    /// frame step holds two ticks.
+    fn at_tick(&mut self, tick: u32, action: impl FnOnce(&mut World) + Send + Sync + 'static) {
+        self.app
+            .insert_resource(AtTick {
+                tick,
+                seen: 0,
+                action: Some(Box::new(action)),
+            })
+            .add_systems(FixedUpdate, run_at_tick);
+    }
+
+    fn ran_at_tick(&self) -> bool {
+        self.app.world().resource::<AtTick>().action.is_none()
+    }
+
+    /// Updates until the scheduled action has run, then for `frames` more frames.
+    fn run_past_action(&mut self, frames: usize) {
+        for _ in 0..20 {
+            if self.ran_at_tick() {
+                break;
+            }
+            self.app.update();
+        }
+        assert!(self.ran_at_tick(), "the scheduled action never ran");
+        for _ in 0..frames {
+            self.app.update();
+        }
+    }
+
+    fn assert_pose_agrees(&self, entity: Entity, context: &str) {
+        let error = self
+            .physics_absolute(entity)
+            .distance(self.absolute(entity));
+        assert!(
+            error < TOLERANCE,
+            "{context}: Position and CellCoord/Transform disagree by {error} m"
+        );
+    }
+}
+
+#[test]
+fn a_scaled_collider_spawned_mid_frame_keeps_its_scale() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    scene.settle();
+    let root = scene.root;
+    let cell = scene.origin_cell() + CellCoord::new(1, 0, -1);
+    scene.at_tick(2, move |world| {
+        world.spawn((
+            Name::new("scaled static"),
+            ChildOf(root),
+            cell,
+            Transform::from_xyz(3.0, 1.0, -2.0).with_scale(Vec3::splat(2.0)),
+            RigidBody::Static,
+            Collider::sphere(0.5),
+        ));
+        let body = world
+            .spawn((
+                Name::new("scaled body"),
+                ChildOf(root),
+                cell,
+                Transform::from_xyz(-3.0, 1.0, 2.0)
+                    .with_scale(Vec3::splat(2.0))
+                    .with_rotation(Quat::from_rotation_y(1.0)),
+                RigidBody::Kinematic,
+            ))
+            .id();
+        world.spawn((
+            Name::new("child collider"),
+            ChildOf(body),
+            Transform::from_xyz(1.0, 0.0, 0.0),
+            Collider::sphere(0.5),
+        ));
+    });
+    scene.run_past_action(4);
+
+    let world = scene.app.world_mut();
+    let mut colliders = world.query::<(&Name, &ColliderTransform, &ColliderAabb, &Position)>();
+    let mut checked = 0;
+    for (name, collider_transform, aabb, position) in colliders.iter(world) {
+        let half_extent = (aabb.max - aabb.min) / 2.0;
+        assert!(
+            (collider_transform.scale - Vec3::splat(2.0)).length() < 1e-4
+                && (half_extent - Vec3::splat(1.0)).length() < 0.05
+                && ((aabb.max + aabb.min) / 2.0 - position.0).length() < 1e-3,
+            "{name}: {collider_transform:?}, AABB half extent {half_extent}"
+        );
+        if name.as_str() == "child collider" {
+            assert!(
+                (collider_transform.translation - Vec3::new(2.0, 0.0, 0.0)).length() < 1e-4,
+                "{name}: offset from its body {}",
+                collider_transform.translation
+            );
+        }
+        checked += 1;
+    }
+    assert_eq!(checked, 2);
+}
+
+#[test]
+fn a_position_set_when_a_body_joins_a_collider_is_kept() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    let collider = scene.body_near_origin(RigidBody::Static, Vec3::new(4.0, 0.0, 0.0), Vec3::ZERO);
+    scene
+        .app
+        .world_mut()
+        .entity_mut(collider)
+        .remove::<RigidBody>();
+    scene.settle();
+    let target = scene.app.world().get::<Position>(collider).unwrap().0 + Vec3::new(10.0, 0.0, 0.0);
+    scene.at_tick(2, move |world| {
+        world
+            .entity_mut(collider)
+            .insert((RigidBody::Kinematic, Position(target)));
+    });
+    scene.run_past_action(0);
+    let position = scene.app.world().get::<Position>(collider).unwrap().0;
+    assert!(
+        position.distance(target) < 1e-3,
+        "the explicit Position was replaced by {position}"
+    );
+    scene.app.update();
+    scene.assert_pose_agrees(collider, "a frame later");
+}
+
+#[test]
+fn a_position_written_directly_moves_the_body() {
+    each_setup(|scene, context| {
+        let body = scene.body_near_origin(RigidBody::Dynamic, Vec3::new(2.0, 0.0, 0.0), Vec3::ZERO);
+        scene.settle();
+        let start = scene.absolute(body);
+        scene.at_tick(2, move |world| {
+            world.get_mut::<Position>(body).unwrap().0 += Vec3::new(60.0, 0.0, 0.0);
+        });
+        scene.run_past_action(2);
+        let moved = scene.absolute(body) - start;
+        assert!(
+            (moved - DVec3::new(60.0, 0.0, 0.0)).length() < TOLERANCE,
+            "{context}: the body moved by {moved}"
+        );
+        scene.assert_pose_agrees(body, context);
+    });
+}
+
+#[test]
+fn a_sleeping_body_follows_an_origin_shift_and_a_teleport() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    let body = scene.body_near_origin(RigidBody::Dynamic, Vec3::new(2.0, 0.0, 0.0), Vec3::ZERO);
+    for _ in 0..200 {
+        if scene.app.world().entity(body).contains::<Sleeping>() {
+            break;
+        }
+        scene.app.update();
+    }
+    assert!(scene.app.world().entity(body).contains::<Sleeping>());
+
+    scene.shift_origin(CellCoord::new(-1, 0, 2));
+    scene.app.update();
+    scene.tick();
+    scene.assert_pose_agrees(body, "after the origin shift");
+
+    *scene.app.world_mut().get_mut::<Transform>(body).unwrap() =
+        Transform::from_xyz(7.0, -3.0, 9.0);
+    scene.tick();
+    scene.assert_pose_agrees(body, "after the teleport");
+}
+
+#[test]
+fn a_static_body_reparented_to_another_grid_moves_with_it() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    let root = scene.root;
+    let sub_cell = scene.origin_cell() + CellCoord::new(1, 0, 0);
+    let sub_offset = Vec3::new(30.0, 5.0, -10.0);
+    let sub_grid = scene
+        .app
+        .world_mut()
+        .spawn((
+            Grid::new(EDGE, 0.0),
+            sub_cell,
+            Transform::from_translation(sub_offset),
+            ChildOf(root),
+        ))
+        .id();
+    let body = scene.body_near_origin(RigidBody::Static, Vec3::new(2.0, 0.0, 0.0), Vec3::ZERO);
+    scene.settle();
+    let cell = *scene.app.world().get::<CellCoord>(body).unwrap();
+    let translation = scene
+        .app
+        .world()
+        .get::<Transform>(body)
+        .unwrap()
+        .translation;
+
+    scene.at_tick(1, move |world| {
+        world.entity_mut(body).insert(ChildOf(sub_grid));
+    });
+    scene.run_past_action(0);
+
+    let expected = scene.grid().cell_to_float(&sub_cell)
+        + sub_offset.as_dvec3()
+        + scene.grid().cell_to_float(&cell)
+        + translation.as_dvec3();
+    let error = scene.physics_absolute(body).distance(expected);
+    assert!(error < TOLERANCE, "the body's Position is {error} m off");
+}
+
+#[test]
+fn a_body_switched_to_static_mid_frame_stops_where_it_is() {
+    each_setup(|scene, context| {
+        let body = scene.body_near_origin(
+            RigidBody::Dynamic,
+            Vec3::new(0.0, 0.0, 5.0),
+            Vec3::new(3.0, 0.0, 1.0),
+        );
+        scene.settle();
+        scene.at_tick(2, move |world| {
+            world.entity_mut(body).insert(RigidBody::Static);
+        });
+        scene.run_past_action(1);
+        let stopped = scene.absolute(body);
+        scene.assert_pose_agrees(body, context);
+        for _ in 0..10 {
+            scene.app.update();
+        }
+        let drift = scene.absolute(body).distance(stopped);
+        assert!(
+            drift < TOLERANCE,
+            "{context}: the static body drifted {drift} m"
+        );
+        scene.assert_pose_agrees(body, context);
+    });
 }

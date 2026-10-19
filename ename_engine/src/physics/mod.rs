@@ -9,7 +9,8 @@ use avian3d::{
     physics_transform::{PhysicsTransformConfig, PhysicsTransformSystems},
     prelude::PhysicsSystems,
 };
-use bevy::prelude::*;
+use bevy::{prelude::*, transform::TransformSystems};
+use big_space::prelude::BigSpaceSystems;
 
 use crate::bigspace::GridSystems;
 
@@ -44,8 +45,12 @@ impl Plugin for PhysicsIntegrationPlugin {
             )
             .add_systems(
                 PostUpdate,
+                // `BigSpacePlugin` orders `GridSystems::Recentered` the same way; repeated here so
+                // an app without it (a headless test) cannot read unpropagated transforms.
                 collider_grid_transform::collider_transform_from_global
-                    .in_set(GridSystems::Recentered),
+                    .in_set(GridSystems::Recentered)
+                    .after(BigSpaceSystems::RecenterLargeTransforms)
+                    .after(TransformSystems::Propagate),
             );
     }
 }

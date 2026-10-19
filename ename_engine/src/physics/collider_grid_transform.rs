@@ -7,7 +7,9 @@
 //! the center of mass and angular inertia derived from it are wrong for the life of the entity.
 //!
 //! Differences between two `GlobalTransform`s in one grid are cell-correct, so derive the
-//! collider's body-relative transform from those instead.
+//! collider's body-relative transform from those instead, in avian's convention: the offset in
+//! world units along the body's axes, the rotation relative to the body, and the collider's
+//! global scale (what avian builds `Collider::scale` from).
 //!
 //! Only newly attached colliders need this. avian's own propagation resets the accumulator at
 //! the rigid body, so every value it writes is already cell-correct; the seeded one is wrong
@@ -29,12 +31,13 @@ pub(crate) fn collider_transform_from_global(
             continue;
         };
 
-        let relative = body_global.affine().inverse() * collider_global.affine();
-        let (scale, rotation, translation) = relative.to_scale_rotation_translation();
+        let (_, body_rotation, body_translation) = body_global.to_scale_rotation_translation();
+        let (scale, rotation, translation) = collider_global.to_scale_rotation_translation();
+        let to_body = body_rotation.inverse();
 
         collider_transform.set_if_neq(ColliderTransform {
-            translation,
-            rotation: Rotation::from(rotation),
+            translation: to_body * (translation - body_translation),
+            rotation: Rotation::from(to_body * rotation),
             scale,
         });
     }
