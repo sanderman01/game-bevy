@@ -102,8 +102,9 @@ finds no followers left.
 
 `sync_grid_attachment` reattaches the camera when a root grid appears. A camera detached earlier in
 the same frame still has a floating-origin-relative `GlobalTransform`, so the camera's position is
-composed from local `Transform`s up its hierarchy, through the first grid's cell if there is one.
-Root grids are ranked by distance from that position to each root's own `Transform`, as if all
+composed from local `Transform`s up its whole hierarchy, through every enclosing grid's cell, into
+the root grid's frame (the grid-despawn rescue places it the same way, so a camera in a sub-grid
+does not land at sub-grid-local coordinates). Root grids are ranked by distance from that position to each root's own `Transform`, as if all
 roots shared one absolute frame; on a tie the camera stays on its current grid.
 
 ## Physics in a recentering world
@@ -118,3 +119,9 @@ propagates in `PostUpdate`, so without that a frame's second fixed tick would st
 body from last frame's pose. An origin shift lands in `PostUpdate` too, and the first tick after it
 moves every `Position` into the new frame at once. A nested grid that moves within a frame is the
 known gap: its bodies get last frame's grid pose until the next propagation.
+
+Collider-to-body transforms (`ColliderTransform`) have the same problem twice over. avian seeds
+them from `GlobalTransform`s on every `ColliderOf` insert, which is cell-less or stale for anything
+new, and its propagation starts only at a hierarchy root with a `Transform`, which a stage's root
+grid does not have. `physics::collider_grid_transform` propagates them itself before each step,
+composing from local `Transform`s the way avian does, which never involves the cell.
