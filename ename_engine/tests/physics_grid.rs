@@ -1195,3 +1195,103 @@ fn collider_scale_agrees_with_avians_bit_for_bit_where_both_propagate() {
         "the two propagations kept rewriting the moving body's collider"
     );
 }
+
+#[test]
+fn scaling_a_new_parent_of_a_reparented_body_scales_its_collider() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    let root = scene.root;
+    let cell = scene.origin_cell();
+    let world = scene.app.world_mut();
+    let holder = world
+        .spawn((ChildOf(root), cell, Transform::from_xyz(4.0, 0.0, 0.0)))
+        .id();
+    world.spawn((
+        Name::new("held"),
+        ChildOf(holder),
+        Transform::default(),
+        RigidBody::Static,
+        Collider::sphere(0.5),
+    ));
+    let new_parent = world
+        .spawn((ChildOf(root), cell, Transform::from_xyz(-4.0, 0.0, 0.0)))
+        .id();
+    scene.settle();
+
+    // No body above `holder`, so avian reinserts no `ColliderOf` for this.
+    scene.at_tick(2, move |world| {
+        world
+            .entity_mut(holder)
+            .remove::<CellCoord>()
+            .insert(ChildOf(new_parent));
+    });
+    scene.run_past_action(2);
+    scene.at_tick(2, move |world| {
+        world.get_mut::<Transform>(new_parent).unwrap().scale = Vec3::splat(2.0);
+    });
+    scene.run_past_action(2);
+
+    let (collider_transform, ..) = collider_state(&mut scene, "held");
+    assert_collider_transform(collider_transform, Vec3::ZERO, Vec3::splat(2.0), "held");
+}
+
+#[test]
+fn scaling_a_root_grid_with_a_transform_does_not_scale_its_colliders() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    let root = scene.root;
+    scene
+        .app
+        .world_mut()
+        .entity_mut(root)
+        .insert(Transform::default());
+    let body = scene.body_near_origin(RigidBody::Static, Vec3::new(3.0, 0.0, 0.0), Vec3::ZERO);
+    scene
+        .app
+        .world_mut()
+        .entity_mut(body)
+        .insert(Name::new("on root"));
+    scene.settle();
+
+    // avian's own propagation runs from this root and takes the grid's scale.
+    scene.at_tick(2, move |world| {
+        world.get_mut::<Transform>(root).unwrap().scale = Vec3::splat(2.0);
+    });
+    scene.run_past_action(2);
+
+    let (collider_transform, ..) = collider_state(&mut scene, "on root");
+    assert_collider_transform(collider_transform, Vec3::ZERO, Vec3::ONE, "on root");
+}
+
+#[test]
+fn a_body_with_its_own_grid_places_its_colliders_through_their_cells() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    let root = scene.root;
+    let cell = scene.origin_cell() + CellCoord::new(1, 0, -1);
+    scene.settle();
+    scene.at_tick(2, move |world| {
+        let ship = world
+            .spawn((
+                ChildOf(root),
+                cell,
+                Transform::from_xyz(3.0, 1.0, -2.0).with_rotation(Quat::from_rotation_y(0.4)),
+                Grid::new(10.0, 0.0),
+                RigidBody::Kinematic,
+            ))
+            .id();
+        world.spawn((
+            Name::new("deck"),
+            ChildOf(ship),
+            CellCoord::new(1, 0, 0),
+            Transform::from_xyz(2.0, 0.5, 0.0),
+            Collider::sphere(0.5),
+        ));
+    });
+    scene.run_past_action(3);
+
+    let (collider_transform, ..) = collider_state(&mut scene, "deck");
+    assert_collider_transform(
+        collider_transform,
+        Vec3::new(12.0, 0.5, 0.0),
+        Vec3::ONE,
+        "deck",
+    );
+}

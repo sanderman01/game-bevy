@@ -129,5 +129,8 @@ them from `GlobalTransform`s on every `ColliderOf` insert, which is cell-less or
 new, and its propagation starts only at a hierarchy root with a `Transform`, which a stage's root
 grid does not have. `physics::collider_grid_transform` propagates them itself before each step,
 composing from local `Transform`s the way avian does, which never involves the cell, except that
-accumulation restarts at every grid, as big_space's does. It starts only from changed colliders and
-their marked ancestors, so a tick in which nothing moved costs a change-tick scan.
+accumulation restarts at every grid, as big_space's does, and a body that is itself a grid (a
+vehicle with its own grid) places its colliders through their cells. It starts only from changed
+colliders, their marked ancestors (marks follow reparenting) and colliders avian rewrote, so a tick
+in which nothing moved costs a change-tick scan, and a value avian computes differently is corrected
+in the same tick.

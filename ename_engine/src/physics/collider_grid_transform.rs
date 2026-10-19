@@ -17,38 +17,67 @@
 //! scale accumulated from above, and each entity below it adds translation, rotation and scale
 //! separately (componentwise scale, not a decomposed affine, which would shear under non-uniform
 //! scale). Scale accumulates top-down, as avian's does, so the two agree bit for bit wherever
-//! avian also runs. One difference is deliberate: accumulation restarts at every `Grid`, because
+//! avian also runs. A missing `Transform` is the identity.
+//!
+//! Grids are where it differs, following big_space: accumulation restarts at every `Grid`, since
 //! big_space applies neither a grid's scale nor anything above the root grid to the grid's
-//! contents. Where a grid's `Transform` has a scale other than one and avian's propagation also
-//! runs, this one's result is the one that stands. A missing `Transform` is the identity.
+//! contents, and an entity directly in a grid is offset by its cell. A body that is itself a grid
+//! (a vehicle with a grid of its own) starts its colliders' accumulator at unit scale. Where
+//! avian's propagation also runs and disagrees (a grid `Transform` with a scale other than one),
+//! any `ColliderTransform` avian rewrote is corrected again in the same tick.
 //!
 //! It only does work where something changed. The starting points are colliders and their
-//! ancestors ([`ColliderAncestor`], kept by an observer on `ColliderOf`) whose `Transform`,
-//! `ChildOf` or `ColliderOf` changed since the last run; from each, it walks down only through
-//! marked entities. An idle tick costs one change-tick scan over those entities: with 20,000
-//! resting static colliders in a dev build, frame time did not measurably differ from running
-//! without this system, where the previous per-collider walk cost about 1.3 ms a frame.
-//! A start also walks up to its grid to find the accumulator there, and skips itself when a moved
-//! ancestor's walk will cover it.
+//! ancestors ([`ColliderAncestor`]) whose `Transform`, `ChildOf` or `ColliderOf` changed, and
+//! colliders whose `ColliderTransform` someone else rewrote, since the last run; from each, it
+//! walks down only through marked entities. An idle tick costs one change-tick scan over those
+//! entities: with 20,000 resting static colliders in a dev build, frame time did not measurably
+//! differ from running without this system, where a per-collider walk cost about 1.3 ms a frame.
+//! A start also walks up to its grid to find the accumulator there, and skips itself when the walk
+//! of a moved ancestor is certain to reach it.
 
 use avian3d::prelude::{ColliderOf, ColliderTransform, RigidBody, Rotation};
-use bevy::prelude::*;
-use big_space::prelude::Grid;
+use bevy::{ecs::query::QueryData, prelude::*};
+use big_space::prelude::{CellCoord, Grid};
 
 /// On every entity between a collider and the grid above it, so the propagation can start at a
-/// changed ancestor and walk down to colliders only. Never removed: a stale marker costs a wasted
-/// walk when that entity changes, nothing else.
+/// changed ancestor and walk down to colliders only. Kept current when a collider gains its body
+/// and when a collider or marked entity is reparented. Never removed: a stale marker costs a
+/// wasted walk when that entity changes, nothing else.
 #[derive(Component)]
 pub(crate) struct ColliderAncestor;
 
-pub(crate) fn mark_collider_ancestors(
+pub(crate) fn mark_ancestors_of_new_collider(
     insert: On<Insert, ColliderOf>,
-    mut commands: Commands,
+    commands: Commands,
     parents: Query<&ChildOf>,
     grids: Query<(), With<Grid>>,
     marked: Query<(), With<ColliderAncestor>>,
 ) {
-    for ancestor in parents.iter_ancestors(insert.entity) {
+    mark_ancestors(insert.entity, commands, &parents, &grids, &marked);
+}
+
+pub(crate) fn mark_ancestors_of_reparented(
+    insert: On<Insert, ChildOf>,
+    commands: Commands,
+    parents: Query<&ChildOf>,
+    grids: Query<(), With<Grid>>,
+    marked: Query<(), With<ColliderAncestor>>,
+    colliders: Query<(), With<ColliderOf>>,
+) {
+    let entity = insert.entity;
+    if marked.contains(entity) || colliders.contains(entity) {
+        mark_ancestors(entity, commands, &parents, &grids, &marked);
+    }
+}
+
+fn mark_ancestors(
+    entity: Entity,
+    mut commands: Commands,
+    parents: &Query<&ChildOf>,
+    grids: &Query<(), With<Grid>>,
+    marked: &Query<(), With<ColliderAncestor>>,
+) {
+    for ancestor in parents.iter_ancestors(entity) {
         if grids.contains(ancestor) {
             break;
         }
@@ -58,39 +87,71 @@ pub(crate) fn mark_collider_ancestors(
     }
 }
 
-type Node = (
-    Option<Ref<'static, Transform>>,
-    Option<Ref<'static, ChildOf>>,
-    Option<Ref<'static, ColliderOf>>,
-    Option<&'static Children>,
-    Has<RigidBody>,
-    Has<Grid>,
-    Has<ColliderAncestor>,
-);
+#[derive(QueryData)]
+pub(crate) struct Node {
+    transform: Option<Ref<'static, Transform>>,
+    child_of: Option<Ref<'static, ChildOf>>,
+    collider_of: Option<Ref<'static, ColliderOf>>,
+    children: Option<&'static Children>,
+    cell: Option<&'static CellCoord>,
+    grid: Option<&'static Grid>,
+    is_body: Has<RigidBody>,
+    marked: Has<ColliderAncestor>,
+}
 
-type NodeItem<'w, 's> = bevy::ecs::query::QueryItem<'w, 's, Node>;
+impl NodeItem<'_, '_> {
+    /// Whether a walk descends into this entity.
+    fn on_walk(&self) -> bool {
+        self.marked || self.collider_of.is_some()
+    }
+
+    /// Whether this entity is a start that is not a mere `ColliderTransform` rewrite.
+    fn moved(&self) -> bool {
+        self.on_walk()
+            && (self.transform.as_ref().is_some_and(Ref::is_changed)
+                || self.child_of.as_ref().is_some_and(Ref::is_changed)
+                || self.collider_of.as_ref().is_some_and(Ref::is_changed))
+    }
+
+    fn parent(&self) -> Option<Entity> {
+        self.child_of.as_ref().map(|child_of| child_of.parent())
+    }
+}
 
 type Marked = Or<(With<ColliderOf>, With<ColliderAncestor>)>;
 type Moved = Or<(Changed<Transform>, Changed<ChildOf>, Changed<ColliderOf>)>;
+/// Colliders whose `ColliderTransform` someone other than this system wrote since its last run.
+type Rewritten = (With<ColliderOf>, Changed<ColliderTransform>);
+type ColliderTransforms<'w, 's> = Query<'w, 's, &'static mut ColliderTransform, With<ColliderOf>>;
 
 pub(crate) fn propagate_collider_transforms(
-    starts: Query<Entity, (Marked, Moved)>,
+    moved: Query<Entity, (Marked, Moved)>,
     nodes: Query<Node>,
-    mut colliders: Query<&mut ColliderTransform, With<ColliderOf>>,
+    mut colliders: ParamSet<(Query<Entity, Rewritten>, ColliderTransforms)>,
 ) {
-    for start in &starts {
+    // Usually empty, so usually no allocation.
+    let rewritten: Vec<Entity> = colliders.p0().iter().collect();
+    let mut colliders = colliders.p1();
+    for start in moved.iter().chain(rewritten) {
         let Ok(node) = nodes.get(start) else {
             continue;
         };
-        let parent = node.1.as_ref().map(|child_of| child_of.parent());
-        let (above, above_moved) = parent.map_or((Accumulated::RESET, false), |parent| {
-            accumulated_at(parent, &nodes)
-        });
-        // A moved ancestor is a start of its own, and its walk covers this one.
-        if above_moved {
+        let (above, reached) = node
+            .parent()
+            .filter(|_| node.grid.is_none())
+            .map_or((Accumulated::RESET, false), |parent| {
+                accumulated_at(parent, &nodes)
+            });
+        if reached {
             continue;
         }
-        visit(start, above.then(&node), &nodes, &mut colliders);
+        let parent_grid = parent_grid(&node, &nodes);
+        visit(
+            start,
+            above.then(parent_grid, &node),
+            &nodes,
+            &mut colliders,
+        );
     }
 }
 
@@ -112,22 +173,29 @@ impl Accumulated {
         below_body: false,
     };
 
-    /// The accumulator at a child entity, given this one at its parent.
-    fn then(self, (transform, _, _, _, is_body, is_grid, _): &NodeItem<'_, '_>) -> Self {
-        if *is_grid {
-            return Self::RESET;
+    /// The accumulator at `node`, given this one at its parent, which is `parent_grid` if the
+    /// parent is a grid.
+    fn then(self, parent_grid: Option<&Grid>, node: &NodeItem<'_, '_>) -> Self {
+        if node.grid.is_some() {
+            return Self {
+                transform: ColliderTransform::default(),
+                below_body: node.is_body,
+            };
         }
-        let local = transform.as_deref().copied().unwrap_or_default();
+        let local = node.transform.as_deref().copied().unwrap_or_default();
         let scale = self.transform.scale * local.scale;
-        if *is_body {
+        if node.is_body {
             return Self {
                 transform: ColliderTransform { scale, ..default() },
                 below_body: true,
             };
         }
+        let translation = parent_grid.map_or(local.translation, |grid| {
+            grid.grid_position(&node.cell.copied().unwrap_or_default(), &local)
+        });
         Self {
             transform: ColliderTransform {
-                translation: self.transform.transform_point(local.translation),
+                translation: self.transform.transform_point(translation),
                 rotation: Rotation(self.transform.rotation.0 * local.rotation),
                 scale,
             },
@@ -136,52 +204,60 @@ impl Accumulated {
     }
 }
 
-/// The accumulator at `entity`, built from the nearest grid (or root) down, and whether any marked
-/// entity on the way moved since the last run.
+fn parent_grid<'a>(node: &NodeItem<'_, '_>, nodes: &'a Query<Node>) -> Option<&'a Grid> {
+    node.parent()
+        .and_then(|parent| nodes.get(parent).ok())
+        .and_then(|parent| parent.grid)
+}
+
+/// The accumulator at `entity`, built from the nearest grid (or root) down, and whether the walk
+/// of a moved start at or above `entity` reaches it: a moved start whose walk passes only through
+/// entities it descends into.
 fn accumulated_at(entity: Entity, nodes: &Query<Node>) -> (Accumulated, bool) {
     let Ok(node) = nodes.get(entity) else {
         return (Accumulated::RESET, false);
     };
-    if node.5 {
-        return (Accumulated::RESET, false);
-    }
-    let parent = node.1.as_ref().map(|child_of| child_of.parent());
-    let (above, above_moved) = parent.map_or((Accumulated::RESET, false), |parent| {
-        accumulated_at(parent, nodes)
-    });
-    (above.then(&node), above_moved || moved(&node))
+    let (above, above_reached) = node
+        .parent()
+        .filter(|_| node.grid.is_none())
+        .map_or((Accumulated::RESET, false), |parent| {
+            accumulated_at(parent, nodes)
+        });
+    let reached = node.moved() || (above_reached && node.on_walk());
+    (above.then(parent_grid(&node, nodes), &node), reached)
 }
 
-fn moved((transform, child_of, collider_of, _, _, _, marked): &NodeItem<'_, '_>) -> bool {
-    (*marked || collider_of.is_some())
-        && (transform.as_ref().is_some_and(Ref::is_changed)
-            || child_of.as_ref().is_some_and(Ref::is_changed)
-            || collider_of.as_ref().is_some_and(Ref::is_changed))
-}
-
-/// Writes `accumulated` to `entity` if it is a collider on a body, then walks down its marked
-/// children.
+/// Writes `accumulated` to `entity` if it is a collider on a body, then walks down the children it
+/// descends into.
 fn visit(
     entity: Entity,
     accumulated: Accumulated,
     nodes: &Query<Node>,
-    colliders: &mut Query<&mut ColliderTransform, With<ColliderOf>>,
+    colliders: &mut ColliderTransforms,
 ) {
     if accumulated.below_body
         && let Ok(mut collider_transform) = colliders.get_mut(entity)
     {
         collider_transform.set_if_neq(accumulated.transform);
     }
-    let Ok((.., Some(children), _, _, _)) = nodes.get(entity) else {
+    let Ok(node) = nodes.get(entity) else {
         return;
     };
-    for child in children {
-        let Ok(node) = nodes.get(*child) else {
+    let Some(children) = node.children else {
+        return;
+    };
+    for &child in children {
+        let Ok(child_node) = nodes.get(child) else {
             continue;
         };
-        if node.2.is_none() && !node.6 {
+        if !child_node.on_walk() {
             continue;
         }
-        visit(*child, accumulated.then(&node), nodes, colliders);
+        visit(
+            child,
+            accumulated.then(node.grid, &child_node),
+            nodes,
+            colliders,
+        );
     }
 }
