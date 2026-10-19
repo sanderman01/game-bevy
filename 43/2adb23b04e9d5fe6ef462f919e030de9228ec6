@@ -1,0 +1,38 @@
+ename_engine/src/physics/collider_grid_transform.rs
+  s_dcfdee2845fb20::t_f6722ba0dd7f57 22-33,36-42
+  s_d50a225d9d57ac::t_834ca92584b67a 48-50,63,75,98,115,125-130,147-149,163-166,169,171,176,178,185-196,198-208,219,226-228,244
+docs/design/floating-origin.md
+  s_dcfdee2845fb20::t_5267b472b71609 131-135
+ename_engine/src/bigspace/grid.rs
+  s_dcfdee2845fb20::t_fac0e44b05db04 43-74
+ename_engine/src/bigspace/camera.rs
+  s_dcfdee2845fb20::t_fec5be0a4cb9a5 12-13
+  s_dcfdee2845fb20::t_bf2d9d3855b385 253-288
+  s_dcfdee2845fb20::t_bffdf0fbadc0cf 289-292
+ename_engine/tests/physics_grid.rs
+  s_dcfdee2845fb20::t_2b6e8ea9254127 1298-1414
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "432adb23b04e9d5fe6ef462f919e030de9228ec6",
+  "prompts": {},
+  "sessions": {
+    "s_d50a225d9d57ac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-abd88ef7075ef5290",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_dcfdee2845fb20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "00ad8add-1ac1-4866-b197-cea8026ac809",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
