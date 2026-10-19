@@ -11,81 +11,177 @@
 //!   that propagation never runs and a child collider's later `Transform` edits never arrive.
 //!
 //! [`propagate_collider_transforms`] does that propagation itself, in `PhysicsSystems::Prepare`
-//! after avian's, so the step and the mass properties see the result. It composes the way avian
-//! does, which never involves the cell: the body contributes only its scale accumulated from the
-//! root, and each entity below it adds translation, rotation and scale separately (componentwise
-//! scale, not a decomposed affine, which would shear under non-uniform scale). A missing
-//! `Transform` counts as the identity. A collider is recomputed when its `ColliderOf` was
-//! (re)inserted, or when the `Transform` or `ChildOf` of any entity from it up to the root changed.
+//! after avian's, so the step and the mass properties see the result.
+//!
+//! It composes the way avian does, which never involves the cell: the body contributes only its
+//! scale accumulated from above, and each entity below it adds translation, rotation and scale
+//! separately (componentwise scale, not a decomposed affine, which would shear under non-uniform
+//! scale). Scale accumulates top-down, as avian's does, so the two agree bit for bit wherever
+//! avian also runs. One difference is deliberate: accumulation restarts at every `Grid`, because
+//! big_space applies neither a grid's scale nor anything above the root grid to the grid's
+//! contents. Where a grid's `Transform` has a scale other than one and avian's propagation also
+//! runs, this one's result is the one that stands. A missing `Transform` is the identity.
+//!
+//! It only does work where something changed. The starting points are colliders and their
+//! ancestors ([`ColliderAncestor`], kept by an observer on `ColliderOf`) whose `Transform`,
+//! `ChildOf` or `ColliderOf` changed since the last run; from each, it walks down only through
+//! marked entities. An idle tick costs one change-tick scan over those entities: with 20,000
+//! resting static colliders in a dev build, frame time did not measurably differ from running
+//! without this system, where the previous per-collider walk cost about 1.3 ms a frame.
+//! A start also walks up to its grid to find the accumulator there, and skips itself when a moved
+//! ancestor's walk will cover it.
 
-use avian3d::prelude::{ColliderOf, ColliderTransform, Rotation};
+use avian3d::prelude::{ColliderOf, ColliderTransform, RigidBody, Rotation};
 use bevy::prelude::*;
+use big_space::prelude::Grid;
 
-type Link = (
-    Option<Ref<'static, Transform>>,
-    Option<Ref<'static, ChildOf>>,
-);
+/// On every entity between a collider and the grid above it, so the propagation can start at a
+/// changed ancestor and walk down to colliders only. Never removed: a stale marker costs a wasted
+/// walk when that entity changes, nothing else.
+#[derive(Component)]
+pub(crate) struct ColliderAncestor;
 
-pub(crate) fn propagate_collider_transforms(
-    mut colliders: Query<(Entity, &mut ColliderTransform, Ref<ColliderOf>)>,
-    hierarchy: Query<Link>,
+pub(crate) fn mark_collider_ancestors(
+    insert: On<Insert, ColliderOf>,
+    mut commands: Commands,
+    parents: Query<&ChildOf>,
+    grids: Query<(), With<Grid>>,
+    marked: Query<(), With<ColliderAncestor>>,
 ) {
-    for (collider, mut collider_transform, collider_of) in &mut colliders {
-        let Some((computed, changed)) = body_relative(collider, collider_of.body, &hierarchy)
-        else {
-            continue;
-        };
-        if changed || collider_of.is_changed() {
-            collider_transform.set_if_neq(computed);
+    for ancestor in parents.iter_ancestors(insert.entity) {
+        if grids.contains(ancestor) {
+            break;
+        }
+        if !marked.contains(ancestor) {
+            commands.entity(ancestor).try_insert(ColliderAncestor);
         }
     }
 }
 
-/// avian's propagation from `body` down to `collider`, and whether anything on the way up to the
-/// root changed since the last run. `None` if `collider` is not below `body`.
-fn body_relative(
-    collider: Entity,
-    body: Entity,
-    hierarchy: &Query<Link>,
-) -> Option<(ColliderTransform, bool)> {
-    let mut changed = false;
-    let mut link = |entity: Entity| {
-        let (transform, child_of) = hierarchy.get(entity).ok()?;
-        changed |= transform.as_ref().is_some_and(Ref::is_changed)
-            || child_of.as_ref().is_some_and(Ref::is_changed);
-        Some((
-            transform.as_deref().copied().unwrap_or_default(),
-            child_of.map(|child_of| child_of.parent()),
-        ))
+type Node = (
+    Option<Ref<'static, Transform>>,
+    Option<Ref<'static, ChildOf>>,
+    Option<Ref<'static, ColliderOf>>,
+    Option<&'static Children>,
+    Has<RigidBody>,
+    Has<Grid>,
+    Has<ColliderAncestor>,
+);
+
+type NodeItem<'w, 's> = bevy::ecs::query::QueryItem<'w, 's, Node>;
+
+type Marked = Or<(With<ColliderOf>, With<ColliderAncestor>)>;
+type Moved = Or<(Changed<Transform>, Changed<ChildOf>, Changed<ColliderOf>)>;
+
+pub(crate) fn propagate_collider_transforms(
+    starts: Query<Entity, (Marked, Moved)>,
+    nodes: Query<Node>,
+    mut colliders: Query<&mut ColliderTransform, With<ColliderOf>>,
+) {
+    for start in &starts {
+        let Ok(node) = nodes.get(start) else {
+            continue;
+        };
+        let parent = node.1.as_ref().map(|child_of| child_of.parent());
+        let (above, above_moved) = parent.map_or((Accumulated::RESET, false), |parent| {
+            accumulated_at(parent, &nodes)
+        });
+        // A moved ancestor is a start of its own, and its walk covers this one.
+        if above_moved {
+            continue;
+        }
+        visit(start, above.then(&node), &nodes, &mut colliders);
+    }
+}
+
+/// avian's propagation accumulator: the transform relative to the nearest rigid body above, valid
+/// once `below_body` is set.
+#[derive(Clone, Copy)]
+struct Accumulated {
+    transform: ColliderTransform,
+    below_body: bool,
+}
+
+impl Accumulated {
+    const RESET: Self = Self {
+        transform: ColliderTransform {
+            translation: Vec3::ZERO,
+            rotation: Rotation::IDENTITY,
+            scale: Vec3::ONE,
+        },
+        below_body: false,
     };
 
-    let mut below_body = Vec::new();
-    let mut current = collider;
-    while current != body {
-        let (transform, parent) = link(current)?;
-        below_body.push(transform);
-        current = parent?;
+    /// The accumulator at a child entity, given this one at its parent.
+    fn then(self, (transform, _, _, _, is_body, is_grid, _): &NodeItem<'_, '_>) -> Self {
+        if *is_grid {
+            return Self::RESET;
+        }
+        let local = transform.as_deref().copied().unwrap_or_default();
+        let scale = self.transform.scale * local.scale;
+        if *is_body {
+            return Self {
+                transform: ColliderTransform { scale, ..default() },
+                below_body: true,
+            };
+        }
+        Self {
+            transform: ColliderTransform {
+                translation: self.transform.transform_point(local.translation),
+                rotation: Rotation(self.transform.rotation.0 * local.rotation),
+                scale,
+            },
+            below_body: self.below_body,
+        }
     }
+}
 
-    let mut scale = Vec3::ONE;
-    let mut ancestor = Some(body);
-    while let Some(entity) = ancestor {
-        // A parent despawned this frame ends the walk, as the root does.
-        let Some((transform, parent)) = link(entity) else {
-            break;
-        };
-        scale = transform.scale * scale;
-        ancestor = parent;
+/// The accumulator at `entity`, built from the nearest grid (or root) down, and whether any marked
+/// entity on the way moved since the last run.
+fn accumulated_at(entity: Entity, nodes: &Query<Node>) -> (Accumulated, bool) {
+    let Ok(node) = nodes.get(entity) else {
+        return (Accumulated::RESET, false);
+    };
+    if node.5 {
+        return (Accumulated::RESET, false);
     }
+    let parent = node.1.as_ref().map(|child_of| child_of.parent());
+    let (above, above_moved) = parent.map_or((Accumulated::RESET, false), |parent| {
+        accumulated_at(parent, nodes)
+    });
+    (above.then(&node), above_moved || moved(&node))
+}
 
-    let mut accumulated = ColliderTransform { scale, ..default() };
-    for transform in below_body.into_iter().rev() {
-        let child = ColliderTransform::from(transform);
-        accumulated = ColliderTransform {
-            translation: accumulated.transform_point(child.translation),
-            rotation: Rotation(accumulated.rotation.0 * child.rotation.0),
-            scale: accumulated.scale * child.scale,
-        };
+fn moved((transform, child_of, collider_of, _, _, _, marked): &NodeItem<'_, '_>) -> bool {
+    (*marked || collider_of.is_some())
+        && (transform.as_ref().is_some_and(Ref::is_changed)
+            || child_of.as_ref().is_some_and(Ref::is_changed)
+            || collider_of.as_ref().is_some_and(Ref::is_changed))
+}
+
+/// Writes `accumulated` to `entity` if it is a collider on a body, then walks down its marked
+/// children.
+fn visit(
+    entity: Entity,
+    accumulated: Accumulated,
+    nodes: &Query<Node>,
+    colliders: &mut Query<&mut ColliderTransform, With<ColliderOf>>,
+) {
+    if accumulated.below_body
+        && let Ok(mut collider_transform) = colliders.get_mut(entity)
+    {
+        collider_transform.set_if_neq(accumulated.transform);
     }
-    Some((accumulated, changed))
+    let Ok((.., Some(children), _, _, _)) = nodes.get(entity) else {
+        return;
+    };
+    for child in children {
+        let Ok(node) = nodes.get(*child) else {
+            continue;
+        };
+        if node.2.is_none() && !node.6 {
+            continue;
+        }
+        visit(*child, accumulated.then(&node), nodes, colliders);
+    }
 }

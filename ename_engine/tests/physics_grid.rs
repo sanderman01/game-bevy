@@ -1068,3 +1068,130 @@ fn a_body_inserted_between_a_body_and_its_collider_takes_the_collider_at_its_off
     assert_eq!(body, middle);
     assert_collider_transform(after, Vec3::X, Vec3::ONE, "inner on middle");
 }
+
+#[test]
+fn a_sub_grids_scale_does_not_scale_its_colliders() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    let root = scene.root;
+    let origin_cell = scene.origin_cell();
+    let world = scene.app.world_mut();
+    let sub_grid = world
+        .spawn((
+            Grid::new(EDGE, 0.0),
+            origin_cell,
+            Transform::from_xyz(10.0, 0.0, 0.0).with_scale(Vec3::splat(2.0)),
+            ChildOf(root),
+        ))
+        .id();
+    let body = world
+        .spawn((
+            Name::new("in sub-grid"),
+            ChildOf(sub_grid),
+            CellCoord::default(),
+            Transform::from_xyz(3.0, 0.0, 0.0),
+            RigidBody::Static,
+            Collider::sphere(0.5),
+        ))
+        .id();
+    scene.settle();
+
+    let (collider_transform, ..) = collider_state(&mut scene, "in sub-grid");
+    assert_collider_transform(collider_transform, Vec3::ZERO, Vec3::ONE, "in sub-grid");
+    let aabb = scene.app.world().get::<ColliderAabb>(body).unwrap();
+    let half_extent = (aabb.max - aabb.min) / 2.0;
+    assert!(
+        (half_extent - Vec3::splat(0.5)).length() < 0.05,
+        "AABB half extent {half_extent}"
+    );
+}
+
+/// The probed collider's `ColliderTransform` change tick, as seen at the end of the last fixed
+/// tick.
+#[derive(Resource)]
+struct ColliderTransformProbe {
+    entity: Entity,
+    changes: u32,
+    last: Option<Tick>,
+}
+
+fn count_collider_transform_changes(
+    mut probe: ResMut<ColliderTransformProbe>,
+    colliders: Query<Ref<ColliderTransform>>,
+) {
+    let changed = colliders.get(probe.entity).unwrap().last_changed();
+    if probe.last.is_some_and(|last| last != changed) {
+        probe.changes += 1;
+    }
+    probe.last = Some(changed);
+}
+
+#[test]
+fn collider_scale_agrees_with_avians_bit_for_bit_where_both_propagate() {
+    let scales = [
+        Vec3::new(1.1, 1.3, 0.7),
+        Vec3::new(1.7, 0.3, 1.9),
+        Vec3::new(0.9, 1.1, 1.3),
+    ];
+    // The order matters only if it changes the float result; make sure it does here.
+    assert_ne!(
+        (scales[0] * scales[1]) * scales[2],
+        scales[0] * (scales[1] * scales[2])
+    );
+
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    // With a `Transform` on the root, avian's own collider propagation runs too.
+    let root = scene.root;
+    let cell = scene.origin_cell();
+    let world = scene.app.world_mut();
+    world.entity_mut(root).insert(Transform::default());
+    let outer = world
+        .spawn((ChildOf(root), cell, Transform::from_scale(scales[0])))
+        .id();
+    let inner = world
+        .spawn((ChildOf(outer), Transform::from_scale(scales[1])))
+        .id();
+    let body = world
+        .spawn((
+            ChildOf(inner),
+            Transform::from_scale(scales[2]),
+            RigidBody::Kinematic,
+            LinearVelocity(Vec3::new(1.0, 0.0, 0.0)),
+        ))
+        .id();
+    let collider = world
+        .spawn((
+            Name::new("deep"),
+            ChildOf(body),
+            Transform::from_xyz(1.0, 0.0, 0.0),
+            Collider::sphere(0.5),
+        ))
+        .id();
+    scene.settle();
+
+    let (collider_transform, ..) = collider_state(&mut scene, "deep");
+    assert_eq!(
+        collider_transform.scale,
+        (scales[0] * scales[1]) * scales[2],
+        "not accumulated top-down"
+    );
+    scene
+        .app
+        .insert_resource(ColliderTransformProbe {
+            entity: collider,
+            changes: 0,
+            last: None,
+        })
+        .add_systems(FixedLast, count_collider_transform_changes);
+    for _ in 0..10 {
+        scene.app.update();
+    }
+    assert_eq!(
+        scene
+            .app
+            .world()
+            .resource::<ColliderTransformProbe>()
+            .changes,
+        0,
+        "the two propagations kept rewriting the moving body's collider"
+    );
+}

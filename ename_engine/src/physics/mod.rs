@@ -44,6 +44,7 @@ impl Plugin for PhysicsIntegrationPlugin {
                         .before(PhysicsTransformSystems::TransformToPosition),
                     grid_writeback::physics_position_to_transform.after(PhysicsSystems::Writeback),
                 ),
-            );
+            )
+            .add_observer(collider_grid_transform::mark_collider_ancestors);
     }
 }
