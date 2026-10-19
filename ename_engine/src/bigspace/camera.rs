@@ -249,6 +249,24 @@ type LinkData = (
 ///
 /// Never the propagated `GlobalTransform`: inside a grid it is floating-origin-relative, and for
 /// an entity moved or detached earlier this frame it is stale until propagation runs.
+/// Where `entity` is, as [`sync_grid_attachment`] places followers: in the frame of its outermost
+/// grid, which comes back with it, or absolute with `None` when no grid is above it. For placing
+/// something at another entity's pose in a grid it can attach to directly.
+pub fn root_frame_pose(world: &mut World, entity: Entity) -> (Option<Entity>, Vec3, Quat) {
+    let mut links = world.query::<LinkData>();
+    let links = links.query(world);
+    let (translation, rotation) = true_pose(entity, &links);
+    let root = std::iter::successors(Some(entity), |&current| {
+        links
+            .get(current)
+            .ok()
+            .and_then(|(_, _, child_of, _)| child_of.map(ChildOf::parent))
+    })
+    .filter(|&ancestor| links.get(ancestor).is_ok_and(|(.., grid)| grid.is_some()))
+    .last();
+    (root, translation, rotation)
+}
+
 fn true_pose(entity: Entity, links: &Query<LinkData>) -> (Vec3, Quat) {
     let pose = own_pose(entity, links);
     (pose.affine.translation(), pose.rotation.normalize())

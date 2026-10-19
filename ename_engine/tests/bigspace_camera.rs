@@ -2,7 +2,8 @@ use bevy::prelude::*;
 use big_space::plugin::BigSpaceDefaultPlugins;
 use big_space::prelude::{BigSpace, BigSpaceCameraController, CellCoord, FloatingOrigin, Grid};
 use ename_engine::bigspace::{
-    BigSpacePlugin, FloatingOriginCandidate, FrozenOrigin, GridFollowCamera, set_origin_frozen,
+    BigSpacePlugin, FloatingOriginCandidate, FrozenOrigin, GridFollowCamera, root_frame_pose,
+    set_origin_frozen,
 };
 
 fn test_app() -> App {
@@ -824,4 +825,41 @@ fn a_mirrored_sub_grid_does_not_mirror_or_turn_its_camera() {
         "rotation {:?}",
         transform.rotation
     );
+}
+
+#[test]
+fn root_frame_pose_places_through_sub_grids_and_composes_gridless_parents() {
+    let mut app = test_app();
+    let (root, sub_grid, _) = camera_in_sub_grid(&mut app);
+    let inside = app
+        .world_mut()
+        .spawn((
+            CellCoord::new(1, 0, 0),
+            Transform::from_xyz(5.0, 0.0, 0.0),
+            ChildOf(sub_grid),
+        ))
+        .id();
+    let (grid, position, rotation) = root_frame_pose(app.world_mut(), inside);
+    assert_eq!(grid, Some(root));
+    assert!(position.distance(IN_SUB_GRID) < 0.01, "at {position}");
+    assert_rotation_y_quarter(rotation);
+
+    let parent = app
+        .world_mut()
+        .spawn(
+            Transform::from_xyz(100.0, 0.0, 0.0)
+                .with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
+        )
+        .id();
+    let child = app
+        .world_mut()
+        .spawn((Transform::from_xyz(5.0, 0.0, 0.0), ChildOf(parent)))
+        .id();
+    let (grid, position, rotation) = root_frame_pose(app.world_mut(), child);
+    assert_eq!(grid, None);
+    assert!(
+        position.distance(Vec3::new(100.0, 0.0, -5.0)) < 1e-3,
+        "at {position}"
+    );
+    assert_rotation_y_quarter(rotation);
 }
