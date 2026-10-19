@@ -15,16 +15,39 @@ use ename_engine::stage::{
     StagePlugin, StageSource, new_stage, open_stage, open_stage_additive, save_stage, stage_of,
     write_stage_file,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-fn temp_stage_dir(test_name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "ename_engine_stage_workflow_{test_name}_{}",
-        std::process::id()
-    ));
-    std::fs::create_dir_all(&dir).expect("create temp stage dir");
-    dir
+/// A temporary stage directory, removed when dropped. Its path is canonical, so it matches what
+/// a file watcher reports (on macOS the temp dir sits behind the `/var` -> `/private/var` link).
+struct StageDir {
+    path: PathBuf,
+    _dir: tempfile::TempDir,
+}
+
+impl AsRef<Path> for StageDir {
+    fn as_ref(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl std::ops::Deref for StageDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.path
+    }
+}
+
+fn temp_stage_dir(test_name: &str) -> StageDir {
+    let dir = tempfile::Builder::new()
+        .prefix(&format!("ename_engine_stage_workflow_{test_name}_"))
+        .tempdir()
+        .expect("create temp stage dir");
+    StageDir {
+        path: dir.path().canonicalize().expect("canonical temp stage dir"),
+        _dir: dir,
+    }
 }
 
 fn test_app(asset_root: &std::path::Path) -> App {
@@ -328,11 +351,8 @@ fn open_stage_recovers_from_a_malformed_file_with_no_single_root() {
 #[cfg(unix)]
 fn write_stage_file_derives_a_relative_source_through_a_symlinked_asset_root() {
     let real_dir = temp_stage_dir("symlink_real");
-    let link_dir = std::env::temp_dir().join(format!(
-        "ename_engine_stage_workflow_symlink_link_{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_file(&link_dir);
+    let link_parent = temp_stage_dir("symlink_link");
+    let link_dir = link_parent.join("link");
     std::os::unix::fs::symlink(&real_dir, &link_dir).expect("create symlink");
 
     let mut app = test_app(&real_dir);
@@ -505,7 +525,7 @@ fn reopening_an_edited_file_with_watching_on_announces_the_edit() {
         })
         .add_plugins(WorldSerializationPlugin)
         .add_plugins(StagePlugin)
-        .insert_resource(AssetRoot(dir.clone()))
+        .insert_resource(AssetRoot(dir.to_path_buf()))
         .init_resource::<NamesAtOpen>()
         .add_observer(record_names_at_open);
     let watching = app
@@ -607,4 +627,24 @@ fn a_nested_handle_with_no_load_behind_it_does_not_hold_up_the_open() {
     wait_until(&mut app, |world| {
         world.resource::<NamesAtOpen>().0.len() == 1
     });
+}
+
+#[test]
+fn an_empty_stage_file_is_discarded_instead_of_staying_loading() {
+    let dir = temp_stage_dir("empty_file");
+    let mut app = test_app(&dir);
+    let empty = bevy::world_serialization::DynamicWorld::default();
+    let ron = {
+        let registry = app.world().resource::<AppTypeRegistry>().read();
+        empty.serialize(&registry).unwrap()
+    };
+    std::fs::write(dir.join("empty.scn.ron"), ron).unwrap();
+
+    let container = open_stage(app.world_mut(), "empty.scn.ron");
+    wait_until(&mut app, |world| world.get_entity(container).is_err());
+
+    let mut loading = app
+        .world_mut()
+        .query_filtered::<(), With<ename_engine::stage::StageLoading>>();
+    assert_eq!(loading.iter(app.world()).count(), 0);
 }

@@ -118,10 +118,11 @@ pub(super) fn tag_stage_membership_on_ready(
         commands.entity(container).remove::<StageLoading>();
         // Case 1: this container is a stage we opened ourselves. Its file's data is exactly one
         // top-level entity (the stage root), carrying the file's own StageId.
-        let Ok(children) = children_of.get(container) else {
-            return;
-        };
-        let [root] = &children[..] else {
+        // An empty file spawns nothing, so the container has no `Children` at all.
+        let children = children_of
+            .get(container)
+            .map_or(&[][..], |children| &children[..]);
+        let [root] = children else {
             error!(
                 "stage file at {path:?} did not have exactly one top-level entity (the \
                  save-time invariant that guarantees this was violated) -- discarding this load"
