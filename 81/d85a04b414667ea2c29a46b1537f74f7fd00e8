@@ -1,0 +1,25 @@
+ename_engine/src/stage/commands.rs
+  s_dcfdee2845fb20::t_58912c8979c568 121-125
+ename_engine/src/stage/loading.rs
+  s_dcfdee2845fb20::t_d6ba3ce35fb3e7 5,7,16,21,26-62,64-90
+ename_engine/src/stage/opening.rs
+  s_dcfdee2845fb20::t_12906d9d833a60 6-7,16,54,61
+ename_engine/tests/stage_workflow.rs
+  s_dcfdee2845fb20::t_73910c8cc2b5d3 18,21-50,354-355,528,631-650
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "81d85a04b414667ea2c29a46b1537f74f7fd00e8",
+  "prompts": {},
+  "sessions": {
+    "s_dcfdee2845fb20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "00ad8add-1ac1-4866-b197-cea8026ac809",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
