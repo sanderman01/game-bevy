@@ -13,6 +13,7 @@ use bevy::{
 };
 
 use super::Activity;
+use crate::stage::ContentState;
 
 pub(super) fn assets_probe(
     server: Res<AssetServer>,
@@ -25,6 +26,7 @@ pub(super) fn assets_probe(
         Option<&WorldInstance>,
     )>,
     spawner: Option<Res<WorldInstanceSpawner>>,
+    content: Option<ContentState>,
 ) -> Activity {
     let loading =
         |id: UntypedAssetId| matches!(server.get_load_state(id), Some(LoadState::Loading));
@@ -62,17 +64,18 @@ pub(super) fn assets_probe(
     // instance exists, so a root counts until the spawner says its instance is ready.
     let world_roots_loading = world_roots
         .iter()
-        .filter_map(|(asset, dynamic, instance)| {
-            let id = asset
-                .map(|root| root.id().untyped())
-                .or_else(|| dynamic.map(|root| root.id().untyped()))?;
-            let failed = matches!(server.get_load_state(id), Some(LoadState::Failed(_)));
+        .filter(|&(asset, dynamic, instance)| {
+            // The stages' rule: a failed load, or a handle with neither an asset nor a load
+            // behind it, never spawns.
+            let to_spawn = content
+                .as_ref()
+                .is_some_and(|content| content.still_to_spawn(dynamic, asset));
             let ready = instance.is_some_and(|instance| {
                 spawner
                     .as_ref()
                     .is_some_and(|spawner| spawner.instance_is_ready(**instance))
             });
-            (!failed && !ready).then_some(())
+            (asset.is_some() || dynamic.is_some()) && to_spawn && !ready
         })
         .count();
     Activity::idle()
@@ -279,6 +282,19 @@ mod tests {
 
         gate.store(true, Ordering::Release);
         update_until(&mut app, |app| counter(app, "world_roots_loading") == 0);
+    }
+
+    #[test]
+    fn a_world_root_with_no_asset_or_load_behind_it_does_not_count() {
+        let Fixture { mut app, _dir, .. } = fixture();
+        app.world_mut().spawn(DynamicWorldRoot(Handle::default()));
+        let both: Handle<WorldAsset> = app.world().resource::<AssetServer>().load("b.gatedworld");
+        app.world_mut()
+            .spawn((WorldAssetRoot(both), DynamicWorldRoot(Handle::default())));
+        for _ in 0..3 {
+            app.update();
+        }
+        assert_eq!(counter(&app, "world_roots_loading"), 0);
     }
 
     #[test]

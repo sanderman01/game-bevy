@@ -19,6 +19,7 @@ pub use commands::{SaveStageError, write_stage_file};
 pub use dynamic_world_format::DynamicWorldFormat;
 pub use format::{StageAppExt, StageFormat, StageFormatError, StageFormats};
 pub use identity::{AssetRoot, SourcePath, StageId, StageLoading, StageMember, StageSource};
+pub(crate) use loading::ContentState;
 pub use opening::StageOpened;
 pub use workflow::{new_stage, open_stage, open_stage_additive, save_stage, stage_of};
 

@@ -648,3 +648,41 @@ fn an_empty_stage_file_is_discarded_instead_of_staying_loading() {
         .query_filtered::<(), With<ename_engine::stage::StageLoading>>();
     assert_eq!(loading.iter(app.world()).count(), 0);
 }
+
+/// Bevy can report one spawn twice in a frame (a queued spawn and an asset-change respawn); the
+/// repeat finds the container empty, since the first report made the root top-level.
+#[test]
+fn a_repeated_ready_report_keeps_the_stage() {
+    let dir = temp_stage_dir("repeated_ready");
+    let mut app = test_app(&dir);
+    app.init_resource::<Opened>().add_observer(record_opened);
+    let id = StageId(Uuid::new_v4());
+    write_fixture_stage(&dir, "stage.scn.ron", id);
+    let container = open_stage(app.world_mut(), "stage.scn.ron");
+    wait_until(&mut app, |world| !world.resource::<Opened>().0.is_empty());
+
+    let instance = **app
+        .world()
+        .get::<bevy::world_serialization::WorldInstance>(container)
+        .unwrap();
+    app.world_mut()
+        .trigger(bevy::world_serialization::WorldInstanceReady {
+            entity: container,
+            instance_id: instance,
+        });
+    app.world_mut().flush();
+    app.update();
+
+    assert!(
+        app.world().get_entity(container).is_ok(),
+        "the container was discarded"
+    );
+    let mut roots = app.world_mut().query::<&StageId>();
+    assert_eq!(
+        roots
+            .iter(app.world())
+            .filter(|found| **found == id)
+            .count(),
+        1
+    );
+}

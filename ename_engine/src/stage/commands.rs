@@ -104,7 +104,7 @@ pub(super) fn tag_stage_membership_on_ready(
     child_of: Query<(Entity, &ChildOf)>,
     ids: Query<&StageId>,
     membership: Query<&StageMember>,
-    containers: Query<(&SourcePath, Option<&Opening>)>,
+    containers: Query<(&SourcePath, Option<&Opening>, Has<RootSpawned>)>,
     nested: Query<(), NestedContent>,
     content_index: Option<Res<ContentIndex>>,
     mut commands: Commands,
@@ -114,7 +114,7 @@ pub(super) fn tag_stage_membership_on_ready(
         return;
     }
 
-    let stage_id = if let Ok((SourcePath(path), opening)) = containers.get(container) {
+    let stage_id = if let Ok((SourcePath(path), opening, spawned)) = containers.get(container) {
         commands.entity(container).remove::<StageLoading>();
         // Case 1: this container is a stage we opened ourselves. Its file's data is exactly one
         // top-level entity (the stage root), carrying the file's own StageId.
@@ -122,6 +122,11 @@ pub(super) fn tag_stage_membership_on_ready(
         let children = children_of
             .get(container)
             .map_or(&[][..], |children| &children[..]);
+        // Bevy can report one spawn twice (a queued spawn and an asset-change respawn landing in
+        // the same frame); the first report already took the root out of the container.
+        if children.is_empty() && spawned {
+            return;
+        }
         let [root] = children else {
             error!(
                 "stage file at {path:?} did not have exactly one top-level entity (the \
@@ -151,6 +156,7 @@ pub(super) fn tag_stage_membership_on_ready(
             // A loaded stage root must be top-level; big_space validates floating origins
             // against the ultimate hierarchy ancestor, not this transient load container.
             .remove::<ChildOf>();
+        commands.entity(container).insert(RootSpawned);
         if let Some(&opening) = opening {
             commands.entity(container).insert(Opening {
                 stage: Some((*root, id)),
@@ -189,6 +195,12 @@ pub(super) fn tag_stage_membership_on_ready(
         );
     }
 }
+
+/// On a stage load container once a spawn has given it its root, which then leaves the container
+/// (the root is made top-level). A later ready report with no children is a repeat, not an empty
+/// file.
+#[derive(Component, Clone, Copy, Debug)]
+pub(super) struct RootSpawned;
 
 /// Rebuilds `Children` for everything a `WorldInstanceReady` event just finished spawning.
 ///
