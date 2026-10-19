@@ -529,3 +529,32 @@ fn a_stage_is_announced_once_its_nested_content_has_spawned() {
         seen[0]
     );
 }
+
+#[test]
+fn a_nested_handle_with_no_load_behind_it_does_not_hold_up_the_open() {
+    let dir = temp_stage_dir("placeholder_nested");
+    let mut app = test_app(&dir);
+    app.init_resource::<NamesAtOpen>()
+        .add_observer(record_names_at_open);
+    let mut world = World::new();
+    let root = world.spawn(StageId(Uuid::new_v4())).id();
+    world.spawn((
+        bevy::world_serialization::DynamicWorldRoot(Handle::default()),
+        ChildOf(root),
+    ));
+    let registry = app.world().resource::<AppTypeRegistry>().read();
+    let dynamic_world = DynamicWorldBuilder::from_world(&world, &registry)
+        .extract_entities(world.iter_entities().map(|entity| entity.id()))
+        .build();
+    std::fs::write(
+        dir.join("placeholder.scn.ron"),
+        dynamic_world.serialize(&registry).unwrap(),
+    )
+    .unwrap();
+    drop(registry);
+
+    open_stage(app.world_mut(), "placeholder.scn.ron");
+    wait_until(&mut app, |world| {
+        world.resource::<NamesAtOpen>().0.len() == 1
+    });
+}

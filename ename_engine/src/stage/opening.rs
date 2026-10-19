@@ -6,18 +6,19 @@
 //!   arrived ([`AwaitingReload`]) the container stays `StageLoading`.
 //! - A stage can hold nested loaded content (a `WorldAssetRoot` or `DynamicWorldRoot` authored
 //!   inside it), which spawns frames later. Membership tagging marks those containers
-//!   `StageLoading` too, and the stage is open once none of its own is still loading. A load that
-//!   failed is not waited for, as in the `stage` settle probe.
+//!   `StageLoading` too, and the stage is open once none of its own is still to spawn
+//!   (`still_to_spawn`, which the `stage` settle probe uses too): a failed load or a handle with no
+//!   load behind it is not waited for.
 //!
 //! A hot reload respawns a stage whose [`Opening`] is gone, so it is never an open.
 
 use bevy::{
-    asset::{AssetEvent, AssetLoadFailedEvent, LoadState, UntypedAssetId},
+    asset::{AssetEvent, AssetLoadFailedEvent, UntypedAssetId},
     prelude::*,
     world_serialization::{DynamicWorld, DynamicWorldRoot, WorldAssetRoot},
 };
 
-use super::{StageId, StageLoading, StageMember};
+use super::{StageId, StageLoading, StageMember, loading::still_to_spawn};
 
 /// A stage was opened: one loaded by [`open_stage`](super::open_stage) or
 /// [`open_stage_additive`](super::open_stage_additive) has spawned from the file as it is on disk,
@@ -108,13 +109,7 @@ pub(super) fn announce_opened_stages(
             continue;
         };
         let nested_loading = loading.iter().any(|(member, dynamic, asset)| {
-            let asset_id = dynamic
-                .map(|root| root.id().untyped())
-                .or_else(|| asset.map(|root| root.id().untyped()));
-            member.0 == id
-                && !asset_id.is_some_and(|asset_id| {
-                    matches!(server.get_load_state(asset_id), Some(LoadState::Failed(_)))
-                })
+            member.0 == id && still_to_spawn(&server, dynamic, asset)
         });
         if nested_loading {
             continue;
