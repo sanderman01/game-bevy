@@ -11,8 +11,8 @@ use big_space::plugin::BigSpaceDefaultPlugins;
 use big_space::prelude::CellCoord;
 use ename_engine::bigspace::{BigSpacePlugin, GridFollowCamera};
 use ename_engine::stage::{
-    AssetRoot, DynamicWorldFormat, SaveStageError, StageAppExt, StageId, StageMember, StagePlugin,
-    StageSource, new_stage, open_stage, open_stage_additive, save_stage, stage_of,
+    AssetRoot, DynamicWorldFormat, SaveStageError, StageAppExt, StageId, StageMember, StageOpened,
+    StagePlugin, StageSource, new_stage, open_stage, open_stage_additive, save_stage, stage_of,
     write_stage_file,
 };
 use std::path::PathBuf;
@@ -357,4 +357,72 @@ fn write_stage_file_derives_a_relative_source_through_a_symlinked_asset_root() {
     );
 
     let _ = std::fs::remove_file(&link_dir);
+}
+
+/// Every [`StageOpened`] seen, as `(id, replaced_others)`.
+#[derive(Resource, Default)]
+struct Opened(Vec<(StageId, bool)>);
+
+fn record_opened(opened: On<StageOpened>, mut seen: ResMut<Opened>) {
+    seen.0.push((opened.id, opened.replaced_others));
+}
+
+fn opened(app: &App) -> Vec<(StageId, bool)> {
+    app.world().resource::<Opened>().0.clone()
+}
+
+#[test]
+fn stage_opened_tells_an_exclusive_open_from_an_additive_one_and_skips_hot_reloads() {
+    let dir = temp_stage_dir("stage_opened");
+    let first = StageId(Uuid::new_v4());
+    let second = StageId(Uuid::new_v4());
+    write_fixture_stage(&dir, "first.scn.ron", first);
+    write_fixture_stage(&dir, "second.scn.ron", second);
+    let mut app = test_app(&dir);
+    app.init_resource::<Opened>().add_observer(record_opened);
+
+    let container = open_stage(app.world_mut(), "first.scn.ron");
+    wait_until(&mut app, |world| !world.resource::<Opened>().0.is_empty());
+    assert_eq!(opened(&app), [(first, true)]);
+
+    // What a file watcher does on an edit: the asset changes and Bevy respawns the instance.
+    for _ in 0..4 {
+        app.update();
+    }
+    let root_of = |app: &mut App, id: StageId| {
+        let mut roots = app.world_mut().query::<(Entity, &StageId)>();
+        roots
+            .iter(app.world())
+            .find(|(_, found)| **found == id)
+            .map(|(entity, _)| entity)
+    };
+    let before = root_of(&mut app, first);
+    let handle = app
+        .world()
+        .get::<bevy::world_serialization::DynamicWorldRoot>(container)
+        .unwrap()
+        .0
+        .clone();
+    app.world_mut()
+        .resource_mut::<Assets<bevy::world_serialization::DynamicWorld>>()
+        .get_mut(&handle)
+        .unwrap()
+        .into_inner();
+    for _ in 0..10 {
+        app.update();
+    }
+    let after = root_of(&mut app, first);
+    assert!(
+        after.is_some() && after != before,
+        "the stage was not respawned"
+    );
+    assert_eq!(opened(&app), [(first, true)], "a hot reload is not an open");
+
+    open_stage_additive(app.world_mut(), "second.scn.ron");
+    wait_until(&mut app, |world| world.resource::<Opened>().0.len() == 2);
+    assert_eq!(opened(&app)[1], (second, false));
+
+    let fresh = new_stage(app.world_mut());
+    let fresh_id = *app.world().get::<StageId>(fresh).unwrap();
+    assert_eq!(opened(&app)[2], (fresh_id, true));
 }

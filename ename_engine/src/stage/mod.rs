@@ -14,7 +14,7 @@ mod identity;
 mod loading;
 mod workflow;
 
-pub use commands::{SaveStageError, write_stage_file};
+pub use commands::{SaveStageError, StageOpened, write_stage_file};
 pub use dynamic_world_format::DynamicWorldFormat;
 pub use format::{StageAppExt, StageFormat, StageFormatError, StageFormats};
 pub use identity::{AssetRoot, SourcePath, StageId, StageLoading, StageMember, StageSource};

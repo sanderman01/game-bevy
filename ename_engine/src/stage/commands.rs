@@ -99,7 +99,7 @@ pub(super) fn tag_stage_membership_on_ready(
     child_of: Query<(Entity, &ChildOf)>,
     ids: Query<&StageId>,
     membership: Query<&StageMember>,
-    source_paths: Query<&SourcePath>,
+    containers: Query<(&SourcePath, Has<StageLoading>, Has<ReplacesStages>)>,
     content_index: Option<Res<ContentIndex>>,
     mut commands: Commands,
 ) {
@@ -108,7 +108,8 @@ pub(super) fn tag_stage_membership_on_ready(
         return;
     }
 
-    let stage_id = if let Ok(SourcePath(path)) = source_paths.get(container) {
+    let mut opened = None;
+    let stage_id = if let Ok((SourcePath(path), loading, replaces)) = containers.get(container) {
         commands.entity(container).remove::<StageLoading>();
         // Case 1: this container is a stage we opened ourselves. Its file's data is exactly one
         // top-level entity (the stage root), carrying the file's own StageId.
@@ -144,6 +145,15 @@ pub(super) fn tag_stage_membership_on_ready(
             // A loaded stage root must be top-level; big_space validates floating origins
             // against the ultimate hierarchy ancestor, not this transient load container.
             .remove::<ChildOf>();
+        // Only the first spawn is an open; a hot reload respawns the same container, which no
+        // longer carries `StageLoading`.
+        if loading {
+            opened = Some(StageOpened {
+                root: *root,
+                id,
+                replaced_others: replaces,
+            });
+        }
         id
     } else if let Ok(&StageMember(id)) = membership.get(container) {
         // Case 2: nested content (e.g. a WorldAssetRoot-addressed model authored inside a stage)
@@ -167,7 +177,30 @@ pub(super) fn tag_stage_membership_on_ready(
     for &child in children {
         tag_recursive(child, stage_id, &children_of, &child_map, &mut commands);
     }
+    // Queued after the tagging, so observers see the stage's entities as its members.
+    if let Some(opened) = opened {
+        commands.trigger(opened);
+    }
 }
+
+/// A stage was opened: one loaded by [`open_stage`](super::open_stage) or
+/// [`open_stage_additive`](super::open_stage_additive) finished its first spawn, or
+/// [`new_stage`](super::new_stage) created one. Not triggered when a loaded stage's file is
+/// hot-reloaded and Bevy respawns it, so a reaction to this sees only deliberate opens.
+#[derive(Event, Debug, Clone, Copy)]
+pub struct StageOpened {
+    /// The stage's root entity.
+    pub root: Entity,
+    pub id: StageId,
+    /// Whether opening it unloaded every other stage ([`open_stage`](super::open_stage),
+    /// [`new_stage`](super::new_stage)), rather than adding to them.
+    pub replaced_others: bool,
+}
+
+/// On a load container whose stage replaces every other ([`open_stage`](super::open_stage)), so
+/// [`StageOpened`] can say so.
+#[derive(Component, Clone, Copy, Debug)]
+pub(super) struct ReplacesStages;
 
 /// Rebuilds `Children` for everything a `WorldInstanceReady` event just finished spawning.
 ///

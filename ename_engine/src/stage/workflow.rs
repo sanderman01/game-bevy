@@ -8,7 +8,9 @@ use uuid::Uuid;
 
 use super::{
     AssetRoot, SaveStageError, SourcePath, StageId, StageMember, StageSource,
-    commands::{resolve_source_path, spawn_stage_root, write_stage_file},
+    commands::{
+        ReplacesStages, StageOpened, resolve_source_path, spawn_stage_root, write_stage_file,
+    },
 };
 
 /// Unloads every currently loaded stage and spawns a fresh, empty one. Returns its root entity,
@@ -16,16 +18,25 @@ use super::{
 pub fn new_stage(world: &mut World) -> Entity {
     despawn_stage_members(world, None);
     let id = StageId(Uuid::new_v4());
-    world
+    let root = world
         .spawn((id, StageMember(id), Name::new("New Stage")))
-        .id()
+        .id();
+    world.trigger(StageOpened {
+        root,
+        id,
+        replaced_others: true,
+    });
+    world.flush();
+    root
 }
 
 /// Unloads every currently loaded stage, then starts loading `path` (a plain asset path or an
 /// `alias://` URL). Returns the load's container entity immediately -- loading is async.
 pub fn open_stage(world: &mut World, path: &str) -> Entity {
     despawn_stage_members(world, None);
-    spawn_stage_root(world, path)
+    let container = spawn_stage_root(world, path);
+    world.entity_mut(container).insert(ReplacesStages);
+    container
 }
 
 /// Starts loading `path`, leaving every other currently loaded stage in place. If `path` is
