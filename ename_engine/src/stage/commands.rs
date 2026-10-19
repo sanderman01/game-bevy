@@ -16,7 +16,7 @@ use ename_asset_alias::{ALIAS_SOURCE, ContentIndex};
 
 use super::{
     AssetRoot, SourcePath, StageFormats, StageId, StageLoading, StageMember, StageSource,
-    opening::{AwaitingReload, NestedContent, Opening},
+    opening::{NestedContent, Opening},
 };
 
 /// Starts loading `path` (a plain asset path, or an `alias://`-prefixed URL) and spawns its
@@ -27,21 +27,15 @@ use super::{
 /// extension is unknown at this point and format dispatch falls back to the one format this
 /// project ships (see [`StageFormats::default_format`]) instead of matching by suffix.
 ///
-/// Forces a reload of `path` first: `AssetServer::load` returns a cached handle for a path that's
-/// already loaded, which would silently ignore an on-disk edit made since the last time this
-/// exact path was opened (e.g. via `open_stage_additive`'s reload). `AssetServer::reload` is a
-/// no-op if `path` was never loaded before.
+/// A path already loaded spawns from the asset server's copy, without a reload; see
+/// [`open_stage`](super::open_stage) for why that is fresh where it matters.
 ///
 /// Panics if no format is registered for `path` -- a missing format is a startup wiring bug, not
 /// a runtime condition to recover from. Callers taking a path from user input (the editor's file
 /// picker) must validate it against a registered `StageFormat` themselves before calling this.
 pub(super) fn spawn_stage_root(world: &mut World, path: &str, replaced_others: bool) -> Entity {
     let asset_server = world.resource::<AssetServer>().clone();
-    // A file already loaded spawns from the cached copy first; the open waits for the reload.
-    let cached = asset_server
-        .get_path_id(path.to_owned())
-        .filter(|&id| asset_server.is_loaded(id));
-    let container = world.resource_scope(|world, formats: Mut<StageFormats>| {
+    world.resource_scope(|world, formats: Mut<StageFormats>| {
         let format = if path.starts_with(&format!("{ALIAS_SOURCE}://")) {
             formats.default_format()
         } else {
@@ -57,18 +51,8 @@ pub(super) fn spawn_stage_root(world: &mut World, path: &str, replaced_others: b
             replaced_others,
             stage: None,
         });
-        if let Some(cached) = cached {
-            container_mut.insert(AwaitingReload(cached));
-        }
         container
-    });
-    // After the container holds its handle: the reload task only reloads paths with a live handle,
-    // and the previous stage's may already be dropped. Only for a cached file: on one not loaded
-    // yet it would start a second load next to `spawn_root`'s.
-    if cached.is_some() {
-        asset_server.reload(path.to_owned());
-    }
-    container
+    })
 }
 
 /// The filesystem directory `AssetPlugin` reads assets from when `AssetPlugin::file_path` is left
@@ -120,7 +104,7 @@ pub(super) fn tag_stage_membership_on_ready(
     child_of: Query<(Entity, &ChildOf)>,
     ids: Query<&StageId>,
     membership: Query<&StageMember>,
-    containers: Query<(&SourcePath, Option<&Opening>, Has<AwaitingReload>)>,
+    containers: Query<(&SourcePath, Option<&Opening>)>,
     nested: Query<(), NestedContent>,
     content_index: Option<Res<ContentIndex>>,
     mut commands: Commands,
@@ -130,11 +114,8 @@ pub(super) fn tag_stage_membership_on_ready(
         return;
     }
 
-    let stage_id = if let Ok((SourcePath(path), opening, awaiting)) = containers.get(container) {
-        // A spawn of the cached copy is not the end of the load; see `opening`.
-        if !awaiting {
-            commands.entity(container).remove::<StageLoading>();
-        }
+    let stage_id = if let Ok((SourcePath(path), opening)) = containers.get(container) {
+        commands.entity(container).remove::<StageLoading>();
         // Case 1: this container is a stage we opened ourselves. Its file's data is exactly one
         // top-level entity (the stage root), carrying the file's own StageId.
         let Ok(children) = children_of.get(container) else {

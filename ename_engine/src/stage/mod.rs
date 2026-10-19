@@ -42,14 +42,10 @@ impl Plugin for StagePlugin {
             .register_type_data::<std::ops::Range<f32>, bevy::reflect::ReflectDeserialize>()
             .add_observer(commands::tag_stage_membership_on_ready)
             .add_observer(commands::relink_loaded_children)
-            // Around the spawner: a reload that arrived must be known before it respawns a stage,
-            // and a stage is open once its spawns (and their tagging) are in.
+            // After the spawner: a stage is open once its spawns, and their tagging, are in.
             .add_systems(
                 SpawnScene,
-                (
-                    opening::finish_reloads.before(SceneSpawnerSystems::WorldInstanceSpawn),
-                    opening::announce_opened_stages.after(SceneSpawnerSystems::WorldInstanceSpawn),
-                ),
+                opening::announce_opened_stages.after(SceneSpawnerSystems::WorldInstanceSpawn),
             )
             .register_stage_format(DynamicWorldFormat)
             .register_settle_probe("stage", loading::stage_probe);

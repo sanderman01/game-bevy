@@ -467,22 +467,72 @@ fn record_names_at_open(_: On<StageOpened>, names: Query<&Name>, mut seen: ResMu
     seen.0.push(names);
 }
 
+/// Updates, sleeping a little between frames so a file watcher can deliver, until `condition`
+/// holds or ten seconds pass.
+fn wait_with_watcher(app: &mut App, mut condition: impl FnMut(&mut World) -> bool) {
+    let start = std::time::Instant::now();
+    while !condition(app.world_mut()) {
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(10),
+            "condition did not become true within ten seconds"
+        );
+        app.update();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+fn names(world: &mut World) -> Vec<String> {
+    let mut names: Vec<String> = world
+        .query::<&Name>()
+        .iter(world)
+        .map(|name| name.as_str().to_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+/// The open does not reload a file the asset server holds: with watching on, as in the editor,
+/// that copy already follows the file, so a reopen after an edit announces the edit.
 #[test]
-fn reopening_a_changed_file_announces_the_file_as_it_is_now() {
-    let dir = temp_stage_dir("reopen_changed");
-    let mut app = test_app(&dir);
-    app.init_resource::<NamesAtOpen>()
+fn reopening_an_edited_file_with_watching_on_announces_the_edit() {
+    let dir = temp_stage_dir("reopen_watched");
+    let mut app = App::new();
+    app.add_plugins(TaskPoolPlugin::default())
+        .add_plugins(AssetPlugin {
+            file_path: dir.to_string_lossy().into_owned(),
+            watch_for_changes_override: Some(true),
+            ..Default::default()
+        })
+        .add_plugins(WorldSerializationPlugin)
+        .add_plugins(StagePlugin)
+        .insert_resource(AssetRoot(dir.clone()))
+        .init_resource::<NamesAtOpen>()
         .add_observer(record_names_at_open);
+    let watching = app
+        .world()
+        .resource::<AssetServer>()
+        .get_source(None::<&'static str>)
+        .unwrap()
+        .event_receiver()
+        .is_some();
+    if !watching {
+        eprintln!("skipped: no file watcher (Bevy built without `file_watcher`)");
+        return;
+    }
     let id = StageId(Uuid::new_v4());
     write_labelled_stage(&app, &dir, "changing.scn.ron", id, "before", None);
     open_stage(app.world_mut(), "changing.scn.ron");
-    wait_until(&mut app, |world| {
+    wait_with_watcher(&mut app, |world| {
         world.resource::<NamesAtOpen>().0.len() == 1
     });
 
     write_labelled_stage(&app, &dir, "changing.scn.ron", id, "after", None);
+    // The watcher's hot reload, which is no open.
+    wait_with_watcher(&mut app, |world| names(world) == ["after", "changing"]);
+    assert_eq!(app.world().resource::<NamesAtOpen>().0.len(), 1);
+
     open_stage(app.world_mut(), "changing.scn.ron");
-    wait_until(&mut app, |world| {
+    wait_with_watcher(&mut app, |world| {
         world.resource::<NamesAtOpen>().0.len() == 2
     });
     for _ in 0..10 {

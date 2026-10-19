@@ -31,6 +31,15 @@ pub fn new_stage(world: &mut World) -> Entity {
 
 /// Unloads every currently loaded stage, then starts loading `path` (a plain asset path or an
 /// `alias://` URL). Returns the load's container entity immediately -- loading is async.
+///
+/// A file the asset server already holds is spawned from that copy, not read again. With file
+/// watching on (Bevy's `file_watcher`, part of its `dev` feature, which the editor builds with;
+/// `alias://` watches too) the copy follows every edit, so it is the file as it is now; the
+/// exception is an edit saved moments before the open, whose hot reload lands after it: the stage
+/// is then announced ([`StageOpened`]) from the old copy and respawned fresh, unannounced. With
+/// watching off, an edited file reopened keeps the old copy until restart. Asking the asset server
+/// for a reload here instead cannot be tied to its completion, so the open could not tell the
+/// cached spawn from the fresh one.
 pub fn open_stage(world: &mut World, path: &str) -> Entity {
     despawn_stage_members(world, None);
     spawn_stage_root(world, path, true)
@@ -38,9 +47,10 @@ pub fn open_stage(world: &mut World, path: &str) -> Entity {
 
 /// Starts loading `path`, leaving every other currently loaded stage in place. If `path` is
 /// already loaded (matched by [`StageSource`]), that stage's entities and container are unloaded
-/// first, so the result is a clean reload rather than a duplicate. If `path` matches no loaded
-/// stage but a container for it is still mid-load (e.g. a rapid double-click before the first one
-/// resolved), that pending container is unloaded too.
+/// first, so the result is a clean respawn rather than a duplicate, from the asset server's copy
+/// as for [`open_stage`]. If `path` matches no loaded stage but a container for it is still
+/// mid-load (e.g. a rapid double-click before the first one resolved), that pending container is
+/// unloaded too.
 pub fn open_stage_additive(world: &mut World, path: &str) -> Entity {
     match stage_id_for_source(world, path) {
         Some(id) => despawn_stage_members(world, Some(id)),

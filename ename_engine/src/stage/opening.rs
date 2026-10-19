@@ -1,30 +1,24 @@
 //! When a deliberately opened stage counts as open, for [`StageOpened`].
 //!
-//! Not at its first spawn, for two reasons:
-//! - Opening a file that is already loaded asks the asset server for a reload, but the container
-//!   spawns the cached copy first; the reloaded file then respawns it. Until the reload has
-//!   arrived ([`AwaitingReload`]) the container stays `StageLoading`.
-//! - A stage can hold nested loaded content (a `WorldAssetRoot` or `DynamicWorldRoot` authored
-//!   inside it), which spawns frames later. Membership tagging marks those containers
-//!   `StageLoading` too, and the stage is open once none of its own is still to spawn
-//!   (`still_to_spawn`, which the `stage` settle probe uses too): a failed load or a handle with no
-//!   load behind it is not waited for.
+//! Not quite at its first spawn: a stage can hold nested loaded content (a `WorldAssetRoot` or
+//! `DynamicWorldRoot` authored inside it), which spawns frames later. Membership tagging marks
+//! those containers `StageLoading` too, and the stage is open once none of its own is still to
+//! spawn (`still_to_spawn`, which the `stage` settle probe uses too): a failed load or a handle
+//! with no load behind it is not waited for.
 //!
 //! A hot reload respawns a stage whose [`Opening`] is gone, so it is never an open.
 
 use bevy::{
-    asset::{AssetEvent, AssetLoadFailedEvent, UntypedAssetId},
     prelude::*,
-    world_serialization::{DynamicWorld, DynamicWorldRoot, WorldAssetRoot},
+    world_serialization::{DynamicWorldRoot, WorldAssetRoot},
 };
 
 use super::{StageId, StageLoading, StageMember, loading::still_to_spawn};
 
 /// A stage was opened: one loaded by [`open_stage`](super::open_stage) or
-/// [`open_stage_additive`](super::open_stage_additive) has spawned from the file as it is on disk,
-/// nested content included, or [`new_stage`](super::new_stage) created one. Not triggered when a
-/// loaded stage's file is hot-reloaded and Bevy respawns it, so a reaction to this sees only
-/// deliberate opens.
+/// [`open_stage_additive`](super::open_stage_additive) has spawned, nested content included, or
+/// [`new_stage`](super::new_stage) created one. Not triggered when a loaded stage's file is
+/// hot-reloaded and Bevy respawns it, so a reaction to this sees only deliberate opens.
 #[derive(Event, Debug, Clone, Copy)]
 pub struct StageOpened {
     /// The stage's root entity.
@@ -50,51 +44,6 @@ pub(super) struct Opening {
     pub(super) replaced_others: bool,
     /// The stage root and id its latest spawn produced; `None` until the first.
     pub(super) stage: Option<(Entity, StageId)>,
-}
-
-/// On a load container opened while its file was already loaded, until the requested reload has
-/// arrived: the spawns before that are of the cached copy.
-#[derive(Component, Clone, Copy, Debug)]
-pub(super) struct AwaitingReload(pub(super) UntypedAssetId);
-
-/// Clears [`AwaitingReload`] when its reload arrives. A container that already spawned the
-/// cached copy is told to spawn again, from the reloaded asset: whether Bevy's own respawn on the
-/// asset change follows depends on its debounce, so it is not relied on. A failed reload leaves
-/// the cached copy as the stage, so it ends the load there.
-pub(super) fn finish_reloads(
-    mut commands: Commands,
-    mut events: MessageReader<AssetEvent<DynamicWorld>>,
-    mut failures: MessageReader<AssetLoadFailedEvent<DynamicWorld>>,
-    mut awaiting: Query<(Entity, &AwaitingReload, &Opening, &mut DynamicWorldRoot)>,
-) {
-    for event in events.read() {
-        // The reload finishing. Not `Added` or `Modified`: `Assets` flushes those on its own
-        // schedule, so one can arrive frames late, from the load before.
-        let AssetEvent::LoadedWithDependencies { id } = event else {
-            continue;
-        };
-        for (container, reload, opening, mut root) in &mut awaiting {
-            if reload.0 != id.untyped() {
-                continue;
-            }
-            commands.entity(container).remove::<AwaitingReload>();
-            if opening.stage.is_some() {
-                root.set_changed();
-            }
-        }
-    }
-    for failure in failures.read() {
-        for (container, reload, opening, _) in &awaiting {
-            if reload.0 != failure.id.untyped() {
-                continue;
-            }
-            let mut container = commands.entity(container);
-            container.remove::<AwaitingReload>();
-            if opening.stage.is_some() {
-                container.remove::<StageLoading>();
-            }
-        }
-    }
 }
 
 /// Triggers [`StageOpened`] for every opening stage that has finished loading.

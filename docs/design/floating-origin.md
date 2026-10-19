@@ -121,11 +121,18 @@ owns the policy: on an open that replaced the others it places `EditorCamera` at
 in the stage's root grid when there is none, then resets its motion and puts the orbit pivot the
 default distance ahead. An additive open keeps the camera where it is.
 
-`StageOpened` waits for what the open asked for. Opening a file that is already loaded spawns the
-cached copy first; the open asks for a reload and is announced once that reload's spawn is in.
-Nested loaded content in the stage (a `WorldAssetRoot` or `DynamicWorldRoot` inside it) spawns
-frames later and is marked `StageLoading` until it does, so a Main Camera inside it is there when
-the event fires.
+`StageOpened` waits for the stage's nested loaded content (a `WorldAssetRoot` or
+`DynamicWorldRoot` inside it), which spawns frames later and is marked `StageLoading` until it
+does, so a Main Camera inside it is there when the event fires. A failed nested load, or a handle
+with no load behind it, is not waited for.
+
+An open does not reload a file the asset server already holds; it spawns that copy. Bevy's
+`AssetServer::reload` cannot be tied to its own completion, so an open that reloaded could not tell
+the cached spawn from the fresh one, and every attempt to do so traded one race for another. With
+file watching on, as in the editor's dev build, the copy follows every edit anyway. What that costs:
+an edit saved moments before the open, whose hot reload lands just after it, is announced from the
+old copy (the camera starts at the old Main Camera pose) and then respawned fresh without an
+announcement; and with watching off, a reopened edited file keeps the old copy until restart.
 
 ## Physics in a recentering world
 
