@@ -116,9 +116,16 @@ for opening a different one: stages do not share a frame. So the engine triggers
 when a stage is deliberately opened (the first spawn after `open_stage` or `open_stage_additive`,
 or `new_stage`), never on a hot reload, and says whether it replaced every other stage. The editor
 owns the policy: on an open that replaced the others it places `EditorCamera` at the new stage's
-`MainCamera`, in that camera's grid frame, or at its default start pose in the stage's root grid
-when there is none, then resets its motion and orbit pivot. An additive open keeps the camera
-where it is.
+`MainCamera` (by `MainCameraFilter`, as the Game View picks it), in the root grid's frame through
+`root_frame_pose` (absolute, parentless, for a stage without a grid), or at its default start pose
+in the stage's root grid when there is none, then resets its motion and puts the orbit pivot the
+default distance ahead. An additive open keeps the camera where it is.
+
+`StageOpened` waits for what the open asked for. Opening a file that is already loaded spawns the
+cached copy first; the open asks for a reload and is announced once that reload's spawn is in.
+Nested loaded content in the stage (a `WorldAssetRoot` or `DynamicWorldRoot` inside it) spawns
+frames later and is marked `StageLoading` until it does, so a Main Camera inside it is there when
+the event fires.
 
 ## Physics in a recentering world
 

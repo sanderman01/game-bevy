@@ -12,9 +12,10 @@ use bevy::{
 use ename_engine::bigspace::grid;
 use ename_engine::bigspace::{
     BigSpaceCameraController, BigSpaceCameraInput, CellCoord, FloatingOriginCandidate,
-    FrozenOrigin, Grid, GridCameraSystems, GridFollowCamera, Grids, set_origin_frozen,
+    FrozenOrigin, Grid, GridCameraSystems, GridFollowCamera, Grids, root_frame_pose,
+    set_origin_frozen,
 };
-use ename_engine::camera::MainCamera;
+use ename_engine::camera::MainCameraFilter;
 use ename_engine::debug_switch::{DebugSwitchAppExt, DebugSwitchSpec};
 use ename_engine::perf::StatsPanelHost;
 use ename_engine::stage::{StageId, StageMember, StageOpened};
@@ -317,31 +318,26 @@ fn place_camera_at_stage_start(world: &mut World, root: Entity, id: StageId) {
     let Some(camera) = editor_camera(world) else {
         return;
     };
-    let main_camera = world
-        .query_filtered::<(Entity, &StageMember), With<MainCamera>>()
-        .iter(world)
-        .find(|(_, member)| member.0 == id)
-        .map(|(entity, _)| entity);
-    let start = main_camera.and_then(|main| {
-        let grid = grid::absolute_position(world, main).ok()?.grid;
-        let (position, rotation) = grid::absolute_pose(world, main).ok()?;
-        Some((Some(grid), position, rotation))
-    });
-    let (grid_entity, position, rotation) = start.unwrap_or_else(|| {
-        let transform = default_camera_transform();
-        let grid_entity = world.get::<Grid>(root).is_some().then_some(root);
-        (
-            grid_entity,
-            transform.translation.as_dvec3(),
-            transform.rotation.as_dquat(),
-        )
-    });
+    // An anchor on a grid the camera leaves would keep that grid's origin.
+    set_origin_frozen(world, camera, false);
+
+    let (grid_entity, position, rotation) = match stage_main_camera(world, id) {
+        // In the root grid's frame, as `sync_grid_attachment` would place it; the pivot then
+        // lands in the same grid. Absolute when the Main Camera is under no grid.
+        Some(main) => root_frame_pose(world, main),
+        None => {
+            let transform = default_camera_transform();
+            let grid_entity = world.get::<Grid>(root).is_some().then_some(root);
+            (grid_entity, transform.translation, transform.rotation)
+        }
+    };
     match grid_entity {
-        // In the stage's grid frame, cell included; the floating-origin election picks the
-        // camera up from there as for any attached candidate.
+        // The floating-origin election picks the camera up from there as any attached candidate.
         Some(grid_entity) => {
             world.entity_mut(camera).insert(ChildOf(grid_entity));
-            if let Err(err) = grid::set_absolute_pose(world, camera, position, rotation) {
+            if let Err(err) =
+                grid::set_absolute_pose(world, camera, position.as_dvec3(), rotation.as_dquat())
+            {
                 warn!("could not place the editor camera in the opened stage: {err}");
             }
         }
@@ -349,13 +345,33 @@ fn place_camera_at_stage_start(world: &mut World, root: Entity, id: StageId) {
             world
                 .entity_mut(camera)
                 .remove::<(CellCoord, ChildOf)>()
-                .insert(
-                    Transform::from_translation(position.as_vec3())
-                        .with_rotation(rotation.as_quat()),
-                );
+                .insert(Transform::from_translation(position).with_rotation(rotation));
         }
     }
+    // The previous stage's orbit distance means nothing here.
+    if let Some(mut orbit) = world.get_mut::<OrbitFocus>(camera) {
+        orbit.distance = DEFAULT_FOCUS_DISTANCE;
+    }
     reset_editor_camera_motion(world, camera, None);
+}
+
+/// The opened stage's Main Camera, by the rule the Game View uses (`MainCameraFilter`). With
+/// several, the first spawned, and a warning.
+fn stage_main_camera(world: &mut World, id: StageId) -> Option<Entity> {
+    let mut cameras: Vec<Entity> = world
+        .query_filtered::<(Entity, &StageMember), MainCameraFilter>()
+        .iter(world)
+        .filter(|(_, member)| member.0 == id)
+        .map(|(entity, _)| entity)
+        .collect();
+    cameras.sort();
+    if cameras.len() > 1 {
+        warn!(
+            "the opened stage has {} Main Cameras; the editor camera starts at the first",
+            cameras.len()
+        );
+    }
+    cameras.first().copied()
 }
 
 fn spawn_editor_camera(mut commands: Commands, settings: Res<EditorCameraSettings>) {
