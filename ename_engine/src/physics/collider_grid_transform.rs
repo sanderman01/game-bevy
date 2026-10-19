@@ -20,7 +20,7 @@
 //! avian also runs. A missing `Transform` is the identity.
 //!
 //! Grids follow big_space's rule, the same one `bigspace::camera` places followers with
-//! (`bigspace::grid::local_in_parent`): an entity directly in a grid is
+//! (`bigspace::grid::translation_in_parent`): an entity directly in a grid is
 //! placed through its cell, and a grid's scale applies to the grid entity itself but never to its
 //! contents. So the owning body is kept across grid boundaries: a vehicle whose body is a grid,
 //! with sub-grids and cell-placed holders below it, gets every collider's offset through every
@@ -45,7 +45,7 @@ use avian3d::prelude::{ColliderOf, ColliderTransform, RigidBody, Rotation};
 use bevy::{ecs::query::QueryData, prelude::*};
 use big_space::prelude::{CellCoord, Grid};
 
-use crate::bigspace::grid::local_in_parent;
+use crate::bigspace::grid::translation_in_parent;
 
 /// On every ancestor of a collider, grids included (a body can be a grid, with grids below it),
 /// so the propagation can start at a changed ancestor and walk down to colliders only. Kept
@@ -178,7 +178,7 @@ pub(crate) fn propagate_collider_transforms(
 
 /// avian's propagation accumulator: an entity's pose relative to the nearest rigid body above it
 /// (scale relative to the nearest grid above that), valid once `below_body` is set. Each level is
-/// placed with big_space's grid rule ([`local_in_parent`]) and composed componentwise as avian
+/// placed with big_space's grid rule ([`translation_in_parent`]) and composed componentwise as avian
 /// does (`Transform` multiplication), with a grid's own scale left out of its contents' frame.
 #[derive(Clone, Copy)]
 struct Accumulated {
@@ -207,7 +207,12 @@ impl Accumulated {
         } else {
             self.pose
         };
-        let placed = frame * local_in_parent(parent_grid, &cell, &local);
+        let translation = translation_in_parent(parent_grid, &cell, &local).as_vec3();
+        let placed = frame
+            * Transform {
+                translation,
+                ..local
+            };
         let (pose, below_body) = if node.is_body {
             (Transform::from_scale(placed.scale), true)
         } else {

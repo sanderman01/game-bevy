@@ -841,8 +841,11 @@ fn root_frame_pose_places_through_sub_grids_and_composes_gridless_parents() {
         .id();
     let (grid, position, rotation) = root_frame_pose(app.world_mut(), inside);
     assert_eq!(grid, Some(root));
-    assert!(position.distance(IN_SUB_GRID) < 0.01, "at {position}");
-    assert_rotation_y_quarter(rotation);
+    assert!(
+        position.distance(IN_SUB_GRID.as_dvec3()) < 0.01,
+        "at {position}"
+    );
+    assert_rotation_y_quarter(rotation.as_quat());
 
     let parent = app
         .world_mut()
@@ -858,8 +861,30 @@ fn root_frame_pose_places_through_sub_grids_and_composes_gridless_parents() {
     let (grid, position, rotation) = root_frame_pose(app.world_mut(), child);
     assert_eq!(grid, None);
     assert!(
-        position.distance(Vec3::new(100.0, 0.0, -5.0)) < 1e-3,
+        position.distance(bevy::math::DVec3::new(100.0, 0.0, -5.0)) < 1e-3,
         "at {position}"
     );
-    assert_rotation_y_quarter(rotation);
+    assert_rotation_y_quarter(rotation.as_quat());
+}
+
+#[test]
+fn root_frame_pose_keeps_the_metre_of_a_cell_far_out() {
+    let mut app = test_app();
+    let root = app
+        .world_mut()
+        .spawn((big_space::bundles::BigSpaceRootBundle {
+            grid: Grid::new(1024.0, 0.0),
+            ..Default::default()
+        },))
+        .id();
+    let far = app
+        .world_mut()
+        .spawn((
+            CellCoord::new(16_384, 0, 0),
+            Transform::from_xyz(1.0, 0.0, 0.0),
+            ChildOf(root),
+        ))
+        .id();
+    let (_, position, _) = root_frame_pose(app.world_mut(), far);
+    assert_eq!(position.x, 16_384.0 * 1024.0 + 1.0);
 }

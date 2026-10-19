@@ -328,16 +328,18 @@ fn place_camera_at_stage_start(world: &mut World, root: Entity, id: StageId) {
         None => {
             let transform = default_camera_transform();
             let grid_entity = world.get::<Grid>(root).is_some().then_some(root);
-            (grid_entity, transform.translation, transform.rotation)
+            (
+                grid_entity,
+                transform.translation.as_dvec3(),
+                transform.rotation.as_dquat(),
+            )
         }
     };
     match grid_entity {
         // The floating-origin election picks the camera up from there as any attached candidate.
         Some(grid_entity) => {
             world.entity_mut(camera).insert(ChildOf(grid_entity));
-            if let Err(err) =
-                grid::set_absolute_pose(world, camera, position.as_dvec3(), rotation.as_dquat())
-            {
+            if let Err(err) = grid::set_absolute_pose(world, camera, position, rotation) {
                 warn!("could not place the editor camera in the opened stage: {err}");
             }
         }
@@ -345,7 +347,10 @@ fn place_camera_at_stage_start(world: &mut World, root: Entity, id: StageId) {
             world
                 .entity_mut(camera)
                 .remove::<(CellCoord, ChildOf)>()
-                .insert(Transform::from_translation(position).with_rotation(rotation));
+                .insert(
+                    Transform::from_translation(position.as_vec3())
+                        .with_rotation(rotation.as_quat()),
+                );
         }
     }
     // The previous stage's orbit distance means nothing here.
@@ -356,7 +361,8 @@ fn place_camera_at_stage_start(world: &mut World, root: Entity, id: StageId) {
 }
 
 /// The opened stage's Main Camera, by the rule the Game View uses (`MainCameraFilter`). With
-/// several, the first spawned, and a warning.
+/// several, the one with the lowest entity id (a stable choice, not necessarily the first spawned),
+/// and a warning.
 fn stage_main_camera(world: &mut World, id: StageId) -> Option<Entity> {
     let mut cameras: Vec<Entity> = world
         .query_filtered::<(Entity, &StageMember), MainCameraFilter>()
@@ -367,7 +373,7 @@ fn stage_main_camera(world: &mut World, id: StageId) -> Option<Entity> {
     cameras.sort();
     if cameras.len() > 1 {
         warn!(
-            "the opened stage has {} Main Cameras; the editor camera starts at the first",
+            "the opened stage has {} Main Cameras; the editor camera starts at the lowest entity id",
             cameras.len()
         );
     }

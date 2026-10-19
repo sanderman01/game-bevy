@@ -146,7 +146,7 @@ new, and its propagation starts only at a hierarchy root with a `Transform`, whi
 grid does not have. `physics::collider_grid_transform` propagates them itself before each step,
 composing from local `Transform`s componentwise, as avian does, except at grids, where it uses
 big_space's rule, the same one the follower camera is placed with
-(`bigspace::grid::local_in_parent`): contents are placed through their cell, and a grid's scale
+(`bigspace::grid::translation_in_parent`): contents are placed through their cell, and a grid's scale
 applies to the grid entity but not to its contents. (The camera composes the levels between grids
 as affines instead, as Bevy's propagation does, since it must land where it renders.) A vehicle
 whose body is a grid, with sub-grids below it, so gets every collider's offset through every cell

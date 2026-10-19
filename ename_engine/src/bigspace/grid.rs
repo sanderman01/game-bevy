@@ -40,21 +40,19 @@ pub fn on_grid_looking_to(
     (coord, tr)
 }
 
-/// big_space's rule for one level: an entity's `local` transform as its parent's contents see it.
-/// A grid parent places its contents through their `cell`; any other parent takes `local` as is.
-/// The caller composes the result with the parent's contents frame, in which a grid's own scale
-/// never appears: it applies to the grid entity, not to what the grid contains.
-pub fn local_in_parent(
+/// big_space's rule for one level: where an entity with `local` sits among its parent's contents.
+/// A grid parent places its contents through their `cell`, in metres from the grid's origin, kept
+/// in `f64` for cells far out; any other parent takes `local` as is. The caller composes the
+/// result with the parent's contents frame, in which a grid's own scale never appears: it applies
+/// to the grid entity, not to what the grid contains.
+pub fn translation_in_parent(
     parent_grid: Option<&Grid>,
     cell: &CellCoord,
     local: &Transform,
-) -> Transform {
+) -> DVec3 {
     match parent_grid {
-        Some(grid) => Transform {
-            translation: grid.grid_position(cell, local),
-            ..*local
-        },
-        None => *local,
+        Some(grid) => grid.grid_position_double(cell, local),
+        None => local.translation.as_dvec3(),
     }
 }
 

@@ -9,7 +9,9 @@ use bevy::prelude::*;
 use big_space::camera::camera_controller;
 use big_space::prelude::{BigSpace, BigSpaceCameraController, CellCoord, FloatingOrigin, Grid};
 
-use super::grid::local_in_parent;
+use bevy::math::{DAffine3, DQuat, DVec3};
+
+use super::grid::translation_in_parent;
 
 /// Attach this to any entity that should automatically become a child of the nearest root
 /// `Grid` (an entity carrying both `BigSpace` and `Grid`) when one exists, and a parentless root
@@ -116,7 +118,7 @@ fn sync_grid_attachment(
         // is kept on a tie, so a second root appearing at the same place does not steal the
         // follower.
         let distance_sq = |root: Option<&Transform>| {
-            position.distance_squared(root.map_or(Vec3::ZERO, |root| root.translation))
+            position.distance_squared(root.map_or(DVec3::ZERO, |root| root.translation.as_dvec3()))
         };
         let current_distance = current_grid
             .and_then(|grid| grid_roots.get(grid).ok())
@@ -143,14 +145,14 @@ fn sync_grid_attachment(
                 let grid = grids
                     .get(grid_entity)
                     .expect("nearest_grid always has Grid");
-                let (cell, remainder) = grid.translation_to_grid(position.as_dvec3());
+                let (cell, remainder) = grid.translation_to_grid(position);
                 // No `FloatingOrigin` here: attaching only makes this entity *eligible*, and
                 // `elect_floating_origins` (chained directly after this system) decides.
                 commands.entity(camera).insert((
                     cell,
                     Transform {
                         translation: remainder,
-                        rotation,
+                        rotation: rotation.as_quat(),
                         scale: Vec3::ONE,
                     },
                     ChildOf(grid_entity),
@@ -161,8 +163,8 @@ fn sync_grid_attachment(
                     .entity(camera)
                     .remove::<(CellCoord, ChildOf)>()
                     .insert(Transform {
-                        translation: position,
-                        rotation,
+                        translation: position.as_vec3(),
+                        rotation: rotation.as_quat(),
                         scale: Vec3::ONE,
                     });
             }
@@ -241,18 +243,10 @@ type LinkData = (
     Option<&'static Grid>,
 );
 
-/// Where `entity` is in its root grid's frame, composed the way big_space propagates: local
-/// `Transform`s compose as affines, as Bevy's propagation does, a grid places its contents through
-/// their cell and contributes only its rotation and translation (never its scale), and the root
-/// grid's own `Transform` and anything above it are ignored. Absolute when no grid is above
-/// `entity`. A missing `Transform` is the identity and a missing `CellCoord` is cell zero.
-///
-/// Never the propagated `GlobalTransform`: inside a grid it is floating-origin-relative, and for
-/// an entity moved or detached earlier this frame it is stale until propagation runs.
 /// Where `entity` is, as [`sync_grid_attachment`] places followers: in the frame of its outermost
 /// grid, which comes back with it, or absolute with `None` when no grid is above it. For placing
 /// something at another entity's pose in a grid it can attach to directly.
-pub fn root_frame_pose(world: &mut World, entity: Entity) -> (Option<Entity>, Vec3, Quat) {
+pub fn root_frame_pose(world: &mut World, entity: Entity) -> (Option<Entity>, DVec3, DQuat) {
     let mut links = world.query::<LinkData>();
     let links = links.query(world);
     let (translation, rotation) = true_pose(entity, &links);
@@ -267,9 +261,18 @@ pub fn root_frame_pose(world: &mut World, entity: Entity) -> (Option<Entity>, Ve
     (root, translation, rotation)
 }
 
-fn true_pose(entity: Entity, links: &Query<LinkData>) -> (Vec3, Quat) {
+/// Where `entity` is in its root grid's frame, composed the way big_space propagates: local
+/// `Transform`s compose as affines, as Bevy's propagation does, a grid places its contents through
+/// their cell and contributes only its rotation and translation (never its scale), and the root
+/// grid's own `Transform` and anything above it are ignored. Absolute when no grid is above
+/// `entity`. A missing `Transform` is the identity and a missing `CellCoord` is cell zero.
+///
+/// In `f64` throughout, so a cell far out keeps its metre. Never the propagated
+/// `GlobalTransform`: inside a grid it is floating-origin-relative, and for an entity moved or
+/// detached earlier this frame it is stale until propagation runs.
+fn true_pose(entity: Entity, links: &Query<LinkData>) -> (DVec3, DQuat) {
     let pose = own_pose(entity, links);
-    (pose.affine.translation(), pose.rotation.normalize())
+    (pose.affine.translation, pose.rotation.normalize())
 }
 
 /// An entity's pose as [`true_pose`] builds it. The position comes from the affine, which keeps
@@ -277,32 +280,32 @@ fn true_pose(entity: Entity, links: &Query<LinkData>) -> (Vec3, Quat) {
 /// since decomposing a sheared or mirrored affine gives no valid rotation.
 #[derive(Clone, Copy)]
 struct Pose {
-    affine: GlobalTransform,
-    rotation: Quat,
+    affine: DAffine3,
+    rotation: DQuat,
 }
 
 impl Pose {
     const IDENTITY: Self = Self {
-        affine: GlobalTransform::IDENTITY,
-        rotation: Quat::IDENTITY,
+        affine: DAffine3::IDENTITY,
+        rotation: DQuat::IDENTITY,
     };
 }
 
-/// [`true_pose`], built top-down with big_space's grid rule ([`local_in_parent`]).
+/// [`true_pose`], built top-down with big_space's grid rule ([`translation_in_parent`]).
 fn own_pose(entity: Entity, links: &Query<LinkData>) -> Pose {
     let (transform, cell, child_of, _) = links.get(entity).unwrap_or_default();
     let local = transform.copied().unwrap_or_default();
-    let Some(parent) = child_of.map(ChildOf::parent) else {
-        return Pose {
-            affine: local.into(),
-            rotation: local.rotation,
-        };
-    };
-    let (frame, parent_grid) = contents_of(parent, links);
-    let step = local_in_parent(parent_grid, &cell.copied().unwrap_or_default(), &local);
+    let parent = child_of.map(ChildOf::parent);
+    let (frame, parent_grid) =
+        parent.map_or((Pose::IDENTITY, None), |parent| contents_of(parent, links));
+    let translation =
+        translation_in_parent(parent_grid, &cell.copied().unwrap_or_default(), &local);
+    let rotation = local.rotation.as_dquat();
+    let step =
+        DAffine3::from_scale_rotation_translation(local.scale.as_dvec3(), rotation, translation);
     Pose {
-        affine: frame.affine.mul_transform(step),
-        rotation: frame.rotation * step.rotation,
+        affine: frame.affine * step,
+        rotation: frame.rotation * rotation,
     }
 }
 
@@ -326,9 +329,7 @@ fn contents_of<'a>(entity: Entity, links: &'a Query<LinkData>) -> (Pose, Option<
         // frame from its position and composed rotation alone.
         let own = own_pose(entity, links);
         Pose {
-            affine: Transform::from_translation(own.affine.translation())
-                .with_rotation(own.rotation)
-                .into(),
+            affine: DAffine3::from_rotation_translation(own.rotation, own.affine.translation),
             rotation: own.rotation,
         }
     } else {
@@ -408,8 +409,8 @@ impl FollowerRescue<'_, '_> {
                 .entity(follower)
                 .try_remove::<(CellCoord, FloatingOrigin, FrozenOrigin, ChildOf)>()
                 .try_insert(Transform {
-                    translation: position,
-                    rotation,
+                    translation: position.as_vec3(),
+                    rotation: rotation.as_quat(),
                     scale: Vec3::ONE,
                 });
         }
