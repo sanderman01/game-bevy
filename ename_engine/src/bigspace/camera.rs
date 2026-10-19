@@ -148,24 +148,26 @@ fn sync_grid_attachment(
                 let (cell, remainder) = grid.translation_to_grid(position);
                 // No `FloatingOrigin` here: attaching only makes this entity *eligible*, and
                 // `elect_floating_origins` (chained directly after this system) decides.
-                commands.entity(camera).insert((
-                    cell,
-                    Transform {
-                        translation: remainder,
-                        rotation: rotation.as_quat(),
-                        scale: Vec3::ONE,
-                    },
-                    ChildOf(grid_entity),
-                ));
+                commands
+                    .entity(camera)
+                    .insert((
+                        cell,
+                        Transform {
+                            translation: remainder,
+                            rotation: rotation.as_quat(),
+                            scale: Vec3::ONE,
+                        },
+                        ChildOf(grid_entity),
+                    ))
+                    .remove::<DetachedPose>();
             }
             None => {
                 commands
                     .entity(camera)
                     .remove::<(CellCoord, ChildOf)>()
-                    .insert(Transform {
-                        translation: position.as_vec3(),
-                        rotation: rotation.as_quat(),
-                        scale: Vec3::ONE,
+                    .insert({
+                        let detached = DetachedPose::new(position, rotation);
+                        (detached.written, detached)
                     });
             }
         }
@@ -241,7 +243,35 @@ type LinkData = (
     Option<&'static CellCoord>,
     Option<&'static ChildOf>,
     Option<&'static Grid>,
+    Option<&'static DetachedPose>,
 );
+
+/// On a follower its grid's loss left parentless: the root-frame pose it was rescued at, in `f64`,
+/// and the `Transform` written from it. A parentless `Transform` is `f32`, which cannot hold a
+/// far cell's metre; while that `Transform` is untouched, reattaching uses this instead, so a hot
+/// reload far out puts the follower back exactly. Moving it (free flight) makes the `Transform`
+/// the truth again.
+#[derive(Component, Clone, Copy, Debug)]
+struct DetachedPose {
+    position: DVec3,
+    rotation: DQuat,
+    written: Transform,
+}
+
+impl DetachedPose {
+    /// The pose and the `Transform` to write for it.
+    fn new(position: DVec3, rotation: DQuat) -> Self {
+        Self {
+            position,
+            rotation,
+            written: Transform {
+                translation: position.as_vec3(),
+                rotation: rotation.as_quat(),
+                scale: Vec3::ONE,
+            },
+        }
+    }
+}
 
 /// Where `entity` is, as [`sync_grid_attachment`] places followers: in the frame of its outermost
 /// grid, which comes back with it, or absolute with `None` when no grid is above it. For placing
@@ -254,9 +284,13 @@ pub fn root_frame_pose(world: &mut World, entity: Entity) -> (Option<Entity>, DV
         links
             .get(current)
             .ok()
-            .and_then(|(_, _, child_of, _)| child_of.map(ChildOf::parent))
+            .and_then(|(_, _, child_of, ..)| child_of.map(ChildOf::parent))
     })
-    .filter(|&ancestor| links.get(ancestor).is_ok_and(|(.., grid)| grid.is_some()))
+    .filter(|&ancestor| {
+        links
+            .get(ancestor)
+            .is_ok_and(|(_, _, _, grid, _)| grid.is_some())
+    })
     .last();
     (root, translation, rotation)
 }
@@ -293,9 +327,17 @@ impl Pose {
 
 /// [`true_pose`], built top-down with big_space's grid rule ([`translation_in_parent`]).
 fn own_pose(entity: Entity, links: &Query<LinkData>) -> Pose {
-    let (transform, cell, child_of, _) = links.get(entity).unwrap_or_default();
+    let (transform, cell, child_of, _, detached) = links.get(entity).unwrap_or_default();
     let local = transform.copied().unwrap_or_default();
     let parent = child_of.map(ChildOf::parent);
+    if let Some(detached) =
+        detached.filter(|detached| parent.is_none() && detached.written == local)
+    {
+        return Pose {
+            affine: DAffine3::from_rotation_translation(detached.rotation, detached.position),
+            rotation: detached.rotation,
+        };
+    }
     let (frame, parent_grid) =
         parent.map_or((Pose::IDENTITY, None), |parent| contents_of(parent, links));
     let translation =
@@ -312,16 +354,20 @@ fn own_pose(entity: Entity, links: &Query<LinkData>) -> Pose {
 /// The frame `entity`'s children are placed in, and its `Grid` if it is one. The outermost grid's
 /// contents frame is the root frame itself.
 fn contents_of<'a>(entity: Entity, links: &'a Query<LinkData>) -> (Pose, Option<&'a Grid>) {
-    let grid = links.get(entity).ok().and_then(|(.., grid)| grid);
+    let grid = links.get(entity).ok().and_then(|(_, _, _, grid, _)| grid);
     let outermost_grid = grid.is_some()
         && !std::iter::successors(Some(entity), |&current| {
             links
                 .get(current)
                 .ok()
-                .and_then(|(_, _, child_of, _)| child_of.map(ChildOf::parent))
+                .and_then(|(_, _, child_of, ..)| child_of.map(ChildOf::parent))
         })
         .skip(1)
-        .any(|ancestor| links.get(ancestor).is_ok_and(|(.., grid)| grid.is_some()));
+        .any(|ancestor| {
+            links
+                .get(ancestor)
+                .is_ok_and(|(_, _, _, grid, _)| grid.is_some())
+        });
     let frame = if outermost_grid {
         Pose::IDENTITY
     } else if grid.is_some() {
@@ -408,10 +454,9 @@ impl FollowerRescue<'_, '_> {
             commands
                 .entity(follower)
                 .try_remove::<(CellCoord, FloatingOrigin, FrozenOrigin, ChildOf)>()
-                .try_insert(Transform {
-                    translation: position.as_vec3(),
-                    rotation: rotation.as_quat(),
-                    scale: Vec3::ONE,
+                .try_insert({
+                    let detached = DetachedPose::new(position, rotation);
+                    (detached.written, detached)
                 });
         }
     }

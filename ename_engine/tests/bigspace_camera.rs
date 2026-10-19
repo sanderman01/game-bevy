@@ -888,3 +888,42 @@ fn root_frame_pose_keeps_the_metre_of_a_cell_far_out() {
     let (_, position, _) = root_frame_pose(app.world_mut(), far);
     assert_eq!(position.x, 16_384.0 * 1024.0 + 1.0);
 }
+
+#[test]
+fn a_camera_far_out_keeps_its_metre_across_its_grid_being_replaced() {
+    let mut app = test_app();
+    let far_root = || big_space::bundles::BigSpaceRootBundle {
+        grid: Grid::new(1024.0, 0.0),
+        ..Default::default()
+    };
+    let root = app.world_mut().spawn(far_root()).id();
+    let camera = app
+        .world_mut()
+        .spawn((
+            GridFollowCamera,
+            CellCoord::new(16_384, 0, 0),
+            Transform::from_xyz(1.0, 0.0, 0.0),
+            ChildOf(root),
+        ))
+        .id();
+    app.update();
+    app.update();
+
+    // A hot reload: the grid goes, and an identical one comes back.
+    app.world_mut().despawn(root);
+    let root = app.world_mut().spawn(far_root()).id();
+    app.update();
+    app.update();
+
+    let entity = app.world().entity(camera);
+    assert_eq!(entity.get::<ChildOf>().map(ChildOf::parent), Some(root));
+    let position = app.world().get::<Grid>(root).unwrap().grid_position_double(
+        entity.get::<CellCoord>().unwrap(),
+        entity.get::<Transform>().unwrap(),
+    );
+    assert!(
+        (position.x - (16_384.0 * 1024.0 + 1.0)).abs() < 1e-3,
+        "reattached at x = {}",
+        position.x
+    );
+}
