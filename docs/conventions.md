@@ -31,6 +31,24 @@ eg:
 
 when moving an asset, their corresponding .meta and .alias should be moved with it.
 
+## glTF colliders
+
+A glTF node named `COL_<what>` with the extras `{"collider": "<shape>"}` becomes an avian
+`Collider` on that node when its scene spawns (`ename_engine::physics`). Its meshes are
+despawned, so it never renders. A stage places a glTF by alias with
+`WorldAssetRoot: (Path("alias://<alias>#Scene0"))`.
+
+| Shape | Fitted to |
+| --- | --- |
+| `box` | The mesh's local bounding box |
+| `sphere` | The bounding box's largest half extent |
+| `capsule`, `cylinder` | The bounding box, axis along local Y, radius the larger of the X and Z half extents |
+| `convex_hull` | The mesh's vertices |
+| `trimesh` | The mesh itself; static structures only |
+
+The collider joins the nearest ancestor `RigidBody`, or is static without one. Parent a collider
+node to the part it moves with. The node also gets `GltfColliderShape`, so tools can find it.
+
 ## Per-user directories
 
 `ename_engine::application::ApplicationPaths` (a resource) gives each project two directories, laid
