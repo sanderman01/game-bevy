@@ -77,12 +77,10 @@ impl Scene {
         app.finish();
         app.cleanup();
         let world = app.world_mut();
+        // No `Transform`, like big_space's root bundle and a stage's root grid: avian's own
+        // collider propagation never reaches below such a root.
         let root = world
-            .spawn((
-                BigSpace::default(),
-                Grid::new(EDGE, 0.0),
-                Transform::default(),
-            ))
+            .spawn((BigSpace::default(), Grid::new(EDGE, 0.0)))
             .id();
         let ([x, y, z], offset) = origin;
         let origin = world
@@ -914,4 +912,159 @@ fn a_child_collider_under_a_non_uniformly_scaled_body_matches_avians_propagation
         .get::<ColliderTransform>(collider)
         .unwrap();
     assert_eq!(after, collider_transform);
+}
+
+/// The body's and the named collider's `ColliderTransform` and `Position`.
+fn collider_state(scene: &mut Scene, name: &str) -> (ColliderTransform, Vec3, Entity) {
+    let world = scene.app.world_mut();
+    let (transform, position, collider_of) = world
+        .query::<(
+            &Name,
+            &ColliderTransform,
+            &Position,
+            &avian3d::prelude::ColliderOf,
+        )>()
+        .iter(world)
+        .find(|(found, ..)| found.as_str() == name)
+        .map(|(_, transform, position, collider_of)| (*transform, position.0, collider_of.body))
+        .unwrap_or_else(|| panic!("no collider named {name}"));
+    (transform, position, collider_of)
+}
+
+fn assert_collider_transform(
+    actual: ColliderTransform,
+    translation: Vec3,
+    scale: Vec3,
+    what: &str,
+) {
+    assert!(
+        (actual.translation - translation).length() < 1e-4
+            && (actual.scale - scale).length() < 1e-5,
+        "{what}: {actual:?}, expected translation {translation} and scale {scale}"
+    );
+}
+
+#[test]
+fn a_child_collider_spawned_under_a_settled_far_body_sits_on_its_body() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    let body = scene.body_near_origin(
+        RigidBody::Kinematic,
+        Vec3::new(2000.0, 0.0, 0.0),
+        Vec3::ZERO,
+    );
+    scene.app.world_mut().entity_mut(body).remove::<Collider>();
+    scene.settle();
+    scene.at_tick(2, move |world| {
+        world.spawn((
+            Name::new("child"),
+            ChildOf(body),
+            Transform::from_xyz(1.0, 0.0, 0.0),
+            Collider::sphere(0.5),
+        ));
+    });
+    scene.run_past_action(2);
+
+    let (collider_transform, position, _) = collider_state(&mut scene, "child");
+    assert_collider_transform(collider_transform, Vec3::X, Vec3::ONE, "child");
+    let body_position = scene.app.world().get::<Position>(body).unwrap().0;
+    assert!(
+        (position - body_position - Vec3::X).length() < 1e-3,
+        "the collider is {} from its body",
+        position - body_position
+    );
+}
+
+#[test]
+fn a_child_colliders_transform_edit_reaches_its_collider_transform() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    let body = scene.body_near_origin(RigidBody::Static, Vec3::new(5.0, 0.0, 0.0), Vec3::ZERO);
+    scene.app.world_mut().entity_mut(body).remove::<Collider>();
+    let child = scene
+        .app
+        .world_mut()
+        .spawn((
+            Name::new("child"),
+            ChildOf(body),
+            Transform::from_xyz(1.0, 0.0, 0.0),
+            Collider::sphere(0.5),
+        ))
+        .id();
+    scene.settle();
+
+    scene
+        .app
+        .world_mut()
+        .get_mut::<Transform>(child)
+        .unwrap()
+        .translation = Vec3::new(0.0, 3.0, 0.0);
+    scene.tick();
+
+    let (collider_transform, ..) = collider_state(&mut scene, "child");
+    assert_collider_transform(
+        collider_transform,
+        Vec3::new(0.0, 3.0, 0.0),
+        Vec3::ONE,
+        "child",
+    );
+}
+
+#[test]
+fn replacing_a_scaled_bodys_rigid_body_keeps_its_collider_scale() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    let body = scene.body_near_origin(RigidBody::Kinematic, Vec3::new(5.0, 0.0, 0.0), Vec3::ZERO);
+    let world = scene.app.world_mut();
+    world.entity_mut(body).insert(Name::new("scaled"));
+    world.get_mut::<Transform>(body).unwrap().scale = Vec3::splat(2.0);
+    scene.settle();
+    scene.at_tick(2, move |world| {
+        world.entity_mut(body).insert(RigidBody::Static);
+    });
+    scene.run_past_action(3);
+
+    let (collider_transform, ..) = collider_state(&mut scene, "scaled");
+    assert_collider_transform(collider_transform, Vec3::ZERO, Vec3::splat(2.0), "scaled");
+    let aabb = scene.app.world().get::<ColliderAabb>(body).unwrap();
+    let half_extent = (aabb.max - aabb.min) / 2.0;
+    assert!(
+        (half_extent - Vec3::ONE).length() < 0.05,
+        "AABB half extent {half_extent}"
+    );
+}
+
+#[test]
+fn a_body_inserted_between_a_body_and_its_collider_takes_the_collider_at_its_offset() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    let outer = scene.body_near_origin(
+        RigidBody::Kinematic,
+        Vec3::new(150.0, 0.0, -120.0),
+        Vec3::ZERO,
+    );
+    let world = scene.app.world_mut();
+    world.entity_mut(outer).remove::<Collider>();
+    let middle = world
+        .spawn((ChildOf(outer), Transform::from_xyz(0.0, 2.0, 0.0)))
+        .id();
+    world.spawn((
+        Name::new("inner"),
+        ChildOf(middle),
+        Transform::from_xyz(1.0, 0.0, 0.0),
+        Collider::sphere(0.5),
+    ));
+    scene.settle();
+    let (before, ..) = collider_state(&mut scene, "inner");
+    assert_collider_transform(
+        before,
+        Vec3::new(1.0, 2.0, 0.0),
+        Vec3::ONE,
+        "inner on outer",
+    );
+
+    scene.at_tick(2, move |world| {
+        world.entity_mut(middle).insert(RigidBody::Kinematic);
+    });
+    scene.run_past_action(3);
+
+    let (after, _, body) = collider_state(&mut scene, "inner");
+    assert_eq!(body, middle);
+    assert_collider_transform(after, Vec3::X, Vec3::ONE, "inner on middle");
 }

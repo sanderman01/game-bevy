@@ -33,17 +33,17 @@ impl Plugin for PhysicsIntegrationPlugin {
             .add_systems(
                 FixedPostUpdate,
                 (
-                    grid_propagate::propagate_grid_bodies
+                    // After avian's own collider propagation, so this one's result stands; before
+                    // `TransformToPosition`, ahead of collider scale and mass properties.
+                    (
+                        grid_propagate::propagate_grid_bodies,
+                        collider_grid_transform::propagate_collider_transforms,
+                    )
                         .in_set(PhysicsSystems::Prepare)
                         .after(PhysicsTransformSystems::Propagate)
                         .before(PhysicsTransformSystems::TransformToPosition),
                     grid_writeback::physics_position_to_transform.after(PhysicsSystems::Writeback),
                 ),
-            )
-            .add_systems(
-                PostUpdate,
-                // Reads only local `Transform`s, so it needs no ordering against propagation.
-                collider_grid_transform::collider_transform_from_hierarchy,
             );
     }
 }
