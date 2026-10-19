@@ -1,0 +1,24 @@
+docs/conventions.md
+  s_69462112f9cddd::t_15acc49459937e 34-51
+ename_engine/src/physics/mod.rs
+  s_69462112f9cddd::t_792136a64176c8 4,15-16,20
+  s_69462112f9cddd::t_2e619a145c69a0 54-56
+ename_engine/src/physics/gltf_colliders.rs
+  s_69462112f9cddd::t_de312ab31936cc 1-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "56e8f80bc3382ad0d57891ff865e917b9c7d3c80",
+  "prompts": {},
+  "sessions": {
+    "s_69462112f9cddd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c72a5f15-62a3-4d5c-b7f5-34c01b670d31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
