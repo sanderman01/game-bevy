@@ -111,6 +111,15 @@ rescue places it the same way. A follower keeps its root-frame coordinates when 
 root; the roots' `Transform`s only rank them, by distance from that position, and on a tie the
 camera stays on its current grid.
 
+Keeping root-frame coordinates is right for a hot reload, which respawns the same stage, and wrong
+for opening a different one: stages do not share a frame. So the engine triggers `StageOpened`
+when a stage is deliberately opened (the first spawn after `open_stage` or `open_stage_additive`,
+or `new_stage`), never on a hot reload, and says whether it replaced every other stage. The editor
+owns the policy: on an open that replaced the others it places `EditorCamera` at the new stage's
+`MainCamera`, in that camera's grid frame, or at its default start pose in the stage's root grid
+when there is none, then resets its motion and orbit pivot. An additive open keeps the camera
+where it is.
+
 ## Physics in a recentering world
 
 avian works in floating-origin-relative coordinates: `Position` is copied from `GlobalTransform`

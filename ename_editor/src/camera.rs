@@ -9,12 +9,15 @@ use bevy::{
     prelude::*,
     transform::TransformSystems,
 };
+use ename_engine::bigspace::grid;
 use ename_engine::bigspace::{
     BigSpaceCameraController, BigSpaceCameraInput, CellCoord, FloatingOriginCandidate,
     FrozenOrigin, Grid, GridCameraSystems, GridFollowCamera, Grids, set_origin_frozen,
 };
+use ename_engine::camera::MainCamera;
 use ename_engine::debug_switch::{DebugSwitchAppExt, DebugSwitchSpec};
 use ename_engine::perf::StatsPanelHost;
+use ename_engine::stage::{StageId, StageMember, StageOpened};
 
 use crate::panels::{ActiveViewport, UiState};
 
@@ -233,6 +236,7 @@ impl Plugin for EditorCameraPlugin {
                 // elsewhere in this codebase.
                 apply_focus_on_f_key.in_set(crate::EditorSystems::ApplySelection),
             )
+            .add_observer(place_camera_in_opened_stage)
             .add_bool_debug_switch(
                 DebugSwitchSpec::new(
                     "camera",
@@ -291,9 +295,71 @@ fn alt_held(keyboard: &ButtonInput<KeyCode>) -> bool {
     keyboard.pressed(KeyCode::AltLeft) || keyboard.pressed(KeyCode::AltRight)
 }
 
+/// Where the editor camera starts when nothing says otherwise: at startup, and in an opened stage
+/// with no Main Camera.
+fn default_camera_transform() -> Transform {
+    Transform::from_translation(EDITOR_CAMERA_INIT_POS).looking_at(Vec3::ZERO, Vec3::Y)
+}
+
+/// Moves the editor camera into a stage that replaced every other: to the stage's Main Camera, or
+/// to [`default_camera_transform`] in the stage's root grid if it has none. Stages do not share a
+/// frame, so the pose the camera had in the previous stage means nothing in this one. An additive
+/// open keeps the camera where it is, as a hot reload does (which is no open at all).
+fn place_camera_in_opened_stage(opened: On<StageOpened>, mut commands: Commands) {
+    if !opened.replaced_others {
+        return;
+    }
+    let (root, id) = (opened.root, opened.id);
+    commands.queue(move |world: &mut World| place_camera_at_stage_start(world, root, id));
+}
+
+fn place_camera_at_stage_start(world: &mut World, root: Entity, id: StageId) {
+    let Some(camera) = editor_camera(world) else {
+        return;
+    };
+    let main_camera = world
+        .query_filtered::<(Entity, &StageMember), With<MainCamera>>()
+        .iter(world)
+        .find(|(_, member)| member.0 == id)
+        .map(|(entity, _)| entity);
+    let start = main_camera.and_then(|main| {
+        let grid = grid::absolute_position(world, main).ok()?.grid;
+        let (position, rotation) = grid::absolute_pose(world, main).ok()?;
+        Some((Some(grid), position, rotation))
+    });
+    let (grid_entity, position, rotation) = start.unwrap_or_else(|| {
+        let transform = default_camera_transform();
+        let grid_entity = world.get::<Grid>(root).is_some().then_some(root);
+        (
+            grid_entity,
+            transform.translation.as_dvec3(),
+            transform.rotation.as_dquat(),
+        )
+    });
+    match grid_entity {
+        // In the stage's grid frame, cell included; the floating-origin election picks the
+        // camera up from there as for any attached candidate.
+        Some(grid_entity) => {
+            world.entity_mut(camera).insert(ChildOf(grid_entity));
+            if let Err(err) = grid::set_absolute_pose(world, camera, position, rotation) {
+                warn!("could not place the editor camera in the opened stage: {err}");
+            }
+        }
+        None => {
+            world
+                .entity_mut(camera)
+                .remove::<(CellCoord, ChildOf)>()
+                .insert(
+                    Transform::from_translation(position.as_vec3())
+                        .with_rotation(rotation.as_quat()),
+                );
+        }
+    }
+    reset_editor_camera_motion(world, camera, None);
+}
+
 fn spawn_editor_camera(mut commands: Commands, settings: Res<EditorCameraSettings>) {
-    let spawn_transform =
-        Transform::from_translation(EDITOR_CAMERA_INIT_POS).looking_at(Vec3::ZERO, Vec3::Y);
+    let spawn_transform = default_camera_transform();
     let focus_position =
         spawn_transform.translation + spawn_transform.forward() * DEFAULT_FOCUS_DISTANCE;
     // Not grid-attached at spawn (no target has ever been focused yet): a plain root entity,
@@ -1930,3 +1996,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod stage_open_tests;
