@@ -1,0 +1,39 @@
+ename_engine/tests/bigspace_camera.rs
+  s_dcfdee2845fb20::t_39fdda39317906 91,93,96,266
+  s_dcfdee2845fb20::t_d6b7c688ca110f 288
+  s_dcfdee2845fb20::t_d8c258e9546553 409-412,429,435
+  s_dcfdee2845fb20::t_5d15b38e67b591 297,418-419
+  s_dcfdee2845fb20::t_658e05da66bffc 3,230-265,267-287,289-296,298-408,413-417,420-428,430-434,436
+ename_engine/src/bigspace/mod.rs
+  s_dcfdee2845fb20::t_86b30d0ed42f03 15
+ename_engine/src/bigspace/camera.rs
+  s_dcfdee2845fb20::t_8620759e7a98f3 75,77
+  s_dcfdee2845fb20::t_b36f53bcf3d83a 251-268,279-288,290
+  s_dcfdee2845fb20::t_a970d6812084b7 5
+  s_dcfdee2845fb20::t_4dbd8722716622 289
+  s_dcfdee2845fb20::t_ad7139a2468cb0 134-136
+  s_dcfdee2845fb20::t_ba2df61edb34ad 76
+  s_dcfdee2845fb20::t_7997f585daf0f2 308,311-312
+  s_dcfdee2845fb20::t_1752ad2a6eb3fe 144
+  s_dcfdee2845fb20::t_751e1ab25ad348 184-188
+ename_engine/src/stage/workflow.rs
+  s_dcfdee2845fb20::t_f7301318b85eb7 124-126
+docs/design/floating-origin.md
+  s_dcfdee2845fb20::t_779b4c7a8dea36 86-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "985482ac9c7ea249e9a4773bc2bf42b963b6ab0c",
+  "prompts": {},
+  "sessions": {
+    "s_dcfdee2845fb20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "00ad8add-1ac1-4866-b197-cea8026ac809",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
