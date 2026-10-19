@@ -6,15 +6,16 @@
 //! that spawned outside cell zero. The collider then sits a whole cell away from its body, and
 //! the center of mass and angular inertia derived from it are wrong for the life of the entity.
 //!
-//! Differences between two `GlobalTransform`s in one grid are cell-correct, so derive the
-//! collider's body-relative transform from those instead, in avian's convention: the offset in
-//! world units along the body's axes, the rotation relative to the body, and the collider's
-//! global scale (what avian builds `Collider::scale` from).
+//! So recompute it the way avian's own propagation does, which resets the accumulator at the
+//! rigid body and so never involves the cell: the body contributes only its scale accumulated
+//! from the root, and each entity below it composes translation, rotation and scale separately
+//! (componentwise scale, not a decomposed affine, which would shear under non-uniform scale).
 //!
-//! Only newly attached colliders need this. avian's own propagation resets the accumulator at
-//! the rigid body, so every value it writes is already cell-correct; the seeded one is wrong
-//! and sticks around because a collider parked under its body never changes `Transform` or
-//! `ChildOf` to trigger a rewrite.
+//! Only newly attached colliders need this. Every value avian's propagation writes is already
+//! cell-correct; the seeded one is wrong and sticks around because a collider parked under its
+//! body never changes `Transform` or `ChildOf` to trigger a rewrite.
+//!
+//! [`CellCoord`]: big_space::prelude::CellCoord
 
 use avian3d::prelude::{ColliderOf, ColliderTransform, Rotation};
 use bevy::prelude::*;
@@ -22,23 +23,49 @@ use bevy::prelude::*;
 /// Matches a collider on the tick it gains its transform or its body, whichever lands last.
 type NewlyAttached = Or<(Added<ColliderTransform>, Added<ColliderOf>)>;
 
-pub(crate) fn collider_transform_from_global(
-    mut colliders: Query<(&mut ColliderTransform, &GlobalTransform, &ColliderOf), NewlyAttached>,
-    bodies: Query<&GlobalTransform>,
+pub(crate) fn collider_transform_from_hierarchy(
+    mut colliders: Query<(Entity, &mut ColliderTransform, &ColliderOf), NewlyAttached>,
+    hierarchy: Query<(&Transform, Option<&ChildOf>)>,
 ) {
-    for (mut collider_transform, collider_global, collider_of) in &mut colliders {
-        let Ok(body_global) = bodies.get(collider_of.body) else {
+    for (collider, mut collider_transform, collider_of) in &mut colliders {
+        let Some(computed) = body_relative(collider, collider_of.body, &hierarchy) else {
             continue;
         };
-
-        let (_, body_rotation, body_translation) = body_global.to_scale_rotation_translation();
-        let (scale, rotation, translation) = collider_global.to_scale_rotation_translation();
-        let to_body = body_rotation.inverse();
-
-        collider_transform.set_if_neq(ColliderTransform {
-            translation: to_body * (translation - body_translation),
-            rotation: Rotation::from(to_body * rotation),
-            scale,
-        });
+        collider_transform.set_if_neq(computed);
     }
+}
+
+/// avian's propagation from `body` down to `collider`, or `None` if `collider` is not below
+/// `body` through entities with a `Transform`.
+fn body_relative(
+    collider: Entity,
+    body: Entity,
+    hierarchy: &Query<(&Transform, Option<&ChildOf>)>,
+) -> Option<ColliderTransform> {
+    let mut below_body = Vec::new();
+    let mut current = collider;
+    while current != body {
+        let (transform, child_of) = hierarchy.get(current).ok()?;
+        below_body.push(*transform);
+        current = child_of?.parent();
+    }
+
+    let mut scale = Vec3::ONE;
+    let mut ancestor = Some(body);
+    while let Some(entity) = ancestor {
+        let (transform, child_of) = hierarchy.get(entity).ok()?;
+        scale = transform.scale * scale;
+        ancestor = child_of.map(ChildOf::parent);
+    }
+
+    let mut accumulated = ColliderTransform { scale, ..default() };
+    for transform in below_body.into_iter().rev() {
+        let child = ColliderTransform::from(transform);
+        accumulated = ColliderTransform {
+            translation: accumulated.transform_point(child.translation),
+            rotation: Rotation(accumulated.rotation.0 * child.rotation.0),
+            scale: accumulated.scale * child.scale,
+        };
+    }
+    Some(accumulated)
 }

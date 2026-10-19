@@ -9,10 +9,7 @@ use avian3d::{
     physics_transform::{PhysicsTransformConfig, PhysicsTransformSystems},
     prelude::PhysicsSystems,
 };
-use bevy::{prelude::*, transform::TransformSystems};
-use big_space::prelude::BigSpaceSystems;
-
-use crate::bigspace::GridSystems;
+use bevy::prelude::*;
 
 /// Adds avian3d, and replaces its transform propagation before the step and its
 /// `position_to_transform` writeback after it with grid-aware versions: bodies keep every tick of
@@ -45,12 +42,8 @@ impl Plugin for PhysicsIntegrationPlugin {
             )
             .add_systems(
                 PostUpdate,
-                // `BigSpacePlugin` orders `GridSystems::Recentered` the same way; repeated here so
-                // an app without it (a headless test) cannot read unpropagated transforms.
-                collider_grid_transform::collider_transform_from_global
-                    .in_set(GridSystems::Recentered)
-                    .after(BigSpaceSystems::RecenterLargeTransforms)
-                    .after(TransformSystems::Propagate),
+                // Reads only local `Transform`s, so it needs no ordering against propagation.
+                collider_grid_transform::collider_transform_from_hierarchy,
             );
     }
 }

@@ -866,3 +866,52 @@ fn a_body_switched_to_static_mid_frame_stops_where_it_is() {
         scene.assert_pose_agrees(body, context);
     });
 }
+
+#[test]
+fn a_child_collider_under_a_non_uniformly_scaled_body_matches_avians_propagation() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    scene.settle();
+    let root = scene.root;
+    let cell = scene.origin_cell() + CellCoord::new(1, 0, -1);
+    let tilt = Quat::from_rotation_z(std::f32::consts::FRAC_PI_4);
+    scene.at_tick(2, move |world| {
+        let body = world
+            .spawn((
+                ChildOf(root),
+                cell,
+                Transform::from_xyz(3.0, 1.0, -2.0).with_scale(Vec3::new(2.0, 1.0, 1.0)),
+                RigidBody::Static,
+            ))
+            .id();
+        world.spawn((
+            Name::new("tilted collider"),
+            ChildOf(body),
+            Transform::from_xyz(1.0, 0.0, 0.0).with_rotation(tilt),
+            Collider::cuboid(1.0, 1.0, 1.0),
+        ));
+    });
+    scene.run_past_action(4);
+
+    let world = scene.app.world_mut();
+    let (collider, collider_transform, collider_of) = world
+        .query::<(Entity, &ColliderTransform, &avian3d::prelude::ColliderOf)>()
+        .single(world)
+        .unwrap();
+    let (collider_transform, body) = (*collider_transform, collider_of.body);
+    assert!(
+        (collider_transform.scale - Vec3::new(2.0, 1.0, 1.0)).length() < 1e-5
+            && (collider_transform.translation - Vec3::new(2.0, 0.0, 0.0)).length() < 1e-5
+            && collider_transform.rotation.0.dot(tilt).abs() > 1.0 - 1e-6,
+        "{collider_transform:?}"
+    );
+
+    // A body edit makes avian propagate again; it must agree with the value already there.
+    world.get_mut::<Transform>(body).unwrap().set_changed();
+    scene.tick();
+    let after = *scene
+        .app
+        .world()
+        .get::<ColliderTransform>(collider)
+        .unwrap();
+    assert_eq!(after, collider_transform);
+}
