@@ -99,15 +99,22 @@ fn sync_grid_attachment(
     followers: Query<(Entity, Option<&ChildOf>, Option<&FrozenOrigin>), With<GridFollowCamera>>,
     grid_roots: Query<(Entity, Option<&Transform>), (With<BigSpace>, With<Grid>)>,
     grids: Query<&Grid>,
-    hierarchy: Query<(&Transform, Option<&CellCoord>, Option<&ChildOf>)>,
+    hierarchy: Query<HierarchyLink>,
 ) {
     for (camera, child_of, frozen) in &followers {
         let current_grid = child_of
             .map(ChildOf::parent)
             .filter(|parent| grids.contains(*parent));
-        let Some((position, rotation)) = true_pose(camera, &hierarchy, &grids) else {
-            continue;
-        };
+        let (position, rotation) = true_pose(
+            camera,
+            |entity| query_link(&hierarchy, entity),
+            |grid, cell, transform| {
+                grids
+                    .get(grid)
+                    .ok()
+                    .map(|grid| grid.grid_position(cell, transform))
+            },
+        );
 
         // Root grids are ranked as if they shared one absolute frame, placed by their own
         // `Transform` (zero without one); a stage's root grid usually sits at zero. The current
@@ -232,29 +239,65 @@ fn elect_floating_origins(
     }
 }
 
-/// Where `entity` is, composed from local `Transform`s up its hierarchy: in the frame of the first
-/// grid above it (through that grid's cell), or absolute when no grid is above it. Never
+/// One entity's place in its hierarchy, as [`true_pose`] reads it.
+struct Link {
+    transform: Transform,
+    cell: CellCoord,
+    parent: Option<Entity>,
+}
+
+/// Where `entity` is, composed from local `Transform`s up its whole hierarchy, through every
+/// enclosing grid's cell: in the root grid's frame, or absolute when no grid is above it. Never
 /// `GlobalTransform`: inside a grid it is floating-origin-relative, and for an entity moved or
 /// detached earlier this frame it is stale until propagation runs.
+///
+/// `link` reads an entity (a missing `Transform` is the identity, as on big_space's root bundle,
+/// and a missing `CellCoord` is cell zero); `grid_position` places a cell and transform in a
+/// grid, or returns `None` if the entity is not a grid.
 fn true_pose(
     entity: Entity,
-    hierarchy: &Query<(&Transform, Option<&CellCoord>, Option<&ChildOf>)>,
-    grids: &Query<&Grid>,
-) -> Option<(Vec3, Quat)> {
+    link: impl Fn(Entity) -> Link,
+    grid_position: impl Fn(Entity, &CellCoord, &Transform) -> Option<Vec3>,
+) -> (Vec3, Quat) {
     let mut pose = Transform::IDENTITY;
     let mut current = entity;
     loop {
-        let (transform, cell, child_of) = hierarchy.get(current).ok()?;
-        pose = *transform * pose;
-        let Some(parent) = child_of.map(ChildOf::parent) else {
-            return Some((pose.translation, pose.rotation));
+        let Link {
+            transform,
+            cell,
+            parent,
+        } = link(current);
+        pose = transform * pose;
+        let Some(parent) = parent else {
+            return (pose.translation, pose.rotation);
         };
-        if let Ok(grid) = grids.get(parent) {
-            let cell = cell.copied().unwrap_or_default();
-            let translation = grid.grid_position(&cell, &pose);
-            return Some((translation, pose.rotation));
+        if let Some(translation) = grid_position(parent, &cell, &pose) {
+            pose.translation = translation;
         }
         current = parent;
+    }
+}
+
+type HierarchyLink = (
+    Option<&'static Transform>,
+    Option<&'static CellCoord>,
+    Option<&'static ChildOf>,
+);
+
+fn query_link(hierarchy: &Query<HierarchyLink>, entity: Entity) -> Link {
+    let (transform, cell, child_of) = hierarchy.get(entity).unwrap_or_default();
+    Link {
+        transform: transform.copied().unwrap_or_default(),
+        cell: cell.copied().unwrap_or_default(),
+        parent: child_of.map(ChildOf::parent),
+    }
+}
+
+fn world_link(world: &DeferredWorld, entity: Entity) -> Link {
+    Link {
+        transform: world.get::<Transform>(entity).copied().unwrap_or_default(),
+        cell: world.get::<CellCoord>(entity).copied().unwrap_or_default(),
+        parent: world.get::<ChildOf>(entity).map(ChildOf::parent),
     }
 }
 
@@ -276,9 +319,9 @@ fn rescue_followers_on_grid_remove(remove: On<Remove, Grid>, world: DeferredWorl
 /// still-readable `Grid`. Structural changes are deferred, so the followers also leave the grid's
 /// `Children` right away: a despawn's cascade then skips them, and a second call finds none.
 fn rescue_grid_followers(mut world: DeferredWorld, grid_entity: Entity) {
-    let Some(grid) = world.get::<Grid>(grid_entity).cloned() else {
+    if !world.entity(grid_entity).contains::<Grid>() {
         return;
-    };
+    }
     let Some(children) = world.get::<Children>(grid_entity) else {
         return;
     };
@@ -300,17 +343,17 @@ fn rescue_grid_followers(mut world: DeferredWorld, grid_entity: Entity) {
     }
 
     for follower in followers {
-        // Every follower is out of `Children` now, so each must lose its `ChildOf` too; one
-        // parented by hand without a cell is in cell zero.
-        let cell = world
-            .get::<CellCoord>(follower)
-            .copied()
-            .unwrap_or_default();
-        let local = world
-            .get::<Transform>(follower)
-            .copied()
-            .unwrap_or_default();
-        let position = grid.grid_position(&cell, &local);
+        // Every follower is out of `Children` now, so each must lose its `ChildOf` too. The
+        // still-readable `Grid`, and any grids enclosing it, place it in the root grid's frame.
+        let (position, rotation) = true_pose(
+            follower,
+            |entity| world_link(&world, entity),
+            |grid, cell, transform| {
+                world
+                    .get::<Grid>(grid)
+                    .map(|grid| grid.grid_position(cell, transform))
+            },
+        );
         let frozen_anchor = world
             .get::<FrozenOrigin>(follower)
             .map(|FrozenOrigin(a)| *a);
@@ -325,7 +368,7 @@ fn rescue_grid_followers(mut world: DeferredWorld, grid_entity: Entity) {
             .try_remove::<(CellCoord, FloatingOrigin, FrozenOrigin, ChildOf)>()
             .try_insert(Transform {
                 translation: position,
-                rotation: local.rotation,
+                rotation,
                 scale: Vec3::ONE,
             });
     }

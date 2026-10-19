@@ -547,3 +547,83 @@ fn a_second_root_grid_at_the_same_place_does_not_take_an_attached_camera() {
         Some(grid)
     );
 }
+
+/// A root grid, a sub-grid in its cell (2, 0, 0) offset and turned 90° about Y, and a camera in
+/// the sub-grid's cell (1, 0, 0) at local X = 5. With the default 2000 m cells the camera sits at
+/// (4010, 0, -2005) in the root grid's frame, facing the sub-grid's way.
+fn camera_in_sub_grid(app: &mut App) -> (Entity, Entity, Entity) {
+    let root = app
+        .world_mut()
+        .spawn(big_space::bundles::BigSpaceRootBundle::default())
+        .id();
+    let sub_grid = app
+        .world_mut()
+        .spawn((
+            Grid::default(),
+            CellCoord::new(2, 0, 0),
+            Transform::from_xyz(10.0, 0.0, 0.0)
+                .with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
+            ChildOf(root),
+        ))
+        .id();
+    let camera = app
+        .world_mut()
+        .spawn((
+            GridFollowCamera,
+            CellCoord::new(1, 0, 0),
+            Transform::from_xyz(5.0, 0.0, 0.0),
+            ChildOf(sub_grid),
+        ))
+        .id();
+    (root, sub_grid, camera)
+}
+
+const IN_SUB_GRID: Vec3 = Vec3::new(4010.0, 0.0, -2005.0);
+
+fn assert_rotation_y_quarter(rotation: Quat) {
+    let expected = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+    assert!(
+        rotation.dot(expected).abs() > 1.0 - 1e-6,
+        "rotation {rotation:?}"
+    );
+}
+
+#[test]
+fn despawning_a_sub_grid_places_its_camera_in_the_root_grids_frame() {
+    let mut app = test_app();
+    let (_, sub_grid, camera) = camera_in_sub_grid(&mut app);
+
+    app.world_mut().despawn(sub_grid);
+
+    let entity = app.world().entity(camera);
+    assert!(!entity.contains::<ChildOf>());
+    let transform = entity.get::<Transform>().unwrap();
+    assert!(
+        transform.translation.distance(IN_SUB_GRID) < 0.01,
+        "rescued at {}",
+        transform.translation
+    );
+    assert_rotation_y_quarter(transform.rotation);
+}
+
+#[test]
+fn a_camera_in_a_sub_grid_moves_to_the_root_grid_at_the_same_place() {
+    let mut app = test_app();
+    let (root, _, camera) = camera_in_sub_grid(&mut app);
+    app.update();
+    app.update();
+
+    let entity = app.world().entity(camera);
+    assert_eq!(entity.get::<ChildOf>().map(ChildOf::parent), Some(root));
+    let transform = entity.get::<Transform>().unwrap();
+    let position = app
+        .world()
+        .get::<Grid>(root)
+        .unwrap()
+        .grid_position(entity.get::<CellCoord>().unwrap(), transform);
+    assert!(
+        position.distance(IN_SUB_GRID) < 0.01,
+        "attached at {position}"
+    );
+    assert_rotation_y_quarter(transform.rotation);
+}
