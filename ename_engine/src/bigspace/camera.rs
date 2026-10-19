@@ -9,6 +9,8 @@ use bevy::prelude::*;
 use big_space::camera::camera_controller;
 use big_space::prelude::{BigSpace, BigSpaceCameraController, CellCoord, FloatingOrigin, Grid};
 
+use super::grid::{contents_frame, place_in_parent};
+
 /// Attach this to any entity that should automatically become a child of the nearest root
 /// `Grid` (an entity carrying both `BigSpace` and `Grid`) when one exists, and a parentless root
 /// entity when none does. Always carries a [`BigSpaceCameraController`] so its
@@ -248,30 +250,46 @@ type LinkData = (
 /// Never `GlobalTransform`: inside a grid it is floating-origin-relative, and for an entity moved
 /// or detached earlier this frame it is stale until propagation runs.
 fn true_pose(entity: Entity, links: &Query<LinkData>) -> (Vec3, Quat) {
-    let mut pose = Transform::IDENTITY;
-    let mut current = entity;
-    loop {
-        let (transform, cell, child_of, grid) = links.get(current).unwrap_or_default();
-        let parent = child_of.map(ChildOf::parent);
-        let parent_grid = parent
-            .and_then(|parent| links.get(parent).ok())
-            .and_then(|(.., grid)| grid);
-        if grid.is_some() && parent_grid.is_none() {
-            return (pose.translation, pose.rotation);
-        }
-        let mut local = transform.copied().unwrap_or_default();
-        if grid.is_some() {
-            local.scale = Vec3::ONE;
-        }
-        pose = local * pose;
-        let Some(parent) = parent else {
-            return (pose.translation, pose.rotation);
-        };
-        if let Some(parent_grid) = parent_grid {
-            pose.translation = parent_grid.grid_position(&cell.copied().unwrap_or_default(), &pose);
-        }
-        current = parent;
-    }
+    let pose = own_pose(entity, links);
+    (pose.translation, pose.rotation)
+}
+
+/// [`true_pose`] with scale, built top-down with big_space's per-level rule
+/// ([`place_in_parent`], [`contents_frame`]).
+fn own_pose(entity: Entity, links: &Query<LinkData>) -> Transform {
+    let (transform, cell, child_of, _) = links.get(entity).unwrap_or_default();
+    let local = transform.copied().unwrap_or_default();
+    let Some(parent) = child_of.map(ChildOf::parent) else {
+        return local;
+    };
+    let (frame, parent_grid) = contents_of(parent, links);
+    place_in_parent(
+        &frame,
+        parent_grid,
+        &cell.copied().unwrap_or_default(),
+        &local,
+    )
+}
+
+/// The frame `entity`'s children are placed in, and its `Grid` if it is one. The outermost grid's
+/// contents frame is the root frame itself.
+fn contents_of<'a>(entity: Entity, links: &'a Query<LinkData>) -> (Transform, Option<&'a Grid>) {
+    let grid = links.get(entity).ok().and_then(|(.., grid)| grid);
+    let outermost_grid = grid.is_some()
+        && !std::iter::successors(Some(entity), |&current| {
+            links
+                .get(current)
+                .ok()
+                .and_then(|(_, _, child_of, _)| child_of.map(ChildOf::parent))
+        })
+        .skip(1)
+        .any(|ancestor| links.get(ancestor).is_ok_and(|(.., grid)| grid.is_some()));
+    let frame = if outermost_grid {
+        Transform::IDENTITY
+    } else {
+        contents_frame(own_pose(entity, links), grid.is_some())
+    };
+    (frame, grid)
 }
 
 /// Rescues a despawning grid's followers. `Despawn` observers run before any `on_despawn` hook,

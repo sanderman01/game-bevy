@@ -1295,3 +1295,120 @@ fn a_body_with_its_own_grid_places_its_colliders_through_their_cells() {
         "deck",
     );
 }
+
+/// A kinematic body with a 10 m grid of its own, outside cell zero of the root grid.
+fn spawn_ship(scene: &mut Scene, scale: f32) -> Entity {
+    let root = scene.root;
+    let cell = scene.origin_cell() + CellCoord::new(1, 0, -1);
+    scene
+        .app
+        .world_mut()
+        .spawn((
+            Name::new("ship"),
+            ChildOf(root),
+            cell,
+            Transform::from_xyz(3.0, 1.0, -2.0)
+                .with_rotation(Quat::from_rotation_y(0.4))
+                .with_scale(Vec3::splat(scale)),
+            Grid::new(10.0, 0.0),
+            RigidBody::Kinematic,
+        ))
+        .id()
+}
+
+#[test]
+fn moving_a_holder_to_another_cell_of_a_ship_grid_moves_its_collider() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    let ship = spawn_ship(&mut scene, 1.0);
+    let world = scene.app.world_mut();
+    let holder = world
+        .spawn((
+            ChildOf(ship),
+            CellCoord::new(1, 0, 0),
+            Transform::from_xyz(2.0, 0.0, 0.0),
+        ))
+        .id();
+    world.spawn((
+        Name::new("held"),
+        ChildOf(holder),
+        Transform::from_xyz(3.0, 0.0, 0.0),
+        Collider::sphere(0.5),
+    ));
+    scene.settle();
+    let (before, ..) = collider_state(&mut scene, "held");
+    assert_collider_transform(before, Vec3::new(15.0, 0.0, 0.0), Vec3::ONE, "before");
+
+    scene.at_tick(2, move |world| {
+        *world.get_mut::<CellCoord>(holder).unwrap() = CellCoord::new(2, 0, 0);
+    });
+    scene.run_past_action(2);
+
+    let (after, ..) = collider_state(&mut scene, "held");
+    assert_collider_transform(after, Vec3::new(25.0, 0.0, 0.0), Vec3::ONE, "after");
+}
+
+#[test]
+fn a_collider_in_a_sub_grid_of_a_ship_is_placed_through_both_grids() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    scene.settle();
+    let root = scene.root;
+    let cell = scene.origin_cell() + CellCoord::new(1, 0, -1);
+    scene.at_tick(2, move |world| {
+        let ship = world
+            .spawn((
+                ChildOf(root),
+                cell,
+                Transform::from_xyz(3.0, 1.0, -2.0),
+                Grid::new(10.0, 0.0),
+                RigidBody::Kinematic,
+            ))
+            .id();
+        let deck = world
+            .spawn((
+                ChildOf(ship),
+                CellCoord::new(1, 0, 0),
+                Transform::from_xyz(2.0, 0.0, 0.0)
+                    .with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)),
+                Grid::new(5.0, 0.0),
+            ))
+            .id();
+        world.spawn((
+            Name::new("on deck"),
+            ChildOf(deck),
+            CellCoord::new(1, 0, 0),
+            Transform::from_xyz(1.0, 0.0, 0.0),
+            Collider::sphere(0.5),
+        ));
+    });
+    scene.run_past_action(3);
+
+    // The deck turns its 6 m along X into 6 m along Y.
+    let (collider_transform, ..) = collider_state(&mut scene, "on deck");
+    assert_collider_transform(
+        collider_transform,
+        Vec3::new(12.0, 6.0, 0.0),
+        Vec3::ONE,
+        "on deck",
+    );
+}
+
+#[test]
+fn a_scaled_ship_grids_own_collider_takes_its_scale() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    let ship = spawn_ship(&mut scene, 2.0);
+    scene
+        .app
+        .world_mut()
+        .entity_mut(ship)
+        .insert(Collider::sphere(0.5));
+    scene.settle();
+
+    let (collider_transform, ..) = collider_state(&mut scene, "ship");
+    assert_collider_transform(collider_transform, Vec3::ZERO, Vec3::splat(2.0), "ship");
+    let aabb = scene.app.world().get::<ColliderAabb>(ship).unwrap();
+    let half_extent = (aabb.max - aabb.min) / 2.0;
+    assert!(
+        (half_extent - Vec3::ONE).length() < 0.05,
+        "AABB half extent {half_extent}"
+    );
+}

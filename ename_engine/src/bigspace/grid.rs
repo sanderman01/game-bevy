@@ -40,6 +40,38 @@ pub fn on_grid_looking_to(
     (coord, tr)
 }
 
+/// One level of big_space's propagation: the pose of an entity with `local` (and `cell`, read only
+/// when its parent is a grid) in a frame where its parent's contents frame is `parent`. A grid
+/// places its contents through their cell; any other parent multiplies as usual, scale included.
+pub fn place_in_parent(
+    parent: &Transform,
+    parent_grid: Option<&Grid>,
+    cell: &CellCoord,
+    local: &Transform,
+) -> Transform {
+    let step = match parent_grid {
+        Some(grid) => Transform {
+            translation: grid.grid_position(cell, local),
+            ..*local
+        },
+        None => *local,
+    };
+    *parent * step
+}
+
+/// The frame an entity's children are placed in, given its own pose: that pose, except that a
+/// grid's own scale applies to the grid entity but never to its contents.
+pub fn contents_frame(own: Transform, is_grid: bool) -> Transform {
+    if is_grid {
+        Transform {
+            scale: Vec3::ONE,
+            ..own
+        }
+    } else {
+        own
+    }
+}
+
 /// Where an entity is, in metres, in the frame of the nearest grid at or above it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AbsolutePosition {
