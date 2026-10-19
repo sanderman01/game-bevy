@@ -1,0 +1,24 @@
+ename_engine/tests/bigspace_camera.rs
+  s_dcfdee2845fb20::t_c0187a2b6f11ff 554-556,560-563,571-572,665-668
+  s_dcfdee2845fb20::t_478bb35dba0fc6 637-664,669-681
+ename_engine/src/bigspace/camera.rs
+  s_dcfdee2845fb20::t_4943d6b23478bf 102,108,110-114
+  s_dcfdee2845fb20::t_1f6acafb1941a3 6
+  s_dcfdee2845fb20::t_ab0db4c3b048a9 235-240,242-246,248-250,254-266,270-271,281-282,287-288,291-303,305-338,340-351
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "04e77c7daef256fb81fbdc95f262b35c07480c04",
+  "prompts": {},
+  "sessions": {
+    "s_dcfdee2845fb20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "00ad8add-1ac1-4866-b197-cea8026ac809",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
