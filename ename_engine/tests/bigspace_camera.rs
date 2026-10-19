@@ -434,3 +434,59 @@ fn wait_for_attachment(app: &mut App, camera: Entity, previous: Option<Entity>) 
     }
     panic!("the camera never attached to a new grid");
 }
+
+#[test]
+fn despawning_the_grid_of_a_follower_parented_without_a_cell_detaches_it() {
+    let mut app = test_app();
+    let grid = app
+        .world_mut()
+        .spawn(big_space::bundles::BigSpaceRootBundle::default())
+        .id();
+    // Parented by hand, before `sync_grid_attachment` has given it a cell.
+    let camera = app
+        .world_mut()
+        .spawn((
+            GridFollowCamera,
+            Transform::from_xyz(4.0, 0.0, 0.0),
+            ChildOf(grid),
+        ))
+        .id();
+
+    app.world_mut().despawn(grid);
+
+    let entity = app
+        .world()
+        .get_entity(camera)
+        .expect("the camera was despawned with its grid");
+    assert!(!entity.contains::<ChildOf>());
+    assert_eq!(
+        entity.get::<Transform>().unwrap().translation,
+        Vec3::new(4.0, 0.0, 0.0)
+    );
+}
+
+#[test]
+fn a_rescued_camera_attaches_to_the_root_grid_nearest_its_true_position() {
+    let mut app = test_app();
+    let (grid, camera) = attached_camera(&mut app);
+    app.world_mut().despawn(grid);
+
+    let near = app
+        .world_mut()
+        .spawn((
+            big_space::bundles::BigSpaceRootBundle::default(),
+            Transform::from_translation(FAR),
+        ))
+        .id();
+    app.world_mut().spawn((
+        big_space::bundles::BigSpaceRootBundle::default(),
+        Transform::default(),
+    ));
+    app.update();
+    app.update();
+
+    assert_eq!(
+        app.world().get::<ChildOf>(camera).map(ChildOf::parent),
+        Some(near)
+    );
+}

@@ -88,7 +88,6 @@ fn sync_grid_attachment(
     followers: Query<
         (
             Entity,
-            &GlobalTransform,
             &Transform,
             Option<&CellCoord>,
             Option<&ChildOf>,
@@ -97,7 +96,7 @@ fn sync_grid_attachment(
         With<GridFollowCamera>,
     >,
     #[allow(clippy::type_complexity)] grid_roots: Query<
-        (Entity, &GlobalTransform),
+        (Entity, Option<&Transform>),
         (With<big_space::prelude::BigSpace>, With<Grid>),
     >,
     grids: Query<&Grid>,
@@ -109,26 +108,10 @@ fn sync_grid_attachment(
         return;
     }
 
-    for (camera, camera_global, camera_local, cell, child_of, frozen) in &followers {
+    for (camera, camera_local, cell, child_of, frozen) in &followers {
         let current_grid = child_of
             .map(ChildOf::parent)
             .filter(|parent| grids.contains(*parent));
-
-        let nearest_grid = grid_roots
-            .iter()
-            .min_by(|(_, a), (_, b)| {
-                dist_sq(camera_global, a).total_cmp(&dist_sq(camera_global, b))
-            })
-            .map(|(entity, _)| entity);
-
-        if current_grid == nearest_grid {
-            continue;
-        }
-
-        if let Some(FrozenOrigin(anchor)) = frozen {
-            commands.entity(*anchor).despawn();
-            commands.entity(camera).remove::<FrozenOrigin>();
-        }
 
         // Resolve the true position through whichever frame is currently authoritative:
         // grid-relative if attached, or the plain `Transform` if parentless. Never
@@ -143,6 +126,24 @@ fn sync_grid_attachment(
             }
             None => (camera_local.translation, camera_local.rotation),
         };
+
+        // Ranked by where each root sits (its `Transform`, if it has one), for the same reason.
+        let distance_sq = |root: Option<&Transform>| {
+            position.distance_squared(root.map_or(Vec3::ZERO, |root| root.translation))
+        };
+        let nearest_grid = grid_roots
+            .iter()
+            .min_by(|(_, a), (_, b)| distance_sq(*a).total_cmp(&distance_sq(*b)))
+            .map(|(entity, _)| entity);
+
+        if current_grid == nearest_grid {
+            continue;
+        }
+
+        if let Some(FrozenOrigin(anchor)) = frozen {
+            commands.entity(*anchor).despawn();
+            commands.entity(camera).remove::<FrozenOrigin>();
+        }
 
         match nearest_grid {
             Some(grid_entity) => {
@@ -244,10 +245,6 @@ fn grid_relative_position(grid: &Grid, cell: CellCoord, local: &Transform) -> (V
     (grid.grid_position(&cell, local), local.rotation)
 }
 
-fn dist_sq(a: &GlobalTransform, b: &GlobalTransform) -> f32 {
-    a.translation().distance_squared(b.translation())
-}
-
 /// Rescues a despawning grid's followers. `Despawn` observers run before any `on_despawn` hook,
 /// so this gets to them before `Children::on_despawn` queues their despawn. That covers every
 /// despawn path: a direct one, a cascade from an ancestor (which reaches the grid through
@@ -290,12 +287,16 @@ fn rescue_grid_followers(mut world: DeferredWorld, grid_entity: Entity) {
     }
 
     for follower in followers {
-        let Some(cell) = world.get::<CellCoord>(follower).copied() else {
-            continue;
-        };
-        let local = *world
+        // Every follower is out of `Children` now, so each must lose its `ChildOf` too; one
+        // parented by hand without a cell is in cell zero.
+        let cell = world
+            .get::<CellCoord>(follower)
+            .copied()
+            .unwrap_or_default();
+        let local = world
             .get::<Transform>(follower)
-            .expect("CellCoord requires Transform");
+            .copied()
+            .unwrap_or_default();
         let position = grid.grid_position(&cell, &local);
         let frozen_anchor = world
             .get::<FrozenOrigin>(follower)
