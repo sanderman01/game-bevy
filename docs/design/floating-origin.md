@@ -103,3 +103,16 @@ finds no followers left.
 `sync_grid_attachment` reattaches the camera when a root grid appears. A camera detached earlier in
 the same frame still has a floating-origin-relative `GlobalTransform`, so a parentless camera's
 position is read from its `Transform`.
+
+## Physics in a recentering world
+
+avian works in floating-origin-relative coordinates: `Position` is copied from `GlobalTransform`
+before each step (`transform_to_position`) and the engine writes it back into the grid-relative
+`Transform` after (`physics::grid_writeback`), as an offset, so a body that big_space moved to
+another cell keeps its cell. avian's own propagation before the step is off because it ignores
+`CellCoord`; `physics::grid_propagate` replaces it, recomputing `GlobalTransform` from
+`Grid::global_transform` for bodies and colliders directly under a grid. big_space only
+propagates in `PostUpdate`, so without that a frame's second fixed tick would start every moving
+body from last frame's pose. An origin shift lands in `PostUpdate` too, and the first tick after it
+moves every `Position` into the new frame at once. A nested grid that moves within a frame is the
+known gap: its bodies get last frame's grid pose until the next propagation.
