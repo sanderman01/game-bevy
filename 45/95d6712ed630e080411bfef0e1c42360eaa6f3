@@ -1,0 +1,21 @@
+ename_editor/src/camera.rs
+  s_c1ffc6a968e705::t_daf6370889d493 376-377
+ename_editor/src/camera/stage_open_tests.rs
+  s_c1ffc6a968e705::t_31f6255e481a5c 105-106,135-144,146,148-157,160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4595d6712ed630e080411bfef0e1c42360eaa6f3",
+  "prompts": {},
+  "sessions": {
+    "s_c1ffc6a968e705": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "s_c1ffc6a968e705",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
