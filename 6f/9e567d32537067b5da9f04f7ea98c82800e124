@@ -1,0 +1,19 @@
+docs/design/floating-origin.md
+  s_d50a225d9d57ac::t_da2af34cf61624 106-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6f9e567d32537067b5da9f04f7ea98c82800e124",
+  "prompts": {},
+  "sessions": {
+    "s_d50a225d9d57ac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-abd88ef7075ef5290",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
