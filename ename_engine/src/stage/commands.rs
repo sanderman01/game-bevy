@@ -14,7 +14,10 @@
 use bevy::{platform::collections::HashMap, prelude::*};
 use ename_asset_alias::{ALIAS_SOURCE, ContentIndex};
 
-use super::{AssetRoot, SourcePath, StageFormats, StageId, StageLoading, StageMember, StageSource};
+use super::{
+    AssetRoot, SourcePath, StageFormats, StageId, StageLoading, StageMember, StageSource,
+    opening::{AwaitingReload, NestedContent, Opening},
+};
 
 /// Starts loading `path` (a plain asset path, or an `alias://`-prefixed URL) and spawns its
 /// container entity. Returns the container immediately -- loading is async, so the content is not
@@ -32,10 +35,13 @@ use super::{AssetRoot, SourcePath, StageFormats, StageId, StageLoading, StageMem
 /// Panics if no format is registered for `path` -- a missing format is a startup wiring bug, not
 /// a runtime condition to recover from. Callers taking a path from user input (the editor's file
 /// picker) must validate it against a registered `StageFormat` themselves before calling this.
-pub(super) fn spawn_stage_root(world: &mut World, path: &str) -> Entity {
+pub(super) fn spawn_stage_root(world: &mut World, path: &str, replaced_others: bool) -> Entity {
     let asset_server = world.resource::<AssetServer>().clone();
-    asset_server.reload(path.to_owned());
-    world.resource_scope(|world, formats: Mut<StageFormats>| {
+    // A file already loaded spawns from the cached copy first; the open waits for the reload.
+    let cached = asset_server
+        .get_path_id(path.to_owned())
+        .filter(|&id| asset_server.is_loaded(id));
+    let container = world.resource_scope(|world, formats: Mut<StageFormats>| {
         let format = if path.starts_with(&format!("{ALIAS_SOURCE}://")) {
             formats.default_format()
         } else {
@@ -46,8 +52,23 @@ pub(super) fn spawn_stage_root(world: &mut World, path: &str) -> Entity {
         let mut commands = world.commands();
         let container = format.spawn_root(&mut commands, &asset_server, path);
         world.flush();
+        let mut container_mut = world.entity_mut(container);
+        container_mut.insert(Opening {
+            replaced_others,
+            stage: None,
+        });
+        if let Some(cached) = cached {
+            container_mut.insert(AwaitingReload(cached));
+        }
         container
-    })
+    });
+    // After the container holds its handle: the reload task only reloads paths with a live handle,
+    // and the previous stage's may already be dropped. Only for a cached file: on one not loaded
+    // yet it would start a second load next to `spawn_root`'s.
+    if cached.is_some() {
+        asset_server.reload(path.to_owned());
+    }
+    container
 }
 
 /// The filesystem directory `AssetPlugin` reads assets from when `AssetPlugin::file_path` is left
@@ -99,7 +120,8 @@ pub(super) fn tag_stage_membership_on_ready(
     child_of: Query<(Entity, &ChildOf)>,
     ids: Query<&StageId>,
     membership: Query<&StageMember>,
-    containers: Query<(&SourcePath, Has<StageLoading>, Has<ReplacesStages>)>,
+    containers: Query<(&SourcePath, Option<&Opening>, Has<AwaitingReload>)>,
+    nested: Query<(), NestedContent>,
     content_index: Option<Res<ContentIndex>>,
     mut commands: Commands,
 ) {
@@ -108,9 +130,11 @@ pub(super) fn tag_stage_membership_on_ready(
         return;
     }
 
-    let mut opened = None;
-    let stage_id = if let Ok((SourcePath(path), loading, replaces)) = containers.get(container) {
-        commands.entity(container).remove::<StageLoading>();
+    let stage_id = if let Ok((SourcePath(path), opening, awaiting)) = containers.get(container) {
+        // A spawn of the cached copy is not the end of the load; see `opening`.
+        if !awaiting {
+            commands.entity(container).remove::<StageLoading>();
+        }
         // Case 1: this container is a stage we opened ourselves. Its file's data is exactly one
         // top-level entity (the stage root), carrying the file's own StageId.
         let Ok(children) = children_of.get(container) else {
@@ -145,19 +169,17 @@ pub(super) fn tag_stage_membership_on_ready(
             // A loaded stage root must be top-level; big_space validates floating origins
             // against the ultimate hierarchy ancestor, not this transient load container.
             .remove::<ChildOf>();
-        // Only the first spawn is an open; a hot reload respawns the same container, which no
-        // longer carries `StageLoading`.
-        if loading {
-            opened = Some(StageOpened {
-                root: *root,
-                id,
-                replaced_others: replaces,
+        if let Some(&opening) = opening {
+            commands.entity(container).insert(Opening {
+                stage: Some((*root, id)),
+                ..opening
             });
         }
         id
     } else if let Ok(&StageMember(id)) = membership.get(container) {
         // Case 2: nested content (e.g. a WorldAssetRoot-addressed model authored inside a stage)
         // that already belongs to a stage. Propagate that same membership to its new children.
+        commands.entity(container).remove::<StageLoading>();
         id
     } else {
         // Not stage-related content at all.
@@ -175,32 +197,16 @@ pub(super) fn tag_stage_membership_on_ready(
         },
     );
     for &child in children {
-        tag_recursive(child, stage_id, &children_of, &child_map, &mut commands);
-    }
-    // Queued after the tagging, so observers see the stage's entities as its members.
-    if let Some(opened) = opened {
-        commands.trigger(opened);
+        tag_recursive(
+            child,
+            stage_id,
+            &children_of,
+            &child_map,
+            &nested,
+            &mut commands,
+        );
     }
 }
-
-/// A stage was opened: one loaded by [`open_stage`](super::open_stage) or
-/// [`open_stage_additive`](super::open_stage_additive) finished its first spawn, or
-/// [`new_stage`](super::new_stage) created one. Not triggered when a loaded stage's file is
-/// hot-reloaded and Bevy respawns it, so a reaction to this sees only deliberate opens.
-#[derive(Event, Debug, Clone, Copy)]
-pub struct StageOpened {
-    /// The stage's root entity.
-    pub root: Entity,
-    pub id: StageId,
-    /// Whether opening it unloaded every other stage ([`open_stage`](super::open_stage),
-    /// [`new_stage`](super::new_stage)), rather than adding to them.
-    pub replaced_others: bool,
-}
-
-/// On a load container whose stage replaces every other ([`open_stage`](super::open_stage)), so
-/// [`StageOpened`] can say so.
-#[derive(Component, Clone, Copy, Debug)]
-pub(super) struct ReplacesStages;
 
 /// Rebuilds `Children` for everything a `WorldInstanceReady` event just finished spawning.
 ///
@@ -247,17 +253,22 @@ fn tag_recursive(
     id: StageId,
     children_of: &Query<&Children>,
     child_map: &HashMap<Entity, Vec<Entity>>,
+    nested: &Query<(), NestedContent>,
     commands: &mut Commands,
 ) {
     commands.entity(entity).insert(StageMember(id));
-    if let Ok(children) = children_of.get(entity) {
-        for &child in children {
-            tag_recursive(child, id, children_of, child_map, commands);
-        }
-    } else if let Some(children) = child_map.get(&entity) {
-        for &child in children {
-            tag_recursive(child, id, children_of, child_map, commands);
-        }
+    // Nested content spawns later; the stage is not open until it has (see `opening`).
+    if nested.contains(entity) {
+        commands.entity(entity).insert(StageLoading);
+    }
+    let children = children_of
+        .get(entity)
+        .map(|children| &children[..])
+        .ok()
+        .or_else(|| child_map.get(&entity).map(Vec::as_slice))
+        .unwrap_or_default();
+    for &child in children {
+        tag_recursive(child, id, children_of, child_map, nested, commands);
     }
 }
 

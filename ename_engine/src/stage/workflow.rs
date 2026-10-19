@@ -8,9 +8,8 @@ use uuid::Uuid;
 
 use super::{
     AssetRoot, SaveStageError, SourcePath, StageId, StageMember, StageSource,
-    commands::{
-        ReplacesStages, StageOpened, resolve_source_path, spawn_stage_root, write_stage_file,
-    },
+    commands::{resolve_source_path, spawn_stage_root, write_stage_file},
+    opening::StageOpened,
 };
 
 /// Unloads every currently loaded stage and spawns a fresh, empty one. Returns its root entity,
@@ -34,9 +33,7 @@ pub fn new_stage(world: &mut World) -> Entity {
 /// `alias://` URL). Returns the load's container entity immediately -- loading is async.
 pub fn open_stage(world: &mut World, path: &str) -> Entity {
     despawn_stage_members(world, None);
-    let container = spawn_stage_root(world, path);
-    world.entity_mut(container).insert(ReplacesStages);
-    container
+    spawn_stage_root(world, path, true)
 }
 
 /// Starts loading `path`, leaving every other currently loaded stage in place. If `path` is
@@ -49,7 +46,7 @@ pub fn open_stage_additive(world: &mut World, path: &str) -> Entity {
         Some(id) => despawn_stage_members(world, Some(id)),
         None => despawn_pending_container(world, path),
     }
-    spawn_stage_root(world, path)
+    spawn_stage_root(world, path, false)
 }
 
 /// Saves the stage identified by `id` back to wherever it was last loaded from or saved to.

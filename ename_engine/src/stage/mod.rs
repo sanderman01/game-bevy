@@ -12,15 +12,17 @@ mod dynamic_world_format;
 mod format;
 mod identity;
 mod loading;
+mod opening;
 mod workflow;
 
-pub use commands::{SaveStageError, StageOpened, write_stage_file};
+pub use commands::{SaveStageError, write_stage_file};
 pub use dynamic_world_format::DynamicWorldFormat;
 pub use format::{StageAppExt, StageFormat, StageFormatError, StageFormats};
 pub use identity::{AssetRoot, SourcePath, StageId, StageLoading, StageMember, StageSource};
+pub use opening::StageOpened;
 pub use workflow::{new_stage, open_stage, open_stage_additive, save_stage, stage_of};
 
-use bevy::prelude::*;
+use bevy::{app::SceneSpawnerSystems, prelude::*};
 
 use crate::wait::SettleAppExt;
 
@@ -40,6 +42,15 @@ impl Plugin for StagePlugin {
             .register_type_data::<std::ops::Range<f32>, bevy::reflect::ReflectDeserialize>()
             .add_observer(commands::tag_stage_membership_on_ready)
             .add_observer(commands::relink_loaded_children)
+            // Around the spawner: a reload that arrived must be known before it respawns a stage,
+            // and a stage is open once its spawns (and their tagging) are in.
+            .add_systems(
+                SpawnScene,
+                (
+                    opening::finish_reloads.before(SceneSpawnerSystems::WorldInstanceSpawn),
+                    opening::announce_opened_stages.after(SceneSpawnerSystems::WorldInstanceSpawn),
+                ),
+            )
             .register_stage_format(DynamicWorldFormat)
             .register_settle_probe("stage", loading::stage_probe);
     }

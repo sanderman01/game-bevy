@@ -426,3 +426,106 @@ fn stage_opened_tells_an_exclusive_open_from_an_additive_one_and_skips_hot_reloa
     let fresh_id = *app.world().get::<StageId>(fresh).unwrap();
     assert_eq!(opened(&app)[2], (fresh_id, true));
 }
+
+/// Writes a stage whose root holds a child named `label`, and, with `nested`, a child loading
+/// that stage file as nested content.
+fn write_labelled_stage(
+    app: &App,
+    dir: &std::path::Path,
+    name: &str,
+    id: StageId,
+    label: &str,
+    nested: Option<&str>,
+) {
+    let mut world = World::new();
+    let root = world.spawn(id).id();
+    world.spawn((Name::new(label.to_owned()), ChildOf(root)));
+    if let Some(nested) = nested {
+        let handle = app
+            .world()
+            .resource::<AssetServer>()
+            .load::<bevy::world_serialization::DynamicWorld>(nested.to_owned());
+        world.spawn((
+            bevy::world_serialization::DynamicWorldRoot(handle),
+            ChildOf(root),
+        ));
+    }
+    let registry = app.world().resource::<AppTypeRegistry>().read();
+    let dynamic_world = DynamicWorldBuilder::from_world(&world, &registry)
+        .extract_entities(world.iter_entities().map(|entity| entity.id()))
+        .build();
+    std::fs::write(dir.join(name), dynamic_world.serialize(&registry).unwrap()).unwrap();
+}
+
+/// The names in the world when each [`StageOpened`] was triggered.
+#[derive(Resource, Default)]
+struct NamesAtOpen(Vec<Vec<String>>);
+
+fn record_names_at_open(_: On<StageOpened>, names: Query<&Name>, mut seen: ResMut<NamesAtOpen>) {
+    let mut names: Vec<String> = names.iter().map(|name| name.as_str().to_owned()).collect();
+    names.sort();
+    seen.0.push(names);
+}
+
+#[test]
+fn reopening_a_changed_file_announces_the_file_as_it_is_now() {
+    let dir = temp_stage_dir("reopen_changed");
+    let mut app = test_app(&dir);
+    app.init_resource::<NamesAtOpen>()
+        .add_observer(record_names_at_open);
+    let id = StageId(Uuid::new_v4());
+    write_labelled_stage(&app, &dir, "changing.scn.ron", id, "before", None);
+    open_stage(app.world_mut(), "changing.scn.ron");
+    wait_until(&mut app, |world| {
+        world.resource::<NamesAtOpen>().0.len() == 1
+    });
+
+    write_labelled_stage(&app, &dir, "changing.scn.ron", id, "after", None);
+    open_stage(app.world_mut(), "changing.scn.ron");
+    wait_until(&mut app, |world| {
+        world.resource::<NamesAtOpen>().0.len() == 2
+    });
+    for _ in 0..10 {
+        app.update();
+    }
+
+    let seen = &app.world().resource::<NamesAtOpen>().0;
+    assert_eq!(seen.len(), 2, "one announcement per open");
+    assert_eq!(seen[1], ["after", "changing"]);
+}
+
+#[test]
+fn a_stage_is_announced_once_its_nested_content_has_spawned() {
+    let dir = temp_stage_dir("nested_content");
+    let mut app = test_app(&dir);
+    app.init_resource::<NamesAtOpen>()
+        .add_observer(record_names_at_open);
+    write_labelled_stage(
+        &app,
+        &dir,
+        "inner.scn.ron",
+        StageId(Uuid::new_v4()),
+        "inner",
+        None,
+    );
+    write_labelled_stage(
+        &app,
+        &dir,
+        "outer.scn.ron",
+        StageId(Uuid::new_v4()),
+        "outer",
+        Some("inner.scn.ron"),
+    );
+
+    open_stage(app.world_mut(), "outer.scn.ron");
+    wait_until(&mut app, |world| {
+        world.resource::<NamesAtOpen>().0.len() == 1
+    });
+
+    let seen = &app.world().resource::<NamesAtOpen>().0;
+    assert!(
+        seen[0].iter().any(|name| name == "inner"),
+        "announced before the nested content spawned: {:?}",
+        seen[0]
+    );
+}
