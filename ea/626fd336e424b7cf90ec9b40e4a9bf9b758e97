@@ -1,0 +1,29 @@
+ename_engine/src/physics/collider_grid_transform.rs
+  s_dcfdee2845fb20::t_b0101b42b59f39 28-32
+  s_dcfdee2845fb20::t_abd92e27718c47 71-72
+  s_dcfdee2845fb20::t_437090fe682a23 14-27,34,36-59,61,64-68,73-75,77-79,81-82,85-91,93,97-112,115,117-135,137,139-146,148,150,152-153,156-180,182-185
+  s_dcfdee2845fb20::t_56264240cad9e8 116
+  s_dcfdee2845fb20::t_2b1743f9275fad 149
+  s_dcfdee2845fb20::t_8a4daf64f9a0d3 151
+  s_dcfdee2845fb20::t_0a7f5b66eccb03 155
+ename_engine/src/physics/mod.rs
+  s_dcfdee2845fb20::t_ca90f84551dbe3 47-48
+ename_engine/tests/physics_grid.rs
+  s_dcfdee2845fb20::t_8e3334eb944c3f 1071-1197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ea626fd336e424b7cf90ec9b40e4a9bf9b758e97",
+  "prompts": {},
+  "sessions": {
+    "s_dcfdee2845fb20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "00ad8add-1ac1-4866-b197-cea8026ac809",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
