@@ -490,3 +490,60 @@ fn a_rescued_camera_attaches_to_the_root_grid_nearest_its_true_position() {
         Some(near)
     );
 }
+
+#[test]
+fn a_camera_under_an_ordinary_parent_attaches_at_its_composed_pose() {
+    let mut app = test_app();
+    let parent_rotation = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+    let parent = app
+        .world_mut()
+        .spawn(Transform::from_xyz(100.0, 0.0, 0.0).with_rotation(parent_rotation))
+        .id();
+    let camera = app
+        .world_mut()
+        .spawn((
+            GridFollowCamera,
+            Transform::from_xyz(5.0, 0.0, 0.0),
+            ChildOf(parent),
+        ))
+        .id();
+    app.update();
+    let grid = app
+        .world_mut()
+        .spawn(big_space::bundles::BigSpaceRootBundle::default())
+        .id();
+    app.update();
+    app.update();
+
+    let entity = app.world().entity(camera);
+    assert_eq!(entity.get::<ChildOf>().map(ChildOf::parent), Some(grid));
+    let transform = entity.get::<Transform>().unwrap();
+    let position = app
+        .world()
+        .get::<Grid>(grid)
+        .unwrap()
+        .grid_position(entity.get::<CellCoord>().unwrap(), transform);
+    let expected = Vec3::new(100.0, 0.0, 0.0) + parent_rotation * Vec3::new(5.0, 0.0, 0.0);
+    assert!(position.distance(expected) < 1e-3, "attached at {position}");
+    assert!(
+        // Not `angle_between`, which is NaN for equal rotations once rounding pushes the dot
+        // product past 1.
+        transform.rotation.dot(parent_rotation).abs() > 1.0 - 1e-6,
+        "rotation {:?}",
+        transform.rotation
+    );
+}
+
+#[test]
+fn a_second_root_grid_at_the_same_place_does_not_take_an_attached_camera() {
+    let mut app = test_app();
+    let (grid, camera) = attached_camera(&mut app);
+    app.world_mut()
+        .spawn(big_space::bundles::BigSpaceRootBundle::default());
+    app.update();
+    app.update();
+    assert_eq!(
+        app.world().get::<ChildOf>(camera).map(ChildOf::parent),
+        Some(grid)
+    );
+}

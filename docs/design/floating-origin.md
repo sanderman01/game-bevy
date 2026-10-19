@@ -101,8 +101,10 @@ too late: it runs after the cascade has been queued. On despawn the `Remove` obs
 finds no followers left.
 
 `sync_grid_attachment` reattaches the camera when a root grid appears. A camera detached earlier in
-the same frame still has a floating-origin-relative `GlobalTransform`, so a parentless camera's
-position is read from its `Transform`.
+the same frame still has a floating-origin-relative `GlobalTransform`, so the camera's position is
+composed from local `Transform`s up its hierarchy, through the first grid's cell if there is one.
+Root grids are ranked by distance from that position to each root's own `Transform`, as if all
+roots shared one absolute frame; on a tie the camera stays on its current grid.
 
 ## Physics in a recentering world
 

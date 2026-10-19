@@ -69,7 +69,10 @@ impl Plugin for GridFollowPlugin {
             // `TransformSystems::Propagate` -- and `find_floating_origin` runs inside that set.
             .add_systems(
                 PostUpdate,
-                (sync_grid_attachment, elect_floating_origins)
+                (
+                    sync_grid_attachment.run_if(grid_attachment_may_change),
+                    elect_floating_origins,
+                )
                     .chain()
                     .before(GridCameraSystems::Apply),
             )
@@ -78,63 +81,51 @@ impl Plugin for GridFollowPlugin {
     }
 }
 
-/// Re-evaluates every [`GridFollowCamera`]'s attachment only when the set of root grids
-/// (entities with both `BigSpace` and `Grid`) has changed, or a follower has just spawned --
-/// not every frame, to avoid churn from continuously recomputing "nearest grid" while nothing has
-/// actually changed.
+/// Whether the set of root grids (entities with both `BigSpace` and `Grid`) changed or a follower
+/// just spawned. [`sync_grid_attachment`] runs only then, not every frame, to avoid churn from
+/// continuously recomputing "nearest grid" while nothing has actually changed.
+fn grid_attachment_may_change(
+    new_roots: Query<(), (Added<BigSpace>, With<Grid>)>,
+    new_followers: Query<(), Added<GridFollowCamera>>,
+    removed_grids: RemovedComponents<Grid>,
+) -> bool {
+    !(new_roots.is_empty() && new_followers.is_empty() && removed_grids.is_empty())
+}
+
+/// Re-evaluates every [`GridFollowCamera`]'s attachment.
 #[allow(clippy::type_complexity)]
 fn sync_grid_attachment(
     mut commands: Commands,
-    followers: Query<
-        (
-            Entity,
-            &Transform,
-            Option<&CellCoord>,
-            Option<&ChildOf>,
-            Option<&FrozenOrigin>,
-        ),
-        With<GridFollowCamera>,
-    >,
-    #[allow(clippy::type_complexity)] grid_roots: Query<
-        (Entity, Option<&Transform>),
-        (With<big_space::prelude::BigSpace>, With<Grid>),
-    >,
+    followers: Query<(Entity, Option<&ChildOf>, Option<&FrozenOrigin>), With<GridFollowCamera>>,
+    grid_roots: Query<(Entity, Option<&Transform>), (With<BigSpace>, With<Grid>)>,
     grids: Query<&Grid>,
-    new_roots: Query<Entity, (Added<big_space::prelude::BigSpace>, With<Grid>)>,
-    new_followers: Query<Entity, Added<GridFollowCamera>>,
-    removed_grids: RemovedComponents<Grid>,
+    hierarchy: Query<(&Transform, Option<&CellCoord>, Option<&ChildOf>)>,
 ) {
-    if new_roots.is_empty() && new_followers.is_empty() && removed_grids.is_empty() {
-        return;
-    }
-
-    for (camera, camera_local, cell, child_of, frozen) in &followers {
+    for (camera, child_of, frozen) in &followers {
         let current_grid = child_of
             .map(ChildOf::parent)
             .filter(|parent| grids.contains(*parent));
-
-        // Resolve the true position through whichever frame is currently authoritative:
-        // grid-relative if attached, or the plain `Transform` if parentless. Never
-        // `GlobalTransform`: it is floating-origin-relative while attached, and still is for a
-        // follower its grid's despawn detached earlier this frame, before propagation ran.
-        let (position, rotation) = match current_grid {
-            Some(grid_entity) => {
-                let grid = grids
-                    .get(grid_entity)
-                    .expect("current_grid always has Grid");
-                grid_relative_position(grid, cell.copied().unwrap_or_default(), camera_local)
-            }
-            None => (camera_local.translation, camera_local.rotation),
+        let Some((position, rotation)) = true_pose(camera, &hierarchy, &grids) else {
+            continue;
         };
 
-        // Ranked by where each root sits (its `Transform`, if it has one), for the same reason.
+        // Root grids are ranked as if they shared one absolute frame, placed by their own
+        // `Transform` (zero without one); a stage's root grid usually sits at zero. The current
+        // grid is kept on a tie, so a second root appearing at the same place does not steal the
+        // follower.
         let distance_sq = |root: Option<&Transform>| {
             position.distance_squared(root.map_or(Vec3::ZERO, |root| root.translation))
         };
+        let current_distance = current_grid
+            .and_then(|grid| grid_roots.get(grid).ok())
+            .map(|(_, root)| distance_sq(root));
         let nearest_grid = grid_roots
             .iter()
-            .min_by(|(_, a), (_, b)| distance_sq(*a).total_cmp(&distance_sq(*b)))
-            .map(|(entity, _)| entity);
+            .map(|(entity, root)| (entity, distance_sq(root)))
+            .min_by(|(_, a), (_, b)| a.total_cmp(b))
+            .filter(|&(_, nearest)| current_distance.is_none_or(|current| nearest < current))
+            .map(|(entity, _)| entity)
+            .or(current_distance.and(current_grid));
 
         if current_grid == nearest_grid {
             continue;
@@ -241,8 +232,30 @@ fn elect_floating_origins(
     }
 }
 
-fn grid_relative_position(grid: &Grid, cell: CellCoord, local: &Transform) -> (Vec3, Quat) {
-    (grid.grid_position(&cell, local), local.rotation)
+/// Where `entity` is, composed from local `Transform`s up its hierarchy: in the frame of the first
+/// grid above it (through that grid's cell), or absolute when no grid is above it. Never
+/// `GlobalTransform`: inside a grid it is floating-origin-relative, and for an entity moved or
+/// detached earlier this frame it is stale until propagation runs.
+fn true_pose(
+    entity: Entity,
+    hierarchy: &Query<(&Transform, Option<&CellCoord>, Option<&ChildOf>)>,
+    grids: &Query<&Grid>,
+) -> Option<(Vec3, Quat)> {
+    let mut pose = Transform::IDENTITY;
+    let mut current = entity;
+    loop {
+        let (transform, cell, child_of) = hierarchy.get(current).ok()?;
+        pose = *transform * pose;
+        let Some(parent) = child_of.map(ChildOf::parent) else {
+            return Some((pose.translation, pose.rotation));
+        };
+        if let Ok(grid) = grids.get(parent) {
+            let cell = cell.copied().unwrap_or_default();
+            let translation = grid.grid_position(&cell, &pose);
+            return Some((translation, pose.rotation));
+        }
+        current = parent;
+    }
 }
 
 /// Rescues a despawning grid's followers. `Despawn` observers run before any `on_despawn` hook,
