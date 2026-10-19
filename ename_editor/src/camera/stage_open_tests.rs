@@ -102,6 +102,8 @@ fn app(dir: &Path) -> App {
             settings: default(),
         },
     ))
+    .init_resource::<Opened>()
+    .add_observer(count_opened)
     .register_type::<MainCamera>()
     .register_type::<Camera>()
     .insert_resource(AssetRoot(dir.to_owned()))
@@ -130,19 +132,32 @@ fn stage_root(app: &mut App, name: &str) -> Option<Entity> {
         .map(|(entity, _)| entity)
 }
 
-/// Opens `name` with `open` and updates until it has loaded and the camera has settled.
+/// How many `StageOpened` events have fired.
+#[derive(Resource, Default)]
+struct Opened(usize);
+
+fn count_opened(_: On<StageOpened>, mut opened: ResMut<Opened>) {
+    opened.0 += 1;
+}
+
+/// Opens `name` with `open`, updates until its `StageOpened` has fired (nested content included),
+/// within ten seconds, then lets the camera settle.
 fn open(app: &mut App, name: &str, open: fn(&mut World, &str) -> Entity) -> Entity {
+    let before = app.world().resource::<Opened>().0;
     open(app.world_mut(), name);
-    for _ in 0..200 {
+    let start = std::time::Instant::now();
+    while app.world().resource::<Opened>().0 == before {
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "{name} was never announced"
+        );
         app.update();
-        if let Some(root) = stage_root(app, name) {
-            for _ in 0..10 {
-                app.update();
-            }
-            return root;
-        }
+        std::thread::sleep(Duration::from_millis(1));
     }
-    panic!("{name} never loaded");
+    for _ in 0..3 {
+        app.update();
+    }
+    stage_root(app, name).expect("an announced stage has a root")
 }
 
 /// The camera's parent grid, if any, and pose: in that grid's frame, or absolute.

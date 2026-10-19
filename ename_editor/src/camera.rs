@@ -373,7 +373,8 @@ fn stage_main_camera(world: &mut World, id: StageId) -> Option<Entity> {
     cameras.sort();
     if cameras.len() > 1 {
         warn!(
-            "the opened stage has {} Main Cameras; the editor camera starts at the lowest entity id",
+            "the opened stage has {} Main Cameras; the editor camera starts at the one with \
+             the lowest entity id",
             cameras.len()
         );
     }
