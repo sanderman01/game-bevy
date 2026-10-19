@@ -244,12 +244,11 @@ type LinkData = (
 /// Where `entity` is in its root grid's frame, composed the way big_space propagates: local
 /// `Transform`s compose as affines, as Bevy's propagation does, a grid places its contents through
 /// their cell and contributes only its rotation and translation (never its scale), and the root
-/// grid's own `Transform` and
-/// anything above it are ignored. Absolute when no grid is above `entity`. A missing `Transform`
-/// is the identity and a missing `CellCoord` is cell zero.
+/// grid's own `Transform` and anything above it are ignored. Absolute when no grid is above
+/// `entity`. A missing `Transform` is the identity and a missing `CellCoord` is cell zero.
 ///
-/// Never `GlobalTransform`: inside a grid it is floating-origin-relative, and for an entity moved
-/// or detached earlier this frame it is stale until propagation runs.
+/// Never the propagated `GlobalTransform`: inside a grid it is floating-origin-relative, and for
+/// an entity moved or detached earlier this frame it is stale until propagation runs.
 fn true_pose(entity: Entity, links: &Query<LinkData>) -> (Vec3, Quat) {
     let (_, rotation, translation) = own_pose(entity, links).to_scale_rotation_translation();
     (translation, rotation)
