@@ -6,8 +6,6 @@ use bevy::prelude::*;
 use ename_asset_alias::ContentIndex;
 use uuid::Uuid;
 
-use crate::bigspace::{GridFollowCamera, detach_from_grid};
-
 use super::{
     AssetRoot, SaveStageError, SourcePath, StageId, StageMember, StageSource,
     commands::{resolve_source_path, spawn_stage_root, write_stage_file},
@@ -123,52 +121,15 @@ fn despawn_pending_container(world: &mut World, path: &str) {
     despawn_all(world, stale);
 }
 
-/// Despawns every one of `entities`. A parent's despawn cascades to its children (Bevy's
-/// linked-spawn hierarchy relationship) with no interception point, so that cascade would also
-/// destroy an editor's always-present [`GridFollowCamera`] if one happened to be parented under a
-/// stage's `Grid` when the stage unloads -- rescuing any such descendant has to happen in a pass
-/// before the despawn loop below, not react to it afterward.
+/// Despawns every one of `entities`. A `GridFollowCamera` parented under a stage's `Grid` is not
+/// despawned with it: the grid's own `Despawn` observer detaches it first
+/// (`crate::bigspace::camera`).
 fn despawn_all(world: &mut World, entities: Vec<Entity>) {
-    rescue_grid_follow_camera_descendants(world, &entities);
     for entity in entities {
         // A parent's despawn cascades to its children (Bevy's linked-spawn hierarchy
         // relationship), so a descendant collected above may already be gone by its turn.
         if world.entities().contains(entity) {
             world.despawn(entity);
-        }
-    }
-}
-
-/// Detaches any `GridFollowCamera` whose ancestor chain includes one of `despawning`, before any
-/// of them are despawned -- despawning cascades to children immediately, with no interception
-/// point, so this must run *before* the despawn call, not react to it afterward.
-///
-/// Walks up from each `GridFollowCamera` (there are normally zero or one in the whole world)
-/// through its ancestors, rather than walking down into every entity about to be despawned -- the
-/// previous approach did a full descendant walk per despawned entity, O(n) work per entity for an
-/// O(n)-sized despawn set.
-fn rescue_grid_follow_camera_descendants(world: &mut World, despawning: &[Entity]) {
-    let despawn_set: bevy::platform::collections::HashSet<Entity> =
-        despawning.iter().copied().collect();
-    let followers: Vec<Entity> = world
-        .query_filtered::<Entity, With<GridFollowCamera>>()
-        .iter(world)
-        .collect();
-
-    let mut parents = world.query::<&ChildOf>();
-    for follower in followers {
-        let mut ancestor = follower;
-        let mut affected = false;
-        while let Ok(child_of) = parents.get(world, ancestor) {
-            let parent = child_of.parent();
-            if despawn_set.contains(&parent) {
-                affected = true;
-                break;
-            }
-            ancestor = parent;
-        }
-        if affected {
-            detach_from_grid(world, follower);
         }
     }
 }

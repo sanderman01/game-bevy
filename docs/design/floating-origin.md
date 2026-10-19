@@ -83,3 +83,23 @@ commands applied or it reads the previous frame's `ChildOf`/`CellCoord` and a st
 frame of `find_floating_origin` errors. `.chain()` is enough: `auto_insert_apply_deferred` defaults
 to true, so Bevy puts a sync point between two systems with an explicit order dependency when the
 earlier one defers. No hand-written `ApplyDeferred`.
+
+## When a grid goes away
+
+A `GridFollowCamera` is a child of its grid, so a grid's despawn would take the camera with it.
+Two observers on `Grid` rescue it instead, through one function: `On<Despawn, Grid>` and
+`On<Remove, Grid>`. Each reads the still-present `Grid` to place the camera at its world pose,
+takes it out of the grid's `Children`, and queues the detach (no `ChildOf` or `CellCoord`, a plain
+`Transform`, a frozen anchor despawned).
+
+The despawn observer is what makes every path safe. Bevy runs `Despawn` observers before any
+`on_despawn` hook, and it is `Children::on_despawn` that queues the despawn of every child, so the
+camera is out of the list before the cascade reads it. That covers a direct despawn, a cascade from
+an ancestor (which reaches the grid through commands), stage unload and a `DynamicWorld` hot reload,
+which despawns the instance and spawns it again. An `on_remove` hook or `Remove` observer alone is
+too late: it runs after the cascade has been queued. On despawn the `Remove` observer fires too and
+finds no followers left.
+
+`sync_grid_attachment` reattaches the camera when a root grid appears. A camera detached earlier in
+the same frame still has a floating-origin-relative `GlobalTransform`, so a parentless camera's
+position is read from its `Transform`.

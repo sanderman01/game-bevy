@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use big_space::plugin::BigSpaceDefaultPlugins;
-use big_space::prelude::{BigSpaceCameraController, CellCoord, FloatingOrigin, Grid};
+use big_space::prelude::{BigSpace, BigSpaceCameraController, CellCoord, FloatingOrigin, Grid};
 use ename_engine::bigspace::{
     BigSpacePlugin, FloatingOriginCandidate, FrozenOrigin, GridFollowCamera, set_origin_frozen,
 };
@@ -88,14 +88,12 @@ fn a_grid_follow_camera_detaches_when_its_grid_component_is_removed_preserving_p
     app.update();
     assert!(app.world().entity(camera).contains::<CellCoord>());
 
-    // Remove just the `Grid` component rather than despawning the entity: despawning would
-    // cascade-despawn the still-parented camera before the component hook gets a chance to
-    // react at all -- exactly the hazard Task 2's stage-unload rescue exists to avoid on the
-    // real despawn path. This test isolates the `on_remove` hook's reaction to Grid removal.
+    // Remove just the `Grid` component; the despawn path has tests of its own below.
     app.world_mut().entity_mut(grid).remove::<Grid>();
-    // No app.update() needed: the hook runs synchronously during remove()
+    // No app.update() needed: the observer's commands are applied when `remove` returns.
 
     let entity = app.world().entity(camera);
+    assert!(!entity.contains::<ChildOf>());
     assert!(!entity.contains::<CellCoord>());
     assert!(!entity.contains::<FloatingOrigin>());
     let transform = entity.get::<Transform>().unwrap();
@@ -228,4 +226,211 @@ fn a_candidate_that_is_not_grid_attached_never_holds_the_origin() {
     app.update();
 
     assert!(!holds_origin(&app, loose));
+}
+
+/// A camera attached to a fresh root grid, far enough out (cell 25 at the default 2000 m edge)
+/// that a position lost to the floating origin cannot pass by coincidence.
+fn attached_camera(app: &mut App) -> (Entity, Entity) {
+    let grid = app
+        .world_mut()
+        .spawn(big_space::bundles::BigSpaceRootBundle::default())
+        .id();
+    let camera = spawn_far_camera(app);
+    app.update();
+    app.update();
+    assert_eq!(
+        app.world().get::<ChildOf>(camera).map(ChildOf::parent),
+        Some(grid),
+        "the camera must be attached before the grid goes away"
+    );
+    (grid, camera)
+}
+
+const FAR: Vec3 = Vec3::new(50_000.0, 3.0, -7.0);
+
+fn spawn_far_camera(app: &mut App) -> Entity {
+    app.world_mut()
+        .spawn((
+            GridFollowCamera,
+            Transform::from_translation(FAR).with_rotation(Quat::from_rotation_y(0.5)),
+        ))
+        .id()
+}
+
+/// The camera survived its grid, detached, at its old world pose.
+fn assert_rescued(app: &App, camera: Entity) {
+    let entity = app
+        .world()
+        .get_entity(camera)
+        .expect("the camera was despawned with its grid");
+    assert!(!entity.contains::<ChildOf>());
+    assert!(!entity.contains::<CellCoord>());
+    assert!(!entity.contains::<FloatingOrigin>());
+    assert!(!entity.contains::<FrozenOrigin>());
+    let transform = entity.get::<Transform>().unwrap();
+    assert!(
+        transform.translation.distance(FAR) < 0.01,
+        "the camera moved to {}",
+        transform.translation
+    );
+    assert!(transform.rotation.angle_between(Quat::from_rotation_y(0.5)) < 1e-4);
+}
+
+/// A new root grid appears and the camera attaches to it at the same world position.
+fn assert_reattaches(app: &mut App, camera: Entity) {
+    let grid = app
+        .world_mut()
+        .spawn(big_space::bundles::BigSpaceRootBundle::default())
+        .id();
+    app.update();
+    app.update();
+    assert_attached_at_far(app, camera, grid);
+    assert!(app.world().entity(camera).contains::<FloatingOrigin>());
+}
+
+fn assert_attached_at_far(app: &App, camera: Entity, grid: Entity) {
+    let entity = app.world().entity(camera);
+    assert_eq!(entity.get::<ChildOf>().map(ChildOf::parent), Some(grid));
+    let position = app.world().get::<Grid>(grid).unwrap().grid_position(
+        entity.get::<CellCoord>().unwrap(),
+        entity.get::<Transform>().unwrap(),
+    );
+    assert!(
+        position.distance(FAR) < 0.01,
+        "the camera reattached at {position}"
+    );
+}
+
+#[test]
+fn despawning_the_grid_detaches_its_camera_instead_of_despawning_it() {
+    let mut app = test_app();
+    let (grid, camera) = attached_camera(&mut app);
+
+    app.world_mut().despawn(grid);
+
+    assert_rescued(&app, camera);
+    app.update();
+    assert_rescued(&app, camera);
+    assert_reattaches(&mut app, camera);
+}
+
+#[test]
+fn despawning_the_grid_through_commands_detaches_its_camera() {
+    let mut app = test_app();
+    let (grid, camera) = attached_camera(&mut app);
+
+    app.world_mut().commands().entity(grid).despawn();
+    app.world_mut().flush();
+
+    assert_rescued(&app, camera);
+    assert_reattaches(&mut app, camera);
+}
+
+#[test]
+fn despawning_the_grids_ancestor_detaches_its_camera() {
+    let mut app = test_app();
+    let container = app.world_mut().spawn(Transform::default()).id();
+    let grid = app
+        .world_mut()
+        .spawn((
+            big_space::bundles::BigSpaceRootBundle::default(),
+            ChildOf(container),
+        ))
+        .id();
+    let camera = spawn_far_camera(&mut app);
+    app.update();
+    app.update();
+    assert_eq!(
+        app.world().get::<ChildOf>(camera).map(ChildOf::parent),
+        Some(grid)
+    );
+
+    app.world_mut().despawn(container);
+
+    assert!(app.world().get_entity(grid).is_err());
+    assert_rescued(&app, camera);
+    assert_reattaches(&mut app, camera);
+}
+
+#[test]
+fn despawning_the_grid_of_a_frozen_camera_detaches_it_and_drops_the_anchor() {
+    let mut app = test_app();
+    let (grid, camera) = attached_camera(&mut app);
+    set_origin_frozen(app.world_mut(), camera, true);
+    let FrozenOrigin(anchor) = *app.world().get::<FrozenOrigin>(camera).unwrap();
+
+    app.world_mut().despawn(grid);
+
+    assert!(app.world().get_entity(anchor).is_err());
+    assert_rescued(&app, camera);
+    assert_reattaches(&mut app, camera);
+}
+
+#[test]
+fn removing_the_grid_component_detaches_the_camera_and_it_reattaches_to_a_new_grid() {
+    let mut app = test_app();
+    let (grid, camera) = attached_camera(&mut app);
+
+    app.world_mut().entity_mut(grid).remove::<Grid>();
+
+    assert_rescued(&app, camera);
+    assert_reattaches(&mut app, camera);
+}
+
+/// What a stage file edit does in the editor: Bevy's hot reload despawns the instance of the
+/// modified `DynamicWorld`, root grid included, and spawns it again.
+#[test]
+fn hot_reloading_the_grids_dynamic_world_moves_the_camera_to_the_new_grid() {
+    use bevy::world_serialization::{
+        DynamicWorld, DynamicWorldBuilder, DynamicWorldRoot, WorldSerializationPlugin,
+    };
+
+    let mut app = test_app();
+    app.add_plugins((AssetPlugin::default(), WorldSerializationPlugin));
+
+    let mut source = World::new();
+    let root = source
+        .spawn((BigSpace::default(), Grid::default(), Transform::default()))
+        .id();
+    let dynamic_world = {
+        let registry = app.world().resource::<AppTypeRegistry>().read();
+        DynamicWorldBuilder::from_world(&source, &registry)
+            .extract_entity(root)
+            .build()
+    };
+    let handle = app
+        .world_mut()
+        .resource_mut::<Assets<DynamicWorld>>()
+        .add(dynamic_world);
+    app.world_mut().spawn(DynamicWorldRoot(handle.clone()));
+    let camera = spawn_far_camera(&mut app);
+    let first_grid = wait_for_attachment(&mut app, camera, None);
+    // The spawner ignores a `Modified` within three frames of the asset's `Added`.
+    for _ in 0..4 {
+        app.update();
+    }
+
+    // Marks the asset modified, as a file watcher's reload does.
+    app.world_mut()
+        .resource_mut::<Assets<DynamicWorld>>()
+        .get_mut(&handle)
+        .unwrap()
+        .into_inner();
+    let second_grid = wait_for_attachment(&mut app, camera, Some(first_grid));
+
+    assert!(app.world().get_entity(first_grid).is_err());
+    assert_attached_at_far(&app, camera, second_grid);
+}
+
+/// Updates until `camera` is attached to a grid other than `previous`, and returns that grid.
+fn wait_for_attachment(app: &mut App, camera: Entity, previous: Option<Entity>) -> Entity {
+    for _ in 0..20 {
+        app.update();
+        if let Some(parent) = app.world().get::<ChildOf>(camera).map(ChildOf::parent)
+            && Some(parent) != previous
+        {
+            return parent;
+        }
+    }
+    panic!("the camera never attached to a new grid");
 }

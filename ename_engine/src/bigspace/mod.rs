@@ -12,8 +12,7 @@ pub use big_space::camera::BigSpaceCameraInput;
 pub use big_space::plugin::BigSpaceDefaultPlugins;
 pub use big_space::prelude::{BigSpace, BigSpaceCameraController, CellCoord, Grid, Grids};
 pub use camera::{
-    FloatingOriginCandidate, FrozenOrigin, GridCameraSystems, GridFollowCamera, detach_from_grid,
-    set_origin_frozen,
+    FloatingOriginCandidate, FrozenOrigin, GridCameraSystems, GridFollowCamera, set_origin_frozen,
 };
 
 /// Ordering points for work that depends on big_space having finished with an entity.

@@ -227,13 +227,11 @@ fn the_newest_placement_wins() {
 /// What closing a stage does to the editor camera: rescued off the grid, the grid and everything
 /// under it (the orbit pivot included) despawned. Then the stage opens again.
 fn reopen_stage(app: &mut App) {
-    let camera = editor_camera(app);
     let root = app
         .world_mut()
         .query_filtered::<Entity, With<BigSpace>>()
         .single(app.world())
         .unwrap();
-    ename_engine::bigspace::detach_from_grid(app.world_mut(), camera);
     app.world_mut().despawn(root);
     app.update();
     app.world_mut().spawn((

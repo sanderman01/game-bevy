@@ -2,7 +2,7 @@
 //! `FloatingOrigin` while one exists, and living parentless with a plain `Transform` when none
 //! does. See `docs/superpowers/plans/2026-09-15-editor-scene-camera.md`.
 
-use bevy::ecs::lifecycle::HookContext;
+use bevy::ecs::relationship::{RelationshipSourceCollection, RelationshipTarget};
 use bevy::ecs::world::DeferredWorld;
 use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
@@ -72,10 +72,9 @@ impl Plugin for GridFollowPlugin {
                 (sync_grid_attachment, elect_floating_origins)
                     .chain()
                     .before(GridCameraSystems::Apply),
-            );
-        app.world_mut()
-            .register_component_hooks::<Grid>()
-            .on_remove(rescue_children_on_grid_removed);
+            )
+            .add_observer(rescue_followers_on_grid_despawn)
+            .add_observer(rescue_followers_on_grid_remove);
     }
 }
 
@@ -132,10 +131,9 @@ fn sync_grid_attachment(
         }
 
         // Resolve the true position through whichever frame is currently authoritative:
-        // grid-relative if attached (never `GlobalTransform`, which is floating-origin-relative
-        // and reads as "near the origin" if this entity currently *is* the floating origin), or
-        // the plain `Transform` if already parentless (where `GlobalTransform` trivially equals
-        // it, since there is no ancestor chain).
+        // grid-relative if attached, or the plain `Transform` if parentless. Never
+        // `GlobalTransform`: it is floating-origin-relative while attached, and still is for a
+        // follower its grid's despawn detached earlier this frame, before propagation ran.
         let (position, rotation) = match current_grid {
             Some(grid_entity) => {
                 let grid = grids
@@ -143,7 +141,7 @@ fn sync_grid_attachment(
                     .expect("current_grid always has Grid");
                 grid_relative_position(grid, cell.copied().unwrap_or_default(), camera_local)
             }
-            None => (camera_global.translation(), camera_global.rotation()),
+            None => (camera_local.translation, camera_local.rotation),
         };
 
         match nearest_grid {
@@ -183,11 +181,11 @@ fn sync_grid_attachment(
 /// it, and a root with no candidate gets none -- the same state a detached camera already
 /// produced. This is the only place `FloatingOrigin` is *granted*.
 ///
-/// It is not the only place it is taken away. [`detach_from_grid`], the `Grid`-removal hook and
-/// [`set_origin_frozen`] all take `&mut World` and are expected to have landed by the time they
-/// return, so they strip (or move) the marker themselves rather than leave the world holding a
-/// stale origin for a frame. Each leaves the world in a state this system then agrees with, so the
-/// two never fight.
+/// It is not the only place it is taken away. [`set_origin_frozen`] takes `&mut World` and is
+/// expected to have landed by the time it returns, and a grid's loss detaches its followers
+/// outside this system's schedule (`rescue_grid_followers`), so both strip (or move) the marker
+/// themselves rather than leave the world holding a stale origin for a frame. Each leaves the
+/// world in a state this system then agrees with, so the two never fight.
 ///
 /// Both ways of breaking the invariant are logged by `BigSpace::find_floating_origin` every frame,
 /// but they are not equally bad: a missing origin stops propagation for that space, while a
@@ -250,18 +248,24 @@ fn dist_sq(a: &GlobalTransform, b: &GlobalTransform) -> f32 {
     a.translation().distance_squared(b.translation())
 }
 
-/// Runs when a `Grid` component is explicitly removed via `remove::<Grid>()` while the `Grid`
-/// component is still present and readable. `RemovedComponents` only observes this a frame later,
-/// by which point the `Grid`'s data is already gone. Detaches any `GridFollowCamera` children
-/// immediately, using this still-live `Grid` to compute their correct world positions via
-/// `Grid::grid_position` synchronously, deferring only structural changes (remove/insert) via
-/// `Commands`.
-///
-/// Note: when a Grid entity is despawned (not just `.remove::<Grid>()`), its `Children`'s
-/// cascade-despawn runs before this hook, leaving no children to rescue. Task 2's explicit
-/// `detach_from_grid` call in stage unload handles that path and must remain in place.
-fn rescue_children_on_grid_removed(mut world: DeferredWorld, context: HookContext) {
-    let grid_entity = context.entity;
+/// Rescues a despawning grid's followers. `Despawn` observers run before any `on_despawn` hook,
+/// so this gets to them before `Children::on_despawn` queues their despawn. That covers every
+/// despawn path: a direct one, a cascade from an ancestor (which reaches the grid through
+/// commands), stage unload and a `DynamicWorld` hot reload alike.
+fn rescue_followers_on_grid_despawn(despawn: On<Despawn, Grid>, world: DeferredWorld) {
+    rescue_grid_followers(world, despawn.entity);
+}
+
+/// Rescues the followers of a grid that loses its `Grid` component. Also fires on despawn, after
+/// [`rescue_followers_on_grid_despawn`] has already taken the followers, so it finds none.
+fn rescue_followers_on_grid_remove(remove: On<Remove, Grid>, world: DeferredWorld) {
+    rescue_grid_followers(world, remove.entity);
+}
+
+/// Detaches every [`GridFollowCamera`] child of `grid_entity`, placing it where it was through the
+/// still-readable `Grid`. Structural changes are deferred, so the followers also leave the grid's
+/// `Children` right away: a despawn's cascade then skips them, and a second call finds none.
+fn rescue_grid_followers(mut world: DeferredWorld, grid_entity: Entity) {
     let Some(grid) = world.get::<Grid>(grid_entity).cloned() else {
         return;
     };
@@ -272,6 +276,18 @@ fn rescue_children_on_grid_removed(mut world: DeferredWorld, context: HookContex
         .iter()
         .filter(|&child| world.get::<GridFollowCamera>(child).is_some())
         .collect();
+    if followers.is_empty() {
+        return;
+    }
+
+    // The follower keeps a `ChildOf` to the grid until the queued removal below; that removal's
+    // `on_discard` tolerates both the missing `Children` entry and a despawned parent.
+    let mut children = world
+        .get_mut::<Children>(grid_entity)
+        .expect("read just above");
+    for &follower in &followers {
+        RelationshipSourceCollection::remove(children.collection_mut_risky(), follower);
+    }
 
     for follower in followers {
         let Some(cell) = world.get::<CellCoord>(follower).copied() else {
@@ -289,10 +305,11 @@ fn rescue_children_on_grid_removed(mut world: DeferredWorld, context: HookContex
         if let Some(anchor) = frozen_anchor {
             commands.entity(anchor).try_despawn();
         }
+        // `try_`: a command queued ahead of these may despawn the follower itself.
         commands
             .entity(follower)
-            .remove::<(CellCoord, FloatingOrigin, FrozenOrigin, ChildOf)>()
-            .insert(Transform {
+            .try_remove::<(CellCoord, FloatingOrigin, FrozenOrigin, ChildOf)>()
+            .try_insert(Transform {
                 translation: position,
                 rotation: local.rotation,
                 scale: Vec3::ONE,
@@ -354,48 +371,4 @@ pub fn set_origin_frozen(world: &mut World, camera: Entity, frozen: bool) {
         }
         _ => {}
     }
-}
-
-/// Detaches `entity` from its current grid (if any -- a no-op otherwise), restoring a plain
-/// parentless `Transform` that preserves its true position. Resolved through the grid's own
-/// coordinate frame via [`Grid::grid_position`], not `GlobalTransform` (see
-/// [`sync_grid_attachment`]'s doc comment for why). If `entity` was frozen, its anchor is
-/// despawned first.
-///
-/// Used by [`sync_grid_attachment`]'s own detach case (inlined there, since that runs as a
-/// regular system with deferred `Commands`) and, directly, by stage unload
-/// (`ename_engine::stage::workflow`), which must rescue any `GridFollowCamera` descendant of a
-/// container it is about to despawn -- despawning cascades to children immediately, so a
-/// reactive system would react one frame too late.
-pub fn detach_from_grid(world: &mut World, entity: Entity) {
-    let Some(cell) = world.get::<CellCoord>(entity).copied() else {
-        return;
-    };
-    let local = *world
-        .get::<Transform>(entity)
-        .expect("CellCoord requires Transform");
-    let grid_entity = world
-        .get::<ChildOf>(entity)
-        .expect("a CellCoord entity is always a child of its Grid")
-        .parent();
-    let grid = world
-        .get::<Grid>(grid_entity)
-        .expect("a CellCoord's parent always has Grid")
-        .clone();
-    let position = grid.grid_position(&cell, &local);
-
-    if let Some(FrozenOrigin(anchor)) = world.get::<FrozenOrigin>(entity).copied()
-        && let Ok(anchor) = world.get_entity_mut(anchor)
-    {
-        anchor.despawn();
-    }
-
-    world
-        .entity_mut(entity)
-        .remove::<(CellCoord, FloatingOrigin, FrozenOrigin, ChildOf)>()
-        .insert(Transform {
-            translation: position,
-            rotation: local.rotation,
-            scale: Vec3::ONE,
-        });
 }
