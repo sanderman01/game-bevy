@@ -3,7 +3,7 @@
 //! does. See `docs/superpowers/plans/2026-09-15-editor-scene-camera.md`.
 
 use bevy::ecs::relationship::{RelationshipSourceCollection, RelationshipTarget};
-use bevy::ecs::world::DeferredWorld;
+use bevy::ecs::system::SystemParam;
 use bevy::platform::collections::{HashMap, HashSet};
 use bevy::prelude::*;
 use big_space::camera::camera_controller;
@@ -99,26 +99,19 @@ fn sync_grid_attachment(
     followers: Query<(Entity, Option<&ChildOf>, Option<&FrozenOrigin>), With<GridFollowCamera>>,
     grid_roots: Query<(Entity, Option<&Transform>), (With<BigSpace>, With<Grid>)>,
     grids: Query<&Grid>,
-    hierarchy: Query<HierarchyLink>,
+    links: Query<LinkData>,
 ) {
     for (camera, child_of, frozen) in &followers {
         let current_grid = child_of
             .map(ChildOf::parent)
             .filter(|parent| grids.contains(*parent));
-        let (position, rotation) = true_pose(
-            camera,
-            |entity| query_link(&hierarchy, entity),
-            |grid, cell, transform| {
-                grids
-                    .get(grid)
-                    .ok()
-                    .map(|grid| grid.grid_position(cell, transform))
-            },
-        );
+        let (position, rotation) = true_pose(camera, &links);
 
-        // Root grids are ranked as if they shared one absolute frame, placed by their own
-        // `Transform` (zero without one); a stage's root grid usually sits at zero. The current
-        // grid is kept on a tie, so a second root appearing at the same place does not steal the
+        // `position` is in the follower's root grid's frame, and the follower keeps those
+        // coordinates when it changes roots: big_space ignores a root grid's own `Transform`, so
+        // every root's contents share one frame. The roots' `Transform`s (zero without one) only
+        // rank them, as if placed in that frame; a stage's root grid has none. The current grid
+        // is kept on a tie, so a second root appearing at the same place does not steal the
         // follower.
         let distance_sq = |root: Option<&Transform>| {
             position.distance_squared(root.map_or(Vec3::ZERO, |root| root.translation))
@@ -239,65 +232,45 @@ fn elect_floating_origins(
     }
 }
 
-/// One entity's place in its hierarchy, as [`true_pose`] reads it.
-struct Link {
-    transform: Transform,
-    cell: CellCoord,
-    parent: Option<Entity>,
-}
-
-/// Where `entity` is, composed from local `Transform`s up its whole hierarchy, through every
-/// enclosing grid's cell: in the root grid's frame, or absolute when no grid is above it. Never
-/// `GlobalTransform`: inside a grid it is floating-origin-relative, and for an entity moved or
-/// detached earlier this frame it is stale until propagation runs.
-///
-/// `link` reads an entity (a missing `Transform` is the identity, as on big_space's root bundle,
-/// and a missing `CellCoord` is cell zero); `grid_position` places a cell and transform in a
-/// grid, or returns `None` if the entity is not a grid.
-fn true_pose(
-    entity: Entity,
-    link: impl Fn(Entity) -> Link,
-    grid_position: impl Fn(Entity, &CellCoord, &Transform) -> Option<Vec3>,
-) -> (Vec3, Quat) {
-    let mut pose = Transform::IDENTITY;
-    let mut current = entity;
-    loop {
-        let Link {
-            transform,
-            cell,
-            parent,
-        } = link(current);
-        pose = transform * pose;
-        let Some(parent) = parent else {
-            return (pose.translation, pose.rotation);
-        };
-        if let Some(translation) = grid_position(parent, &cell, &pose) {
-            pose.translation = translation;
-        }
-        current = parent;
-    }
-}
-
-type HierarchyLink = (
+type LinkData = (
     Option<&'static Transform>,
     Option<&'static CellCoord>,
     Option<&'static ChildOf>,
+    Option<&'static Grid>,
 );
 
-fn query_link(hierarchy: &Query<HierarchyLink>, entity: Entity) -> Link {
-    let (transform, cell, child_of) = hierarchy.get(entity).unwrap_or_default();
-    Link {
-        transform: transform.copied().unwrap_or_default(),
-        cell: cell.copied().unwrap_or_default(),
-        parent: child_of.map(ChildOf::parent),
-    }
-}
-
-fn world_link(world: &DeferredWorld, entity: Entity) -> Link {
-    Link {
-        transform: world.get::<Transform>(entity).copied().unwrap_or_default(),
-        cell: world.get::<CellCoord>(entity).copied().unwrap_or_default(),
-        parent: world.get::<ChildOf>(entity).map(ChildOf::parent),
+/// Where `entity` is in its root grid's frame, composed the way big_space propagates: local
+/// `Transform`s multiply as usual, a grid places its contents through their cell and contributes
+/// only its rotation and translation (never its scale), and the root grid's own `Transform` and
+/// anything above it are ignored. Absolute when no grid is above `entity`. A missing `Transform`
+/// is the identity and a missing `CellCoord` is cell zero.
+///
+/// Never `GlobalTransform`: inside a grid it is floating-origin-relative, and for an entity moved
+/// or detached earlier this frame it is stale until propagation runs.
+fn true_pose(entity: Entity, links: &Query<LinkData>) -> (Vec3, Quat) {
+    let mut pose = Transform::IDENTITY;
+    let mut current = entity;
+    loop {
+        let (transform, cell, child_of, grid) = links.get(current).unwrap_or_default();
+        let parent = child_of.map(ChildOf::parent);
+        let parent_grid = parent
+            .and_then(|parent| links.get(parent).ok())
+            .and_then(|(.., grid)| grid);
+        if grid.is_some() && parent_grid.is_none() {
+            return (pose.translation, pose.rotation);
+        }
+        let mut local = transform.copied().unwrap_or_default();
+        if grid.is_some() {
+            local.scale = Vec3::ONE;
+        }
+        pose = local * pose;
+        let Some(parent) = parent else {
+            return (pose.translation, pose.rotation);
+        };
+        if let Some(parent_grid) = parent_grid {
+            pose.translation = parent_grid.grid_position(&cell.copied().unwrap_or_default(), &pose);
+        }
+        current = parent;
     }
 }
 
@@ -305,72 +278,78 @@ fn world_link(world: &DeferredWorld, entity: Entity) -> Link {
 /// so this gets to them before `Children::on_despawn` queues their despawn. That covers every
 /// despawn path: a direct one, a cascade from an ancestor (which reaches the grid through
 /// commands), stage unload and a `DynamicWorld` hot reload alike.
-fn rescue_followers_on_grid_despawn(despawn: On<Despawn, Grid>, world: DeferredWorld) {
-    rescue_grid_followers(world, despawn.entity);
+fn rescue_followers_on_grid_despawn(despawn: On<Despawn, Grid>, mut rescue: FollowerRescue) {
+    rescue.below(despawn.entity);
 }
 
 /// Rescues the followers of a grid that loses its `Grid` component. Also fires on despawn, after
 /// [`rescue_followers_on_grid_despawn`] has already taken the followers, so it finds none.
-fn rescue_followers_on_grid_remove(remove: On<Remove, Grid>, world: DeferredWorld) {
-    rescue_grid_followers(world, remove.entity);
+fn rescue_followers_on_grid_remove(remove: On<Remove, Grid>, mut rescue: FollowerRescue) {
+    rescue.below(remove.entity);
 }
 
-/// Detaches every [`GridFollowCamera`] child of `grid_entity`, placing it where it was through the
-/// still-readable `Grid`. Structural changes are deferred, so the followers also leave the grid's
-/// `Children` right away: a despawn's cascade then skips them, and a second call finds none.
-fn rescue_grid_followers(mut world: DeferredWorld, grid_entity: Entity) {
-    if !world.entity(grid_entity).contains::<Grid>() {
-        return;
-    }
-    let Some(children) = world.get::<Children>(grid_entity) else {
-        return;
-    };
-    let followers: Vec<Entity> = children
-        .iter()
-        .filter(|&child| world.get::<GridFollowCamera>(child).is_some())
-        .collect();
-    if followers.is_empty() {
-        return;
-    }
+#[derive(SystemParam)]
+struct FollowerRescue<'w, 's> {
+    commands: Commands<'w, 's>,
+    followers: Query<
+        'w,
+        's,
+        (Entity, &'static ChildOf, Option<&'static FrozenOrigin>),
+        With<GridFollowCamera>,
+    >,
+    parents: Query<'w, 's, &'static ChildOf>,
+    links: Query<'w, 's, LinkData>,
+    children: Query<'w, 's, &'static mut Children>,
+}
 
-    // The follower keeps a `ChildOf` to the grid until the queued removal below; that removal's
-    // `on_discard` tolerates both the missing `Children` entry and a despawned parent.
-    let mut children = world
-        .get_mut::<Children>(grid_entity)
-        .expect("read just above");
-    for &follower in &followers {
-        RelationshipSourceCollection::remove(children.collection_mut_risky(), follower);
-    }
+impl FollowerRescue<'_, '_> {
+    /// Detaches every [`GridFollowCamera`] below `grid`, at any depth, placing it where it was in
+    /// its root grid's frame while `grid` and every grid enclosing the follower are still
+    /// readable. A cascade despawns the outer grids first, so the inner ones could not.
+    ///
+    /// Structural changes are deferred, so each follower also leaves its parent's `Children` right
+    /// away: a despawn's cascade then skips it, and a second call finds it gone.
+    fn below(&mut self, grid: Entity) {
+        let Self {
+            commands,
+            followers,
+            parents,
+            links,
+            children,
+        } = self;
+        for (follower, child_of, frozen) in followers.iter() {
+            let parent = child_of.parent();
+            if parent != grid
+                && !parents
+                    .iter_ancestors(parent)
+                    .any(|ancestor| ancestor == grid)
+            {
+                continue;
+            }
+            let Ok(mut siblings) = children.get_mut(parent) else {
+                continue;
+            };
+            if !siblings.contains(&follower) {
+                continue;
+            }
+            let (position, rotation) = true_pose(follower, links);
+            // The follower keeps its `ChildOf` until the queued removal below; that removal's
+            // `on_discard` tolerates both the missing `Children` entry and a despawned parent.
+            RelationshipSourceCollection::remove(siblings.collection_mut_risky(), follower);
 
-    for follower in followers {
-        // Every follower is out of `Children` now, so each must lose its `ChildOf` too. The
-        // still-readable `Grid`, and any grids enclosing it, place it in the root grid's frame.
-        let (position, rotation) = true_pose(
-            follower,
-            |entity| world_link(&world, entity),
-            |grid, cell, transform| {
-                world
-                    .get::<Grid>(grid)
-                    .map(|grid| grid.grid_position(cell, transform))
-            },
-        );
-        let frozen_anchor = world
-            .get::<FrozenOrigin>(follower)
-            .map(|FrozenOrigin(a)| *a);
-
-        let mut commands = world.commands();
-        if let Some(anchor) = frozen_anchor {
-            commands.entity(anchor).try_despawn();
+            if let Some(FrozenOrigin(anchor)) = frozen {
+                commands.entity(*anchor).try_despawn();
+            }
+            // `try_`: a command queued ahead of these may despawn the follower itself.
+            commands
+                .entity(follower)
+                .try_remove::<(CellCoord, FloatingOrigin, FrozenOrigin, ChildOf)>()
+                .try_insert(Transform {
+                    translation: position,
+                    rotation,
+                    scale: Vec3::ONE,
+                });
         }
-        // `try_`: a command queued ahead of these may despawn the follower itself.
-        commands
-            .entity(follower)
-            .try_remove::<(CellCoord, FloatingOrigin, FrozenOrigin, ChildOf)>()
-            .try_insert(Transform {
-                translation: position,
-                rotation,
-                scale: Vec3::ONE,
-            });
     }
 }
 

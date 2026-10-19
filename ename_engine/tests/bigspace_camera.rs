@@ -551,10 +551,16 @@ fn a_second_root_grid_at_the_same_place_does_not_take_an_attached_camera() {
 /// A root grid, a sub-grid in its cell (2, 0, 0) offset and turned 90° about Y, and a camera in
 /// the sub-grid's cell (1, 0, 0) at local X = 5. With the default 2000 m cells the camera sits at
 /// (4010, 0, -2005) in the root grid's frame, facing the sub-grid's way.
+///
+/// big_space applies neither the root grid's own `Transform` nor a grid's scale to the grid's
+/// contents, so the root is moved to X = 100 and the sub-grid scaled by 2, and neither may show.
 fn camera_in_sub_grid(app: &mut App) -> (Entity, Entity, Entity) {
     let root = app
         .world_mut()
-        .spawn(big_space::bundles::BigSpaceRootBundle::default())
+        .spawn((
+            big_space::bundles::BigSpaceRootBundle::default(),
+            Transform::from_xyz(100.0, 0.0, 0.0),
+        ))
         .id();
     let sub_grid = app
         .world_mut()
@@ -562,7 +568,8 @@ fn camera_in_sub_grid(app: &mut App) -> (Entity, Entity, Entity) {
             Grid::default(),
             CellCoord::new(2, 0, 0),
             Transform::from_xyz(10.0, 0.0, 0.0)
-                .with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2)),
+                .with_rotation(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2))
+                .with_scale(Vec3::splat(2.0)),
             ChildOf(root),
         ))
         .id();
@@ -626,4 +633,49 @@ fn a_camera_in_a_sub_grid_moves_to_the_root_grid_at_the_same_place() {
         "attached at {position}"
     );
     assert_rotation_y_quarter(transform.rotation);
+}
+
+#[test]
+fn despawning_the_root_above_a_sub_grid_places_its_camera_in_the_root_grids_frame() {
+    let mut app = test_app();
+    let (root, _, camera) = camera_in_sub_grid(&mut app);
+
+    // The cascade reaches the sub-grid only after the root is gone.
+    app.world_mut().despawn(root);
+
+    let entity = app
+        .world()
+        .get_entity(camera)
+        .expect("the camera was despawned with its grids");
+    assert!(!entity.contains::<ChildOf>());
+    let transform = entity.get::<Transform>().unwrap();
+    assert!(
+        transform.translation.distance(IN_SUB_GRID) < 0.01,
+        "rescued at {}",
+        transform.translation
+    );
+    assert_rotation_y_quarter(transform.rotation);
+}
+
+#[test]
+fn a_root_grids_own_transform_does_not_move_a_rescued_camera() {
+    let mut app = test_app();
+    let grid = app
+        .world_mut()
+        .spawn((
+            big_space::bundles::BigSpaceRootBundle::default(),
+            Transform::from_xyz(100.0, 0.0, 0.0),
+        ))
+        .id();
+    let camera = spawn_far_camera(&mut app);
+    app.update();
+    app.update();
+    assert_eq!(
+        app.world().get::<ChildOf>(camera).map(ChildOf::parent),
+        Some(grid)
+    );
+
+    app.world_mut().despawn(grid);
+
+    assert_rescued(&app, camera);
 }
