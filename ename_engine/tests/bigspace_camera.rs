@@ -725,3 +725,103 @@ fn a_camera_under_a_scaled_then_turned_parent_attaches_where_it_renders() {
         "attached at {position}"
     );
 }
+
+#[test]
+fn a_camera_under_a_sheared_parent_gets_a_unit_rotation() {
+    let mut app = test_app();
+    let root = app
+        .world_mut()
+        .spawn(big_space::bundles::BigSpaceRootBundle::default())
+        .id();
+    let stretched = app
+        .world_mut()
+        .spawn((
+            CellCoord::default(),
+            Transform::from_scale(Vec3::new(2.0, 1.0, 1.0)),
+            ChildOf(root),
+        ))
+        .id();
+    let turned = app
+        .world_mut()
+        .spawn((
+            Transform::from_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_4)),
+            ChildOf(stretched),
+        ))
+        .id();
+    let camera = app
+        .world_mut()
+        .spawn((
+            GridFollowCamera,
+            Transform::from_xyz(1.0, 0.0, 0.0),
+            ChildOf(turned),
+        ))
+        .id();
+    app.update();
+    app.update();
+
+    let entity = app.world().entity(camera);
+    assert_eq!(entity.get::<ChildOf>().map(ChildOf::parent), Some(root));
+    let transform = entity.get::<Transform>().unwrap();
+    assert!(
+        (transform.rotation.length() - 1.0).abs() < 1e-5,
+        "rotation {:?} is not a unit quaternion",
+        transform.rotation
+    );
+    let half = std::f32::consts::FRAC_1_SQRT_2;
+    let position = app
+        .world()
+        .get::<Grid>(root)
+        .unwrap()
+        .grid_position(entity.get::<CellCoord>().unwrap(), transform);
+    assert!(
+        position.distance(Vec3::new(2.0 * half, half, 0.0)) < 1e-3,
+        "attached at {position}"
+    );
+}
+
+#[test]
+fn a_mirrored_sub_grid_does_not_mirror_or_turn_its_camera() {
+    let mut app = test_app();
+    let root = app
+        .world_mut()
+        .spawn(big_space::bundles::BigSpaceRootBundle::default())
+        .id();
+    let sub_grid = app
+        .world_mut()
+        .spawn((
+            Grid::default(),
+            CellCoord::default(),
+            Transform::from_xyz(10.0, 0.0, 0.0).with_scale(Vec3::new(1.0, -1.0, 1.0)),
+            ChildOf(root),
+        ))
+        .id();
+    let camera = app
+        .world_mut()
+        .spawn((
+            GridFollowCamera,
+            CellCoord::default(),
+            Transform::from_xyz(1.0, 0.0, 0.0),
+            ChildOf(sub_grid),
+        ))
+        .id();
+    app.update();
+    app.update();
+
+    let entity = app.world().entity(camera);
+    assert_eq!(entity.get::<ChildOf>().map(ChildOf::parent), Some(root));
+    let transform = entity.get::<Transform>().unwrap();
+    let position = app
+        .world()
+        .get::<Grid>(root)
+        .unwrap()
+        .grid_position(entity.get::<CellCoord>().unwrap(), transform);
+    assert!(
+        position.distance(Vec3::new(11.0, 0.0, 0.0)) < 1e-3,
+        "attached at {position}"
+    );
+    assert!(
+        transform.rotation.dot(Quat::IDENTITY).abs() > 1.0 - 1e-6,
+        "rotation {:?}",
+        transform.rotation
+    );
+}

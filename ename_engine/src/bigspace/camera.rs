@@ -250,31 +250,47 @@ type LinkData = (
 /// Never the propagated `GlobalTransform`: inside a grid it is floating-origin-relative, and for
 /// an entity moved or detached earlier this frame it is stale until propagation runs.
 fn true_pose(entity: Entity, links: &Query<LinkData>) -> (Vec3, Quat) {
-    let (_, rotation, translation) = own_pose(entity, links).to_scale_rotation_translation();
-    (translation, rotation)
+    let pose = own_pose(entity, links);
+    (pose.affine.translation(), pose.rotation.normalize())
 }
 
-/// [`true_pose`] as an affine, built top-down with big_space's grid rule ([`local_in_parent`]).
-fn own_pose(entity: Entity, links: &Query<LinkData>) -> GlobalTransform {
+/// An entity's pose as [`true_pose`] builds it. The position comes from the affine, which keeps
+/// any shear a non-uniform scale under a rotation makes; the rotation is composed on its own,
+/// since decomposing a sheared or mirrored affine gives no valid rotation.
+#[derive(Clone, Copy)]
+struct Pose {
+    affine: GlobalTransform,
+    rotation: Quat,
+}
+
+impl Pose {
+    const IDENTITY: Self = Self {
+        affine: GlobalTransform::IDENTITY,
+        rotation: Quat::IDENTITY,
+    };
+}
+
+/// [`true_pose`], built top-down with big_space's grid rule ([`local_in_parent`]).
+fn own_pose(entity: Entity, links: &Query<LinkData>) -> Pose {
     let (transform, cell, child_of, _) = links.get(entity).unwrap_or_default();
     let local = transform.copied().unwrap_or_default();
     let Some(parent) = child_of.map(ChildOf::parent) else {
-        return local.into();
+        return Pose {
+            affine: local.into(),
+            rotation: local.rotation,
+        };
     };
     let (frame, parent_grid) = contents_of(parent, links);
-    frame.mul_transform(local_in_parent(
-        parent_grid,
-        &cell.copied().unwrap_or_default(),
-        &local,
-    ))
+    let step = local_in_parent(parent_grid, &cell.copied().unwrap_or_default(), &local);
+    Pose {
+        affine: frame.affine.mul_transform(step),
+        rotation: frame.rotation * step.rotation,
+    }
 }
 
 /// The frame `entity`'s children are placed in, and its `Grid` if it is one. The outermost grid's
 /// contents frame is the root frame itself.
-fn contents_of<'a>(
-    entity: Entity,
-    links: &'a Query<LinkData>,
-) -> (GlobalTransform, Option<&'a Grid>) {
+fn contents_of<'a>(entity: Entity, links: &'a Query<LinkData>) -> (Pose, Option<&'a Grid>) {
     let grid = links.get(entity).ok().and_then(|(.., grid)| grid);
     let outermost_grid = grid.is_some()
         && !std::iter::successors(Some(entity), |&current| {
@@ -286,14 +302,17 @@ fn contents_of<'a>(
         .skip(1)
         .any(|ancestor| links.get(ancestor).is_ok_and(|(.., grid)| grid.is_some()));
     let frame = if outermost_grid {
-        GlobalTransform::IDENTITY
+        Pose::IDENTITY
     } else if grid.is_some() {
-        // A grid's own scale is not applied to its contents. Grids sit only in grids, whose
-        // contents frames have no scale, so this pose has no shear to lose.
-        let (_, rotation, translation) = own_pose(entity, links).to_scale_rotation_translation();
-        Transform::from_translation(translation)
-            .with_rotation(rotation)
-            .into()
+        // A grid's own scale, mirroring included, is not applied to its contents: rebuild the
+        // frame from its position and composed rotation alone.
+        let own = own_pose(entity, links);
+        Pose {
+            affine: Transform::from_translation(own.affine.translation())
+                .with_rotation(own.rotation)
+                .into(),
+            rotation: own.rotation,
+        }
     } else {
         own_pose(entity, links)
     };
