@@ -50,3 +50,6 @@ impl Plugin for PhysicsIntegrationPlugin {
             .add_observer(collider_grid_transform::restart_detached);
     }
 }
+
+#[cfg(test)]
+mod tests;
