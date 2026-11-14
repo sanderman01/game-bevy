@@ -16,6 +16,7 @@ mod camera_commands;
 mod capture_sequence;
 mod console;
 mod cursor;
+mod cursor_release;
 mod debug_switches;
 mod diagnostics;
 mod game_view;
@@ -78,6 +79,7 @@ impl PluginGroup for EditorPlugins {
             .add(EditorSchedulePlugin)
             .add(debug_switches::EditorDebugSwitchesPlugin)
             .add(cursor::EguiCursorPlugin)
+            .add(cursor_release::CursorReleasePlugin)
             .add(diagnostics::EditorDiagnosticsPlugin)
             .add(ename_engine::perf::PerfCommandsPlugin)
             .add(panels::PanelsPlugin)

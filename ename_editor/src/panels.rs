@@ -17,6 +17,7 @@ use bevy_inspector_egui::bevy_inspector::{
 };
 use egui::{LayerId, UiBuilder};
 use egui_dock::{DockArea, DockState, NodeIndex, Style};
+use ename_engine::pointer::PointerOverGame;
 use std::any::TypeId;
 
 /// Owns the dock layout, the egui context, and the inspector panels.
@@ -119,6 +120,16 @@ impl UiState {
         self.pointer_in_viewport = ui
             .ctx()
             .rect_contains_pointer(LayerId::background(), self.viewport_rect.shrink(16.));
+        // The whole tab, unshrunk: a click anywhere on the game's image is the game's.
+        let over_game = self.active_viewport == ActiveViewport::Game
+            && ui
+                .ctx()
+                .rect_contains_pointer(LayerId::background(), self.viewport_rect);
+        if let Some(mut pointer) = world.get_resource_mut::<PointerOverGame>()
+            && pointer.0 != over_game
+        {
+            pointer.0 = over_game;
+        }
     }
 
     /// The viewport whose tab is the active one in the dock's focused leaf, if either is.
