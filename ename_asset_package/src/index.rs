@@ -242,11 +242,11 @@ fn contest(scan: &Scan, alias: &str, winner: usize, loser: usize) -> ContestedAl
 #[cfg(test)]
 mod tests {
     use super::build_index;
-    use crate::{Manifest, Package, Scan};
+    use crate::{Package, PackageManifest, Scan};
     use ename_asset_alias::{AliasOrigin, DiscoveredAsset, Problem, ProblemKind};
     use std::path::{Path, PathBuf};
 
-    fn manifest(id: &str) -> Manifest {
+    fn manifest(id: &str) -> PackageManifest {
         toml::from_str(&format!(
             r#"
             [package]

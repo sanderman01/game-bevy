@@ -22,11 +22,11 @@ pub use semver::{Version, VersionReq};
 /// not
 /// scale and the quoted TOML keys that made a typo silent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Manifest {
+pub struct PackageManifest {
     pub package: PackageInfo,
 }
 
-/// Package section of a package [Manifest](Manifest). Contains all the information required to unique identify and load a package.
+/// Package section of a package [`PackageManifest`]. Contains all the information required to unique identify and load a package.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PackageInfo {
     /// Unique human readable mod package identifier. eg. 'spacewar'
@@ -78,7 +78,7 @@ pub struct PackageInfo {
     pub removes: Vec<String>,
 }
 
-impl Display for Manifest {
+impl Display for PackageManifest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "(id: {}, v: {})", self.package.id, self.package.version)
     }
@@ -194,9 +194,9 @@ pub fn validate_package_id(id: &str) -> Result<(), PackageIdError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Manifest, PackageIdError, Requirement, Version, validate_package_id};
+    use super::{PackageIdError, PackageManifest, Requirement, Version, validate_package_id};
 
-    fn parse(extra: &str) -> Manifest {
+    fn parse(extra: &str) -> PackageManifest {
         toml::from_str(&format!(
             r#"
             [package]

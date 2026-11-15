@@ -7,15 +7,15 @@
 
 use ename_asset_alias::AliasOrigin;
 use ename_asset_package::{
-    ContestReason, DisableReason, DiscoveredAsset, LoadOrder, Manifest, Package, ProblemKind, Scan,
-    Tiebreak, Version, build_index, resolve,
+    ContestReason, DisableReason, DiscoveredAsset, LoadOrder, Package, PackageManifest,
+    ProblemKind, Scan, Tiebreak, Version, build_index, resolve,
 };
 use std::path::{Path, PathBuf};
 
 /// Builds a package with the given id and constraint fields. `extra` is TOML appended to the
 /// `[package]` table, so a test reads like the manifest an author would write.
 fn package(search_path: &str, dir: &str, extra: &str) -> Package {
-    let manifest: Manifest = toml::from_str(&format!(
+    let manifest: PackageManifest = toml::from_str(&format!(
         r#"
         [package]
         id = "{dir}"

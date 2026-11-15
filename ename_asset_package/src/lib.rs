@@ -20,8 +20,8 @@ pub use crate::contest::{ContestReason, ContestedAlias, PackageRef, Tiebreak};
 pub use crate::index::{ContentReport, PackageSummary, build_index};
 pub use crate::load_order::{LOAD_ORDER_FILE, LoadOrder, LoadOrderError, UserConstraint};
 pub use crate::manifest::{
-    Manifest, PackageIdError, PackageInfo, Requirement, RequirementError, Version, VersionReq,
-    validate_package_id,
+    PackageIdError, PackageInfo, PackageManifest, Requirement, RequirementError, Version,
+    VersionReq, validate_package_id,
 };
 pub use crate::resolve::{
     ConstraintSource, DisableReason, Disabled, OrderEdges, Resolution, resolve,

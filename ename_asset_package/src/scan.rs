@@ -15,7 +15,7 @@
 //! The order the packages come back in is the resolver's, not the walk's: search path and then
 //! directory name is only the baseline `resolve` sorts its constraints on top of.
 
-use crate::{Disabled, LoadOrder, Manifest, OrderEdges, resolve, validate_package_id};
+use crate::{Disabled, LoadOrder, OrderEdges, PackageManifest, resolve, validate_package_id};
 use ename_asset_alias::{DiscoveredAsset, IgnoredFiles, Problem, ProblemKind, scan_aliases};
 use ename_asset_vfs::{Vfs, VfsError};
 use std::{
@@ -35,7 +35,7 @@ pub const PACKAGE_INFO_FILE: &str = "package-info.toml";
 /// the default `AssetReader`.
 #[derive(Debug, Clone)]
 pub struct Package {
-    pub manifest: Manifest,
+    pub manifest: PackageManifest,
     pub root: PathBuf,
     /// The search path this package was found under, as the caller wrote it. Kept because it is
     /// half the answer to "why did this one win": two packages in different search paths were
@@ -175,7 +175,7 @@ async fn read_packages_in(
 
 /// `Ok(None)` means "no manifest here", which is not a problem. `Err` means there was one and it
 /// was unusable.
-async fn read_manifest(vfs: &dyn Vfs, path: &Path) -> Result<Option<Manifest>, Problem> {
+async fn read_manifest(vfs: &dyn Vfs, path: &Path) -> Result<Option<PackageManifest>, Problem> {
     let bytes = match vfs.read_file(path).await {
         Ok(bytes) => bytes,
         Err(VfsError::NotFound(_)) => return Ok(None),
