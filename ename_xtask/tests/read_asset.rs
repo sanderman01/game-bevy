@@ -55,7 +55,7 @@ fn a_label_or_a_drive_relative_sibling_is_refused() {
 
 fn tree() -> TempDir {
     root_with(&[
-        ("basegame/core/manifest.toml", MANIFEST.as_bytes()),
+        ("basegame/core/package-info.toml", MANIFEST.as_bytes()),
         ("basegame/core/ships/ship.gltf", b"gltf"),
         (
             "basegame/core/ships/ship.gltf.alias",
@@ -106,7 +106,7 @@ fn an_alias_resolves_through_the_scan() {
 #[test]
 fn an_asset_inside_an_archive_reads_with_its_siblings() {
     let archive = zip(&[
-        ("manifest.toml", MANIFEST.as_bytes()),
+        ("package-info.toml", MANIFEST.as_bytes()),
         ("img/a.png", b"png"),
         ("img/a.png.meta", b"meta"),
     ]);

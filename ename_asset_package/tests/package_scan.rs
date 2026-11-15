@@ -39,7 +39,7 @@ fn ids(packages: &[Package]) -> Vec<&str> {
         .collect()
 }
 
-/// A directory holding a `manifest.toml` is a package. The scan does not recurse past that.
+/// A directory holding a `package-info.toml` is a package. The scan does not recurse past that.
 #[test]
 fn finds_every_package_under_every_search_path() {
     let packages = scan(&["base", "mods"]);
@@ -108,14 +108,14 @@ fn an_unparseable_manifest_is_skipped_and_the_rest_still_load() {
 
 /// Problem recording is the load-bearing new behaviour, and every other test in this file only
 /// asserts on `scan.packages` -- so nothing over a real `Vfs` proves a `Problem` is ever produced
-/// until this one reads `scan.problems` too. `broken/manifest.toml` is invalid TOML on every run.
+/// until this one reads `scan.problems` too. `broken/package-info.toml` is invalid TOML on every run.
 #[test]
 fn an_unparseable_manifest_is_recorded_as_a_problem() {
     let scan = full_scan(&["mods"]);
     let broken = scan
         .problems
         .iter()
-        .find(|p| p.path.ends_with("broken/manifest.toml"))
+        .find(|p| p.path.ends_with("broken/package-info.toml"))
         .unwrap_or_else(|| panic!("expected a problem for the broken manifest, got {scan:?}"));
     assert_eq!(broken.kind, ProblemKind::UnparseableManifest);
 }

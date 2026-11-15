@@ -64,11 +64,11 @@ pub enum ProblemKind {
     /// The walk hit [`MAX_DEPTH`] and stopped descending. In practice this means a symlink cycle,
     /// since no real asset tree goes anywhere near that deep.
     DirectoryTooDeep,
-    /// A `manifest.toml` that could not be read. Produced by `ename_asset_package`, never here:
+    /// A `package-info.toml` that could not be read. Produced by `ename_asset_package`, never here:
     /// this crate has no concept of a package. The variant lives here so there is one list, the
     /// way `InvalidAlias` used to live a layer up for the mirror-image reason.
     UnparseableManifest,
-    /// A `manifest.toml` whose package id could not be used. Produced by `ename_asset_package`.
+    /// A `package-info.toml` whose package id could not be used. Produced by `ename_asset_package`.
     InvalidPackageId,
     /// A package's `requires` names something absent or the wrong version, so the package is
     /// disabled. Produced by `ename_asset_package`.
@@ -163,7 +163,7 @@ impl AliasScan {
 ///
 /// `root` is relative to the vfs root; pass `""` for the whole tree. `ignored` names files the
 /// caller's own formats own and discovery must never turn into an asset -- `ename_asset_package`
-/// adds `manifest.toml`. `_alias_rules.toml`, `*.alias` and `*.meta` are always ignored and need
+/// adds `package-info.toml`. `_alias_rules.toml`, `*.alias` and `*.meta` are always ignored and need
 /// not be listed.
 ///
 /// `default_alias_template` is the alias template a directory falls back to when it has no

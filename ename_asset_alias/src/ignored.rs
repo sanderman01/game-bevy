@@ -15,7 +15,7 @@ pub const DEFAULT_IGNORED_SIDECAR_EXTENSIONS: &[&str] = &["license"];
 /// saved in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IgnoredFiles {
-    /// Exact file names, such as `manifest.toml`.
+    /// Exact file names, such as `package-info.toml`.
     pub file_names: Vec<String>,
     /// Extensions, without the dot, of sidecars that describe the file next to them.
     pub sidecar_extensions: Vec<String>,

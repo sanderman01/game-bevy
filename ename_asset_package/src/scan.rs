@@ -3,7 +3,7 @@
 //!
 //! The asset discovery itself belongs to `ename_asset_alias` and is called once per package root.
 //! What this file adds is the package: which directories are packages, what order they load in,
-//! and the fact that a `manifest.toml` is not an asset.
+//! and the fact that a `package-info.toml` is not an asset.
 //!
 //! Nothing here fails the scan. An unreadable directory, an unparseable manifest, a broken
 //! sidecar: each is recorded as a [`Problem`] and skipped, so one broken mod costs that mod and
@@ -26,7 +26,7 @@ use tracing::{info, warn};
 
 /// The file that marks a directory as a package. Never an asset: it is added to the alias walk's
 /// ignored names, or a folder rule matching `*` would turn every manifest into content.
-pub const MANIFEST_FILE: &str = "manifest.toml";
+pub const PACKAGE_INFO_FILE: &str = "package-info.toml";
 
 /// One package found on disk: its parsed manifest, the directory it was found in, and every asset
 /// discovered under it.
@@ -67,7 +67,7 @@ pub struct Scan {
 /// The packages come back in the order the resolver settled on. Search path order and directory
 /// name are underneath that, as the tiebreaker for whatever no constraint relates.
 ///
-/// `ignored` is passed on to the alias walk in every package. [`MANIFEST_FILE`] is always added
+/// `ignored` is passed on to the alias walk in every package. [`PACKAGE_INFO_FILE`] is always added
 /// to it.
 pub async fn scan_packages(
     vfs: &dyn Vfs,
@@ -76,7 +76,7 @@ pub async fn scan_packages(
     ignored: &IgnoredFiles,
 ) -> Scan {
     let mut ignored = ignored.clone();
-    ignored.file_names.push(MANIFEST_FILE.to_owned());
+    ignored.file_names.push(PACKAGE_INFO_FILE.to_owned());
 
     let mut scan = Scan::default();
     for search_path in search_paths {
@@ -141,7 +141,7 @@ async fn read_packages_in(
     // whole load order rests on. Without that guarantee the order differs between machines and the
     // bug shows up as an override that works for one person.
     for entry in entries.into_iter().filter(|e| e.is_dir) {
-        let manifest_path = entry.path.join(MANIFEST_FILE);
+        let manifest_path = entry.path.join(PACKAGE_INFO_FILE);
         let manifest = match read_manifest(vfs, &manifest_path).await {
             Ok(Some(manifest)) => manifest,
             // No manifest: this directory is simply not a package.

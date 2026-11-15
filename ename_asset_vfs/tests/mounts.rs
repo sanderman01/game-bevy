@@ -236,10 +236,10 @@ fn a_zip_and_a_tar_of_the_same_name_conflict() {
     let names: Vec<PathBuf> = listing(&vfs, "").into_iter().map(|e| e.path).collect();
     assert_eq!(names, [PathBuf::from("core"), PathBuf::from("other")]);
     assert!(matches!(
-        block_on(vfs.read_file(Path::new("core/manifest.toml"))),
+        block_on(vfs.read_file(Path::new("core/package-info.toml"))),
         Err(VfsError::Io { .. })
     ));
-    assert!(block_on(vfs.read_file(Path::new("other/manifest.toml"))).is_ok());
+    assert!(block_on(vfs.read_file(Path::new("other/package-info.toml"))).is_ok());
     let kinds: Vec<MountProblemKind> = vfs.mounts().problems().iter().map(|p| p.kind).collect();
     assert_eq!(
         kinds,
@@ -263,7 +263,11 @@ fn a_file_beside_an_archive_of_its_name_conflicts() {
         }]
     );
     let mounts = vfs.mounts();
-    assert!(mounts.read_file(Path::new("core/manifest.toml")).is_none());
+    assert!(
+        mounts
+            .read_file(Path::new("core/package-info.toml"))
+            .is_none()
+    );
     assert!(mounts.is_dir(Path::new("core")).is_none());
     assert_eq!(
         mounts.problems()[0].kind,
@@ -289,10 +293,10 @@ fn a_truncated_archive_is_unavailable_without_hiding_its_siblings() {
         Err(VfsError::Io { .. })
     ));
     assert!(matches!(
-        block_on(vfs.read_file(Path::new("mods/bad/manifest.toml"))),
+        block_on(vfs.read_file(Path::new("mods/bad/package-info.toml"))),
         Err(VfsError::Io { .. })
     ));
-    assert!(block_on(vfs.read_file(Path::new("mods/good/manifest.toml"))).is_ok());
+    assert!(block_on(vfs.read_file(Path::new("mods/good/package-info.toml"))).is_ok());
     let problems = vfs.mounts().problems();
     assert_eq!(problems.len(), 1, "{problems:?}");
     assert_eq!(problems[0].kind, MountProblemKind::CorruptArchive);

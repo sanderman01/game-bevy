@@ -6,7 +6,7 @@
 //! the aliases that resolve to each path.
 //!
 //! Only content and `.meta` edits of files already in the index reload. New files, removals, and
-//! edits to `.alias`, `_alias_rules.toml` or `manifest.toml` need a restart, because the index is
+//! edits to `.alias`, `_alias_rules.toml` or `package-info.toml` need a restart, because the index is
 //! filled once.
 
 use crate::ContentIndex;

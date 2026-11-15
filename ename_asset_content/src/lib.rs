@@ -109,7 +109,7 @@ impl AssetContentPlugin {
         self
     }
 
-    /// Names files the scan must never turn into an asset, on top of `manifest.toml`,
+    /// Names files the scan must never turn into an asset, on top of `package-info.toml`,
     /// `_alias_rules.toml`, `*.alias` and `*.meta`, which it always skips.
     pub fn with_ignored_file_names<I, S>(mut self, names: I) -> Self
     where

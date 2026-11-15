@@ -30,9 +30,9 @@ fn scan_with_default(vfs: &FakeVfs, default_alias_template: Option<&str>) -> Ali
     ))
 }
 
-fn ignoring_manifests() -> IgnoredFiles {
+fn ignoring_package_info() -> IgnoredFiles {
     IgnoredFiles {
-        file_names: vec!["manifest.toml".to_owned()],
+        file_names: vec!["package-info.toml".to_owned()],
         ..IgnoredFiles::default()
     }
 }
@@ -326,24 +326,24 @@ fn a_directory_chain_deeper_than_the_cap_is_reported_and_does_not_cost_the_rest_
 
 /// The walk skips `_alias_rules.toml`, `*.alias` and `*.meta` on its own. Anything else a
 /// caller's own format owns has to be named, or a permissive rule sweeps it up as content --
-/// `ename_asset_package` passes `manifest.toml` for exactly this reason.
+/// `ename_asset_package` passes `package-info.toml` for exactly this reason.
 #[test]
 fn a_caller_can_name_files_the_walk_must_not_treat_as_assets() {
     let vfs = FakeVfs::new()
         .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
-        .file("base/core/manifest.toml", "")
+        .file("base/core/package-info.toml", "")
         .file("base/core/airship.glb", "");
 
     assert_eq!(
         aliases(&discovered(&vfs)),
-        ["core::airship", "core::manifest"],
+        ["core::airship", "core::package-info"],
         "nothing is ignored by default beyond the alias layer's own files"
     );
 
     let scan = block_on(scan_aliases(
         &vfs,
         Path::new(ROOT),
-        &ignoring_manifests(),
+        &ignoring_package_info(),
         None,
     ));
     assert_eq!(aliases(&scan.assets), ["core::airship"]);
@@ -447,13 +447,13 @@ fn the_canonical_spelling_wins_where_a_filesystem_holds_several() {
 fn an_ignored_file_name_is_matched_case_insensitively() {
     let vfs = FakeVfs::new()
         .file("base/core/_alias_rules.toml", r#"alias = "core::{stem}""#)
-        .file("base/core/Manifest.toml", "")
+        .file("base/core/Package-Info.toml", "")
         .file("base/core/airship.glb", "");
 
     let scan = block_on(scan_aliases(
         &vfs,
         Path::new(ROOT),
-        &ignoring_manifests(),
+        &ignoring_package_info(),
         None,
     ));
     assert_eq!(aliases(&scan.assets), ["core::airship"]);

@@ -35,7 +35,7 @@ have written, so a real `_alias_rules.toml` anywhere in the tree still replaces 
 one of its files addressable.
 
 Files that describe other files are never candidates: `_alias_rules.toml`, `*.alias`, `*.meta`,
-`manifest.toml` in a package, and any file whose extension is in the ignored sidecar list. That
+`package-info.toml` in a package, and any file whose extension is in the ignored sidecar list. That
 list defaults to `license`, so a REUSE `airship.glb.license` does not also claim
 `core::airship`. Replace it with `with_ignored_sidecar_extensions` on `AssetContentPlugin` or
 `AliasScanPlugin`; add exact file names with `with_ignored_file_names`.
@@ -111,7 +111,7 @@ removed file keeps its last good asset, and so does a failed reload; the next go
 it. Editing a file another package overrides does nothing.
 
 What needs a restart: new or removed files, and edits to `.alias`, `_alias_rules.toml`,
-`manifest.toml` or the load order file. The index is filled once.
+`package-info.toml` or the load order file. The index is filled once.
 
 Limits: processed mode does not reload aliased assets. A `.meta` saved by renaming a temp file
 that does not itself end in `.meta` is dropped by Bevy's watcher before the alias source sees it.

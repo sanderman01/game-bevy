@@ -24,7 +24,7 @@ pub type BoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 /// Why a [`Vfs`] call failed.
 ///
 /// `NotFound` is separate because the scanner treats it as an answer rather than an error: a
-/// directory with no `manifest.toml` is not a package, and a search path that does not exist is a
+/// directory with no `package-info.toml` is not a package, and a search path that does not exist is a
 /// warning and not a failure.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum VfsError {

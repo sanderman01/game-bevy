@@ -24,7 +24,7 @@ notice until it broke.
 A package id ends at the first whitespace, so an id containing whitespace has no single reading and
 the manifest is rejected.
 
-`manifest.toml` accepts unknown keys, unlike `.alias` and `_alias_rules.toml`. A mod is written by
+`package-info.toml` accepts unknown keys, unlike `.alias` and `_alias_rules.toml`. A mod is written by
 a third party against whatever version of the game they had, and one carrying a key from a later
 version must still load.
 

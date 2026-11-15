@@ -1,4 +1,4 @@
-//! The package manifest: what a `manifest.toml` says about a package and the assets it declares.
+//! The package manifest: what a `package-info.toml` says about a package and the assets it declares.
 //!
 //! Plain data. Not a Bevy `Asset`: the scanner reads and parses these itself, which is what lets
 //! the whole scan finish inside one async function with nothing to sequence.

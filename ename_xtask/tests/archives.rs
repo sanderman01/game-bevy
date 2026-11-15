@@ -32,7 +32,7 @@ fn clean_zip() -> Vec<u8> {
         zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     for name in [
-        "manifest.toml",
+        "package-info.toml",
         "ships/airship.glb",
         "ships/airship.glb.alias",
     ] {
