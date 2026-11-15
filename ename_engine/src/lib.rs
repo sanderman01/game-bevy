@@ -17,10 +17,10 @@ pub mod command;
 pub mod debug_overlay;
 pub mod debug_switch;
 pub mod diagnostics;
+pub mod game_focus;
 pub mod log;
 pub mod perf;
 pub mod physics;
-pub mod pointer;
 mod readback;
 pub mod screenshot;
 pub mod stage;
@@ -185,7 +185,7 @@ impl PluginGroup for EnginePlugins {
             .add(camera::ground::CameraGroundPlugin)
             .add(stage::StagePlugin)
             .add(physics::PhysicsIntegrationPlugin)
-            .add(pointer::PointerPlugin)
+            .add(game_focus::GameFocusPlugin)
             // Kept out of `PhysicsIntegrationPlugin`, which then needs no gizmos to run headless.
             .add(avian3d::debug_render::PhysicsDebugPlugin)
             .add(time::TimeControlPlugin)
