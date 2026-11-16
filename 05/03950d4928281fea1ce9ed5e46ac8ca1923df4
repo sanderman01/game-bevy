@@ -1,0 +1,19 @@
+.cargo/config.toml
+  s_34bb7c442f9936::t_1e549327546759 14-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0503950d4928281fea1ce9ed5e46ac8ca1923df4",
+  "prompts": {},
+  "sessions": {
+    "s_34bb7c442f9936": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c4bed24c-2ed3-437e-9d62-59504f724d3f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
