@@ -405,6 +405,8 @@ fn spawn_editor_camera(mut commands: Commands, settings: Res<EditorCameraSetting
             distance: DEFAULT_FOCUS_DISTANCE,
         },
         Camera3d::default(),
+        // An editor view, not the game's look; the Game View camera keeps what its stage sets.
+        Msaa::Off,
         Projection::Perspective(PerspectiveProjection {
             far: settings.far,
             ..default()

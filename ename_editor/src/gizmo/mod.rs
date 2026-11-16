@@ -2,7 +2,10 @@
 
 mod grid_anchor;
 
-use bevy::{gizmos::transform_gizmo::TransformGizmoMeshMarker, picking::Pickable, prelude::*};
+use bevy::{
+    camera::visibility::RenderLayers, gizmos::transform_gizmo::TransformGizmoMeshMarker,
+    picking::Pickable, prelude::*,
+};
 use ename_engine::bigspace::GridSystems;
 
 use crate::{
@@ -28,6 +31,7 @@ impl Plugin for GizmoPlugin {
                 (
                     ignore_gizmo_mesh_picking,
                     tag_editor_camera_for_gizmo,
+                    match_gizmo_overlay_to_editor_camera,
                     gizmo_keyboard_shortcuts.run_if(not(crate::camera::fly_camera_active)),
                 ),
             )
@@ -55,6 +59,31 @@ fn tag_editor_camera_for_gizmo(
 ) {
     for entity in &cameras {
         commands.entity(entity).insert(TransformGizmoCamera);
+    }
+}
+
+/// Bevy's gizmo overlay camera shares the Editor Camera's main texture, but clears it: its spawn
+/// leaves `clear_color` at the default. Under MSAA the writeback restores the scene before that
+/// clear lands; without MSAA the clear wipes the Scene View. So the overlay never clears, and
+/// takes the Editor Camera's `Msaa` so the two keep sharing one texture.
+///
+/// Its marker type is private; it is the camera on the gizmo handles' render layers.
+fn match_gizmo_overlay_to_editor_camera(
+    editor: Single<&Msaa, With<EditorCamera>>,
+    handles: Query<&RenderLayers, With<TransformGizmoMeshMarker>>,
+    mut overlays: Query<(&RenderLayers, &mut Camera, &mut Msaa), Without<EditorCamera>>,
+) {
+    let Some(gizmo_layers) = handles.iter().next() else {
+        return;
+    };
+    for (layers, mut camera, mut msaa) in &mut overlays {
+        if layers != gizmo_layers {
+            continue;
+        }
+        if !matches!(camera.clear_color, ClearColorConfig::None) {
+            camera.clear_color = ClearColorConfig::None;
+        }
+        msaa.set_if_neq(**editor);
     }
 }
 

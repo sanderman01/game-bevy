@@ -412,6 +412,8 @@ fn spawn_egui_camera(mut commands: Commands, mut egui_global_settings: ResMut<Eg
         Name::new("Egui Camera"),
         PrimaryEguiContext,
         RenderLayers::none(),
+        // egui draws no MSAA content; this only saves the multisampled texture.
+        Msaa::Off,
         Camera {
             // Above the transform gizmo's overlay camera, which hardcodes `order: 1`.
             order: 2,
