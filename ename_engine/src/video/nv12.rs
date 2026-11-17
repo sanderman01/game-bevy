@@ -399,7 +399,11 @@ pub(crate) mod tests {
             .slice(..)
             .map_async(MapMode::Read, |result| result.unwrap());
         device.poll(PollType::wait_indefinitely()).unwrap();
-        let bytes = staging.slice(..).get_mapped_range().to_vec();
+        let bytes = staging
+            .slice(..)
+            .get_mapped_range()
+            .expect("the staging buffer was just mapped")
+            .to_vec();
         staging.unmap();
         bytes
     }

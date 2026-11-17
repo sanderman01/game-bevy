@@ -9,7 +9,7 @@ mod bevy_support;
 use bevy::{
     app::{App, TaskPoolPlugin},
     asset::{AssetApp, AssetPlugin, AssetServer, Assets, Handle},
-    shader::{Shader, ShaderImport, ShaderLoader, Source},
+    shader::{Shader, ShaderLoader, Source},
 };
 use bevy_support::{assert_loaded, run_until_settled};
 use ename_asset_alias::{AliasSourcePlugin, ContentIndex, ContentIndexCell};
@@ -32,9 +32,7 @@ fn shader_app() -> App {
 
     let mut index = ContentIndex::default();
     index.insert("core::flat", "files/flat.wgsl").unwrap();
-    index
-        .insert("core::tint_by_path", "files/tint_by_path.wgsl")
-        .unwrap();
+    index.insert("core::lit", "files/lit.wesl").unwrap();
     app.world()
         .resource::<ContentIndexCell>()
         .0
@@ -57,13 +55,23 @@ fn a_wgsl_shader_without_a_meta_loads_by_alias() {
     let shader = shaders.get(&handle).expect("loaded");
     assert!(matches!(shader.source, Source::Wgsl(_)));
     assert_eq!(shader.path, "alias://core::flat");
-    assert_eq!(
-        shader.imports,
-        [ShaderImport::AssetPath(
-            "alias://core::tint_by_path".to_owned()
-        )]
-    );
-    // The import is loaded by alias too, and kept alive by the importing shader.
+}
+
+#[test]
+fn a_wesl_shader_by_alias_loads_its_module_imports() {
+    let mut app = shader_app();
+
+    let handle: Handle<Shader> = app
+        .world()
+        .resource::<AssetServer>()
+        .load("alias://core::lit");
+
+    assert_loaded(run_until_settled(&mut app, &handle));
+    let shaders = app.world().resource::<Assets<Shader>>();
+    let shader = shaders.get(&handle).expect("loaded");
+    assert!(matches!(shader.source, Source::Wesl(_)));
+    assert_eq!(shader.path, "alias://core::lit");
+    // The imported module is loaded by file path, and kept alive by the importing shader.
     let [dependency] = shader.file_dependencies.as_slice() else {
         panic!(
             "expected one file dependency, got {:?}",
@@ -71,5 +79,9 @@ fn a_wgsl_shader_without_a_meta_loads_by_alias() {
         );
     };
     let dependency = dependency.clone();
+    assert_eq!(
+        dependency.path().map(ToString::to_string).as_deref(),
+        Some("files/tint.wesl")
+    );
     assert_loaded(run_until_settled(&mut app, &dependency));
 }

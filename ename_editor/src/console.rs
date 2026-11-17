@@ -279,7 +279,7 @@ fn detail(ui: &mut egui::Ui, state: &ConsoleState, buffer: &LogBuffer) {
         // Two lines of text, plus the frame's own 2 point margin top and bottom.
         .default_size(line * 2. + 4.)
         .min_size(line)
-        .show_inside(ui, |ui| {
+        .show(ui, |ui| {
             // egui stores the height the contents used and reuses it as the panel's height next
             // frame, with `min_size` as the only floor. Without this the pane would be one line
             // tall while nothing is selected and jump to the message's height once something is,

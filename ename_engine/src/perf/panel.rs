@@ -16,7 +16,7 @@ use bevy::{
         containers::{pane, pane_body, pane_header},
         dark_theme::create_dark_theme,
         display::{label, label_dim},
-        theme::{ThemeBackgroundColor, ThemeToken, ThemedText, UiTheme},
+        theme::{SemanticToken, ThemeBackgroundColor, ThemeToken, ThemedText, UiTheme},
         tokens,
     },
     prelude::*,
@@ -48,6 +48,8 @@ const TEXT_SIZE: FontSize = FontSize::Px(12.0);
 /// Panel colours of our own, so the pane can be translucent over the scene.
 const STATS_BG: ThemeToken = ThemeToken::new_static("ename.stats.bg");
 const STATS_HEADER_BG: ThemeToken = ThemeToken::new_static("ename.stats.header.bg");
+const STATS_BG_COLOR: SemanticToken = SemanticToken::new_static("ename.stats.bg");
+const STATS_HEADER_BG_COLOR: SemanticToken = SemanticToken::new_static("ename.stats.header.bg");
 
 /// The statistics overlay's debug switch.
 #[derive(Resource, Debug, Clone, Copy, Default, Reflect)]
@@ -120,7 +122,7 @@ pub(super) fn finish(app: &mut App) {
         return;
     }
     if let Some(mut theme) = app.world_mut().get_resource_mut::<UiTheme>()
-        && theme.0.color.is_empty()
+        && theme.0.token_assignments.is_empty()
     {
         *theme = UiTheme(create_dark_theme());
     }
@@ -130,16 +132,30 @@ pub(super) fn finish(app: &mut App) {
 
 /// Adds the panel's colours to a theme that lacks them, derived from its pane colours.
 fn add_stats_colors(mut theme: ResMut<UiTheme>) {
-    let colors = &theme.0.color;
-    let missing = |token: &ThemeToken| !colors.contains_key(token);
+    let props = &theme.0;
+    let missing = |token: &ThemeToken| !props.token_assignments.contains_key(token);
     if !missing(&STATS_BG) && !missing(&STATS_HEADER_BG) {
         return;
     }
-    let base = |token, fallback: Color| colors.get(&token).copied().unwrap_or(fallback);
+    let base = |token, fallback: Color| {
+        if missing(&token) {
+            fallback
+        } else {
+            props.color(&token)
+        }
+    };
     let body = base(tokens::PANE_BODY_BG, Color::srgb(0.13, 0.13, 0.14)).with_alpha(0.86);
     let header = base(tokens::PANE_HEADER_BG, Color::srgb(0.09, 0.09, 0.1)).with_alpha(0.92);
-    theme.0.color.entry(STATS_BG).or_insert(body);
-    theme.0.color.entry(STATS_HEADER_BG).or_insert(header);
+    for (token, semantic, color) in [
+        (STATS_BG, STATS_BG_COLOR, body),
+        (STATS_HEADER_BG, STATS_HEADER_BG_COLOR, header),
+    ] {
+        let props = &mut theme.0;
+        if !props.token_assignments.contains_key(&token) {
+            props.token_assignments.insert(token, semantic.clone());
+            props.semantic_base.entry(semantic).or_insert(color);
+        }
+    }
 }
 
 /// Gives every qualifying host a panel and despawns the panels of hosts that no longer qualify.
@@ -192,7 +208,7 @@ pub(crate) fn reconcile(
 }
 
 /// Builds the feathers pane into a new panel root; the refresh fills its body.
-fn fill_panel(add: On<Add, StatsPanelOf>, mut commands: Commands) {
+fn fill_panel(add: On<Add<StatsPanelOf>>, mut commands: Commands) {
     commands.entity(add.entity).apply_scene(bsn! {
         Node {
             position_type: PositionType::Absolute,
@@ -201,26 +217,21 @@ fn fill_panel(add: On<Add, StatsPanelOf>, mut commands: Commands) {
             min_width: px(190),
         }
         GlobalZIndex(PANEL_Z)
-        click_through()
+        @click_through()
         Children [
-            (
-                pane() click_through() Children [
-                    (
-                        pane_header()
-                        Node { min_height: px(24), padding: px(4) }
-                        ThemeBackgroundColor(STATS_HEADER_BG)
-                        click_through()
-                        Children [ (Text("Statistics") ThemedText click_through()) ]
-                    ),
-                    (
-                        pane_body()
-                        Node { row_gap: px(6), padding: px(6) }
-                        ThemeBackgroundColor(STATS_BG)
-                        StatsPanelBody
-                        click_through()
-                    ),
-                ]
-            ),
+            @pane() @click_through() Children [
+                @pane_header()
+                Node { min_height: px(24), padding: px(4) }
+                ThemeBackgroundColor(STATS_HEADER_BG)
+                @click_through()
+                Children [ Text("Statistics") ThemedText @click_through() ]
+                --
+                @pane_body()
+                Node { row_gap: px(6), padding: px(6) }
+                ThemeBackgroundColor(STATS_BG)
+                StatsPanelBody
+                @click_through()
+            ]
         ]
     });
 }
@@ -418,23 +429,23 @@ fn spawn_cell(
 }
 
 fn small(text: String) -> impl Scene {
-    bsn! { label(text) TextFont { font_size: TEXT_SIZE } }
+    bsn! { @label(text) TextFont { font_size: TEXT_SIZE } }
 }
 
 fn small_dim(text: String) -> impl Scene {
-    bsn! { label_dim(text) TextFont { font_size: TEXT_SIZE } }
+    bsn! { @label_dim(text) TextFont { font_size: TEXT_SIZE } }
 }
 
 fn mono_dim(text: String) -> impl Scene {
     bsn! {
-        label_dim(text)
+        @label_dim(text)
         TextFont { font: FontSourceTemplate::Handle(fonts::MONO), font_size: TEXT_SIZE }
     }
 }
 
 fn mono() -> impl Scene {
     bsn! {
-        label("")
+        @label("")
         TextFont { font: FontSourceTemplate::Handle(fonts::MONO), font_size: TEXT_SIZE }
     }
 }

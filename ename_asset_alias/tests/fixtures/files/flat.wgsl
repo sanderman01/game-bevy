@@ -1,6 +1,4 @@
-#import "alias://core::tint_by_path"::tint
-
 @fragment
 fn fragment() -> @location(0) vec4<f32> {
-    return tint();
+    return vec4<f32>(1.0, 0.5, 0.25, 1.0);
 }

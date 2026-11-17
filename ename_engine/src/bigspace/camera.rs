@@ -406,13 +406,13 @@ fn contents_of<'a>(entity: Entity, links: &'a Query<LinkData>) -> (Pose, Option<
 /// so this gets to them before `Children::on_despawn` queues their despawn. That covers every
 /// despawn path: a direct one, a cascade from an ancestor (which reaches the grid through
 /// commands), stage unload and a `DynamicWorld` hot reload alike.
-fn rescue_followers_on_grid_despawn(despawn: On<Despawn, Grid>, mut rescue: FollowerRescue) {
+fn rescue_followers_on_grid_despawn(despawn: On<Despawn<Grid>>, mut rescue: FollowerRescue) {
     rescue.below(despawn.entity);
 }
 
 /// Rescues the followers of a grid that loses its `Grid` component. Also fires on despawn, after
 /// [`rescue_followers_on_grid_despawn`] has already taken the followers, so it finds none.
-fn rescue_followers_on_grid_remove(remove: On<Remove, Grid>, mut rescue: FollowerRescue) {
+fn rescue_followers_on_grid_remove(remove: On<Remove<Grid>>, mut rescue: FollowerRescue) {
     rescue.below(remove.entity);
 }
 

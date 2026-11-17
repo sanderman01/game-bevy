@@ -33,20 +33,20 @@ features = ["dev"]
 anyhow = "1.0.100"
 async-channel = "2.5.0"
 async-lock = "3.4.2"
-avian3d = "0.7.0"
+avian3d = "0.8.0"
 # Data URIs in glTF files. Already in `Cargo.lock` via Bevy.
-base64 = "0.22.1"
-bevy = { version = "0.19.1", default-features = true, features = ["bevy_feathers", "jpeg"] }
-bevy-inspector-egui = { version = "0.37.0", features = ["highlight_changes"] }
-bevy_egui = "0.40"
-big_space = { git = "https://github.com/aevyrie/big_space", rev = "5f25522", features = ["debug", "camera"] }
+base64 = "0.23.0"
+bevy = { version = "0.20.1", default-features = true, features = ["bevy_feathers", "jpeg"] }
+bevy-inspector-egui = { version = "0.38.0", features = ["highlight_changes"] }
+bevy_egui = "0.43"
+big_space = { version = "0.14.0-rc.0", features = ["debug", "camera"] }
 # Positioned archive reads off Bevy's task threads. Already in `Cargo.lock` via Bevy.
 blocking = "1.7.0"
 # The zip member checksum. Already in `Cargo.lock` via `zip` and Bevy.
 crc32fast = "1.5.1"
 dirs = "7.0.0"
-egui = "0.34"
-egui_dock = "0.19"
+egui = "0.36"
+egui_dock = "0.21"
 ename_application = { path = "ename_application", version = "0.0.0" }
 # `default-features = false` here so `ename_asset_package` can take it without Bevy. Every
 # consumer that wants the `alias://` source and the scan plugin asks for `features = ["bevy"]`.
@@ -66,12 +66,13 @@ example_game_lib = { path = "example_game_lib", version = "0.0.0" }
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
 futures-lite = "2.6.1"
 glob = "0.3.4"
-# Exactly `bevy_gltf` 0.19.1's features, so the build unifies nothing new into Bevy's `gltf` and
+# Exactly `bevy_gltf` 0.20.1's features, so the build unifies nothing new into Bevy's `gltf` and
 # `ename_gltf_info` accepts the same required extensions the loader does.
 gltf = { version = "1.4.1", default-features = false, features = [
   "KHR_lights_punctual",
   "KHR_materials_transmission",
   "KHR_materials_ior",
+  "KHR_materials_specular",
   "KHR_materials_volume",
   "KHR_materials_unlit",
   "KHR_materials_emissive_strength",
@@ -95,7 +96,7 @@ semver = { version = "1.0.28", features = ["serde"] }
 serde = "1.0.228"
 serde_json = "1.0.145"
 # Process facts on every platform. Same version as Bevy's `bevy_diagnostic`.
-sysinfo = { version = "0.38.4", default-features = false }
+sysinfo = { version = "0.39.5", default-features = false }
 # `default-features = false` drops `xattr`, which only matters for unpacking.
 tar = { version = "0.4.46", default-features = false }
 tempfile = "3.27.0"
@@ -107,7 +108,7 @@ tracing-subscriber = "0.3.20"
 uuid = { version = "1.26.0", features = ["serde"] }
 # Query sets and pass timestamp writes, which `bevy::render` does not re-export. Bevy's version,
 # so it unifies; Bevy turns on the backends.
-wgpu = { version = "29.0.3", default-features = false }
+wgpu = { version = "30", default-features = false }
 # Process creation flags for the launcher on Windows. The version `process-wrap` uses.
 windows = { version = "0.62.2", default-features = false }
 # Tests and tooling build archives with it; `ename_asset_vfs` reads them with its own parser.

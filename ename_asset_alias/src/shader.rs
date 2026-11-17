@@ -6,11 +6,11 @@
 //! `.meta` names it for any file with an extension in [`SHADER_EXTENSIONS`] and fills in
 //! [`AliasShaderSettings::extension`] from the resolved file.
 //!
-//! Only WGSL and SPIR-V are handled. GLSL would need a direct `naga` dependency pinned to Bevy's,
-//! so `.vert`, `.frag` and `.comp` files keep Bevy's loader and do not load by alias.
+//! WESL imports are module paths, which resolve against the default asset source, so a shader
+//! cannot import another by alias.
 
 use bevy::{
-    asset::{AssetLoader, LoadContext, io::Reader},
+    asset::{AssetLoader, AssetPath, LoadContext, io::Reader},
     log::warn,
     reflect::TypePath,
     shader::{Shader, ShaderDefVal, ShaderImport},
@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// File extensions, without the dot, whose synthesized `.meta` names [`AliasShaderLoader`].
-pub const SHADER_EXTENSIONS: &[&str] = &["wgsl", "spv"];
+pub const SHADER_EXTENSIONS: &[&str] = &["wgsl", "wesl", "spv"];
 
 /// Loads a [`Shader`] whose language comes from its settings rather than from the asset path.
 ///
@@ -33,7 +33,7 @@ pub struct AliasShaderLoader;
 pub struct AliasShaderSettings {
     /// The extension of the file the alias resolves to, without the dot. Picks the language.
     pub extension: String,
-    /// The `#define`s for this shader. WGSL only, as with Bevy's `ShaderLoader`.
+    /// The shader defs for this shader. WESL only, as with Bevy's `ShaderLoader`.
     #[serde(default)]
     pub shader_defs: Vec<ShaderDefVal>,
 }
@@ -73,22 +73,38 @@ impl AssetLoader for AliasShaderLoader {
             .replace(std::path::MAIN_SEPARATOR, "/");
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).await?;
-        if extension != "wgsl" && !settings.shader_defs.is_empty() {
-            warn!("Shader defs are only supported for wgsl; ignoring them for {path}");
+        if extension != "wesl" && !settings.shader_defs.is_empty() {
+            warn!("Shader defs are only supported for wesl; ignoring them for {path}");
         }
         let mut shader = match extension {
             "spv" => Shader::from_spirv(bytes, load_context.path().path().to_string_lossy()),
-            _ => Shader::from_wgsl_with_defs(
-                String::from_utf8(bytes)?,
-                path,
-                settings.shader_defs.clone(),
-            ),
+            "wgsl" => Shader::from_wgsl(String::from_utf8(bytes)?, path),
+            _ => {
+                let mut shader = Shader::from_wesl(String::from_utf8(bytes)?, path);
+                shader.shader_defs = settings.shader_defs.clone();
+                shader
+            }
         };
 
-        // Imports by asset path are loaded here, as Bevy's loader does, so they stay alive.
-        for import in &shader.imports {
-            if let ShaderImport::AssetPath(asset_path) = import {
-                shader.file_dependencies.push(load_context.load(asset_path));
+        // As Bevy's loader does: a WESL import names a module or an item in one, so only the
+        // candidates that exist as files are loaded, and kept alive by the importing shader.
+        let candidates: Vec<AssetPath<'static>> = shader
+            .imports
+            .iter()
+            .filter_map(|import| match import {
+                ShaderImport::AssetPath(path) => {
+                    Some(format!("{}.wesl", path.trim_start_matches('/')).into())
+                }
+                ShaderImport::Custom(_) => None,
+            })
+            .collect();
+        for candidate in candidates {
+            if load_context
+                .read_asset_bytes(candidate.clone())
+                .await
+                .is_ok()
+            {
+                shader.file_dependencies.push(load_context.load(candidate));
             }
         }
         Ok(shader)

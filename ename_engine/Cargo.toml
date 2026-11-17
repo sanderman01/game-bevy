@@ -37,7 +37,7 @@ wgpu.workspace = true
 # `stage_archive.rs` mounts an archive to save into.
 ename_asset_vfs = { workspace = true, features = ["tar", "zip"] }
 # Only for the headless GPU test of the video NV12 shader. Bevy's version, so it unifies.
-wgpu = { version = "29.0.3", default-features = false, features = ["wgsl", "vulkan", "metal", "dx12"] }
+wgpu = { version = "30", default-features = false, features = ["wgsl", "vulkan", "metal", "dx12"] }
 
 [[test]]
 name = "stage_archive"

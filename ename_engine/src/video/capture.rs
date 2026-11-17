@@ -46,11 +46,13 @@ use bevy::{
             TextureViewDimension, TextureViewId,
         },
         renderer::{RenderDevice, RenderGraph, RenderGraphSystems, RenderQueue},
+        sync_world::MainEntity,
         texture::{GpuImage, OutputColorAttachment},
         view::{
-            ExtractedWindows, ViewTargetAttachments, prepare_view_attachments, prepare_view_targets,
+            ExtractedWindow, ViewTargetAttachments, prepare_view_attachments, prepare_view_targets,
         },
     },
+    window::PrimaryWindow,
 };
 
 use super::{
@@ -277,7 +279,11 @@ impl FrameBytes {
     pub(crate) fn with<R>(&self, f: impl FnOnce(&[u8]) -> R) -> R {
         match self {
             Self::Mapped(mapped) => {
-                let view = mapped.buffer.slice(..mapped.padded).get_mapped_range();
+                let view = mapped
+                    .buffer
+                    .slice(..mapped.padded)
+                    .get_mapped_range()
+                    .expect("a Mapped frame holds a mapped buffer");
                 f(&view[..mapped.len])
             }
             #[cfg(test)]
@@ -514,16 +520,26 @@ fn is_supported(format: TextureFormat) -> bool {
 /// What a capture reads: the view, whether it is sRGB, and the attachment it expects.
 type Source = (TextureView, bool, TextureViewId);
 
+/// The render world's windows, by main-world window entity.
+type ExtractedWindows<'a> = HashMap<Entity, &'a ExtractedWindow>;
+
 /// Reserves a slot and a source for each job, and redirects recorded windows to our texture.
 fn prepare_capture_targets(
     mut extracted: ResMut<ExtractedCaptures>,
     mut gpu: ResMut<CaptureGpu>,
     mut prepared: ResMut<PreparedCaptures>,
     mut attachments: ResMut<ViewTargetAttachments>,
-    windows: Res<ExtractedWindows>,
+    extracted_windows: Query<(MainEntity, &ExtractedWindow, Has<PrimaryWindow>)>,
     images: Res<RenderAssets<GpuImage>>,
     device: Res<RenderDevice>,
 ) {
+    let primary = extracted_windows
+        .iter()
+        .find_map(|(entity, _, primary)| primary.then_some(entity));
+    let windows: ExtractedWindows = extracted_windows
+        .iter()
+        .map(|(entity, window, _)| (entity, window))
+        .collect();
     prepared.captures.clear();
     prepared.redirected.clear();
     let gpu = &mut *gpu;
@@ -543,8 +559,7 @@ fn prepare_capture_targets(
     if (extracted.warm || !jobs.is_empty()) && gpu.pipelines.is_none() {
         let mut pipelines = CapturePipelines::new(&device);
         // The primary window's blit too, so a window recording's first frame does not compile.
-        if let Some(format) = windows
-            .primary
+        if let Some(format) = primary
             .and_then(|primary| windows.get(&primary))
             .and_then(|window| window.swap_chain_texture_view_format)
             .filter(|format| is_supported(*format))
@@ -643,7 +658,7 @@ fn warm_blit(
 fn prepare_window(
     job: &CaptureJob,
     window: Entity,
-    windows: &ExtractedWindows,
+    windows: &ExtractedWindows<'_>,
     redirects: &mut HashMap<Entity, Redirect>,
     attachments: &mut ViewTargetAttachments,
     device: &RenderDevice,
@@ -825,8 +840,9 @@ fn capture_frames(world: &mut World) {
     }
     let device = world.resource::<RenderDevice>().clone();
     world.resource_scope(|world, mut gpu: Mut<CaptureGpu>| {
+        let mut window_query = world.query::<(MainEntity, &ExtractedWindow)>();
+        let windows: ExtractedWindows = window_query.iter(world).collect();
         let attachments = world.resource::<ViewTargetAttachments>();
-        let windows = world.resource::<ExtractedWindows>();
         let queue = world.resource::<RenderQueue>();
         let current = |key: &NormalizedRenderTarget| {
             attachments.get(key).map(|attachment| attachment.view.id())

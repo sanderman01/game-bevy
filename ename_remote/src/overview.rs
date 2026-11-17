@@ -114,8 +114,8 @@ pub(crate) fn overview(In(raw): In<Option<Value>>, world: &mut World) -> BrpResu
     let internal: Vec<ComponentId> = world
         .components()
         .iter_registered()
-        .filter(|info| INTERNAL_MARKERS.contains(&info.name().to_string().as_str()))
-        .map(|info| info.id())
+        .filter(|(_, info)| INTERNAL_MARKERS.contains(&info.name().to_string().as_str()))
+        .map(|(id, _)| id)
         .collect();
     let is_internal = |world: &World, entity: Entity| {
         world

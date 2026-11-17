@@ -110,9 +110,9 @@ pub(crate) fn list(In(params): In<Option<Value>>, world: &mut World) -> BrpResul
     let infos: Vec<(ComponentId, String, String)> = world
         .components()
         .iter_registered()
-        .map(|info| {
+        .map(|(id, info)| {
             let name = info.name();
-            (info.id(), name.to_string(), name.shortname().to_string())
+            (id, name.to_string(), name.shortname().to_string())
         })
         .collect();
     let internal: HashSet<ComponentId> = infos

@@ -265,7 +265,7 @@ pub(super) fn content_root(world: &mut World) -> Entity {
 
 /// Puts a section spawned without a parent under the content root.
 fn place_section(
-    add: On<Add, StatsSection>,
+    add: On<Add<StatsSection>>,
     parented: Query<(), With<ChildOf>>,
     mut commands: Commands,
 ) {
@@ -283,7 +283,7 @@ fn place_section(
     });
 }
 
-fn name_section(add: On<Add, StatsSection>, mut sections: Query<(&StatsSection, &mut Name)>) {
+fn name_section(add: On<Add<StatsSection>>, mut sections: Query<(&StatsSection, &mut Name)>) {
     if let Ok((section, mut name)) = sections.get_mut(add.entity)
         && name.as_str().is_empty()
     {
@@ -291,7 +291,7 @@ fn name_section(add: On<Add, StatsSection>, mut sections: Query<(&StatsSection, 
     }
 }
 
-fn name_row(add: On<Add, StatsRow>, mut rows: Query<(&StatsRow, &mut Name)>) {
+fn name_row(add: On<Add<StatsRow>>, mut rows: Query<(&StatsRow, &mut Name)>) {
     if let Ok((row, mut name)) = rows.get_mut(add.entity)
         && name.as_str().is_empty()
     {

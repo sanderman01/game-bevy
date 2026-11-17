@@ -85,7 +85,7 @@ impl Scene {
     /// `None`), with its `Aabb` when the mesh is known.
     fn plane(&mut self, centre: DVec3, size: f32, marked: bool) -> Entity {
         let mesh = Plane3d::default().mesh().size(size, size).build();
-        let aabb = mesh.compute_aabb();
+        let aabb = mesh.get_aabb();
         let handle = self.add_mesh(mesh);
         self.mesh_entity(centre, handle, aabb, marked)
     }

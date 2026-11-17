@@ -290,6 +290,10 @@ impl egui_dock::TabViewer for TabViewer<'_> {
         }
     }
 
+    fn id(&mut self, window: &mut Self::Tab) -> egui_dock::egui::Id {
+        egui_dock::egui::Id::new(self.title(window).text())
+    }
+
     fn title(&mut self, window: &mut Self::Tab) -> egui_dock::egui::WidgetText {
         format!("{window:?}").into()
     }
@@ -396,7 +400,7 @@ fn show_ui_system(world: &mut World) {
         // Claims a horizontal strip at the top of `ui` and advances `ui`'s own cursor past it,
         // the same way `console.rs`'s `egui::Panel::bottom(...)` claims the detail pane's slice
         // of its tab -- so the dock below only ever sees what's left.
-        egui::Panel::top("menu_bar").show_inside(&mut ui, |ui| {
+        egui::Panel::top("menu_bar").show(&mut ui, |ui| {
             crate::menu::ui(ui, world, &mut ui_state.selected_entities);
         });
         ui_state.ui(world, &mut ui);
@@ -466,7 +470,9 @@ mod tests {
             )),
             ..default()
         };
-        let _ = ctx.run_ui(input, |ui| ui_state.ui(world, ui));
+        let mut output = ctx.run_ui(input, |ui| ui_state.ui(world, ui));
+        // No painter applies texture deltas here, and egui asserts they were handled.
+        output.textures_delta.clear();
     }
 
     fn world() -> World {

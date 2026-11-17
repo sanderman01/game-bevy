@@ -1,12 +1,12 @@
 //! Keeps egui's cursor icon under feathers.
 //!
-//! feathers' `CursorIconPlugin` (in `EnginePlugins`) writes `DefaultCursor` into the window's
+//! bevy_picking's `CursorIconPlugin` (added by feathers) writes `DefaultCursor` into the window's
 //! `CursorIcon` every `PreUpdate` while no feathers widget is hovered, and bevy_egui writes
 //! `CursorIcon` only when egui's icon changes. Without this, egui's resize and text cursors last
 //! one frame.
 
 use bevy::{
-    feathers::cursor::{DefaultCursor, EntityCursor},
+    picking::cursor::{DefaultCursor, EntityCursor},
     prelude::*,
     window::SystemCursorIcon,
 };

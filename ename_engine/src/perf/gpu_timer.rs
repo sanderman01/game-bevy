@@ -264,7 +264,10 @@ impl Slot {
     fn read_back(&mut self, period_ns: f32) -> GpuFrame {
         let used = self.queries_used() as usize;
         let ticks: Vec<u64> = {
-            let data = self.read.get_mapped_range(..);
+            let data = self
+                .read
+                .get_mapped_range(..)
+                .expect("read_back runs only on a mapped slot");
             data[..used * TIMESTAMP_SIZE as usize]
                 .as_chunks::<8>()
                 .0

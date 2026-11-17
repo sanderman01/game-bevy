@@ -206,7 +206,7 @@ impl StaticGeometry<'_, '_> {
             let step = frame.y_step(from);
             let start = frame.render_point(from + DVec3::Y * step);
             let Some((distance, _)) = shape.cast_ray(
-                *position,
+                position.0,
                 *rotation,
                 start,
                 up.as_vec3(),

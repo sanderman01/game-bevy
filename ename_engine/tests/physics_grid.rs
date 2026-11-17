@@ -899,7 +899,7 @@ fn a_child_collider_under_a_non_uniformly_scaled_body_matches_avians_propagation
     assert!(
         (collider_transform.scale - Vec3::new(2.0, 1.0, 1.0)).length() < 1e-5
             && (collider_transform.translation - Vec3::new(2.0, 0.0, 0.0)).length() < 1e-5
-            && collider_transform.rotation.0.dot(tilt).abs() > 1.0 - 1e-6,
+            && collider_transform.rotation.dot(tilt).abs() > 1.0 - 1e-6,
         "{collider_transform:?}"
     );
 

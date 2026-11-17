@@ -31,11 +31,12 @@ use bevy::{
     camera::primitives::{Aabb, MeshAabb},
     diagnostic::FrameCount,
     ecs::system::SystemParam,
-    math::{Affine3A, DVec3, Ray3d, bounding::Aabb3d},
+    math::{Affine3A, DVec3},
     mesh::{Indices, PrimitiveTopology, VertexAttributeValues},
     picking::mesh_picking::ray_cast::{Backfaces, ray_aabb_intersection_3d, ray_mesh_intersection},
     platform::collections::{HashMap, HashSet},
     prelude::*,
+    shape::{Aabb3d, Ray3d},
 };
 
 use super::{
@@ -188,7 +189,7 @@ impl MarkedMeshes<'_, '_> {
                     .cache
                     .bounds
                     .entry(id)
-                    .or_insert_with(|| asset.compute_aabb()),
+                    .or_insert_with(|| asset.get_aabb()),
             };
             let Some(aabb) = aabb else {
                 continue;

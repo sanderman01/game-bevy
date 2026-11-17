@@ -41,7 +41,7 @@
 //! 1.3 ms a frame. A start also walks up to the root to find the accumulator there, and skips
 //! itself when the walk of a moved ancestor is certain to reach it.
 
-use avian3d::prelude::{ColliderOf, ColliderTransform, RigidBody, Rotation};
+use avian3d::prelude::{ColliderOf, ColliderTransform, RigidBody};
 use bevy::{ecs::query::QueryData, prelude::*};
 use big_space::prelude::{CellCoord, Grid};
 
@@ -58,7 +58,7 @@ use crate::bigspace::grid::translation_in_parent;
 pub(crate) struct ColliderAncestor;
 
 pub(crate) fn mark_ancestors_of_new_collider(
-    insert: On<Insert, ColliderOf>,
+    insert: On<Insert<ColliderOf>>,
     commands: Commands,
     parents: Query<&ChildOf>,
     marked: Query<(), With<ColliderAncestor>>,
@@ -67,7 +67,7 @@ pub(crate) fn mark_ancestors_of_new_collider(
 }
 
 pub(crate) fn restart_detached(
-    remove: On<Remove, ChildOf>,
+    remove: On<Remove<ChildOf>>,
     mut commands: Commands,
     walked: Query<(), Marked>,
 ) {
@@ -78,7 +78,7 @@ pub(crate) fn restart_detached(
 }
 
 pub(crate) fn mark_ancestors_of_reparented(
-    insert: On<Insert, ChildOf>,
+    insert: On<Insert<ChildOf>>,
     commands: Commands,
     parents: Query<&ChildOf>,
     marked: Query<(), With<ColliderAncestor>>,
@@ -228,7 +228,7 @@ impl Accumulated {
     fn collider_transform(&self) -> ColliderTransform {
         ColliderTransform {
             translation: self.pose.translation,
-            rotation: Rotation(self.pose.rotation),
+            rotation: self.pose.rotation,
             scale: self.pose.scale,
         }
     }

@@ -167,15 +167,15 @@ fn candidates(world: &World, registry: &TypeRegistry, set: TypeSet) -> Vec<Candi
         .collect();
     if set == TypeSet::Components {
         // Components reflection cannot see still have a name, and can still be removed.
-        out.extend(components.iter_registered().filter_map(|info| {
-            let registered = info.type_id().and_then(|id| registry.get(id));
+        out.extend(components.iter_registered().filter_map(|(id, info)| {
+            let registered = info.type_id().and_then(|type_id| registry.get(type_id));
             // Resources are components on an entity of their own; they are not offered here.
             if registered.is_some_and(|r| r.data::<ReflectComponent>().is_some())
-                || world.resource_entities().get(info.id()).is_some()
+                || world.resource_entities().get(id).is_some()
             {
                 return None;
             }
-            candidate_for_id(world, registry, info.id())
+            candidate_for_id(world, registry, id)
         }));
     }
     out
