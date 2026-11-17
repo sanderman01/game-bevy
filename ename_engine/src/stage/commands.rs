@@ -236,7 +236,8 @@ pub(super) fn relink_loaded_children(
             continue;
         };
         for &child in children {
-            commands.entity(child).insert(ChildOf(parent));
+            // Another ready observer may despawn it first, such as a `COL_` node's mesh.
+            commands.entity(child).try_insert(ChildOf(parent));
             stack.push(child);
         }
     }
