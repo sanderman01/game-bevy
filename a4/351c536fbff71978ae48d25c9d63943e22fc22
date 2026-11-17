@@ -1,0 +1,25 @@
+ename_engine/src/physics/grid_propagate.rs
+  s_34c20b4285f5da::t_db905f5293aa5f 30-38
+  s_34c20b4285f5da::t_cbc44b93f834f4 73-95
+ename_engine/tests/physics_grid.rs
+  s_34c20b4285f5da::t_3cedb79b4dcad7 977-1007
+ename_engine/src/physics/mod.rs
+  s_34c20b4285f5da::t_57743d7e51594f 11
+  s_34c20b4285f5da::t_9e463948ae287a 52-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a4351c536fbff71978ae48d25c9d63943e22fc22",
+  "prompts": {},
+  "sessions": {
+    "s_34c20b4285f5da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62043e9f-637a-427c-b922-2ecdf9c3647b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
