@@ -974,6 +974,37 @@ fn a_child_collider_spawned_under_a_settled_far_body_sits_on_its_body() {
     );
 }
 
+/// avian seeds a new collider's `GlobalTransform` from the `Transform` chain without the cell,
+/// and big_space recomputes a settled entity only when its `Transform` changes. Like a glTF
+/// mesh that gets its collider once its scene is ready.
+#[test]
+fn a_collider_added_to_a_settled_nested_entity_keeps_its_global_transform() {
+    let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);
+    let body = scene.body_near_origin(RigidBody::Static, Vec3::new(2000.0, 0.0, 0.0), Vec3::ZERO);
+    let world = scene.app.world_mut();
+    world.entity_mut(body).remove::<Collider>();
+    let holder = world
+        .spawn((ChildOf(body), Transform::from_xyz(1.0, 0.0, 0.0)))
+        .id();
+    let mesh = world
+        .spawn((ChildOf(holder), Transform::from_xyz(0.0, 1.0, 0.0)))
+        .id();
+    scene.settle();
+
+    let world = scene.app.world_mut();
+    world.entity_mut(mesh).insert(Collider::sphere(0.5));
+    scene.app.update();
+
+    let world = scene.app.world();
+    let body_translation = world.get::<GlobalTransform>(body).unwrap().translation();
+    let mesh_translation = world.get::<GlobalTransform>(mesh).unwrap().translation();
+    assert!(
+        (mesh_translation - body_translation - Vec3::new(1.0, 1.0, 0.0)).length() < 1e-3,
+        "the mesh renders {} from its body",
+        mesh_translation - body_translation
+    );
+}
+
 #[test]
 fn a_child_colliders_transform_edit_reaches_its_collider_transform() {
     let mut scene = Scene::new(1.0 / 30.0, ORIGINS[1]);

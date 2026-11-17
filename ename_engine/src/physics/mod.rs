@@ -8,7 +8,7 @@ mod grid_writeback;
 use avian3d::{
     PhysicsPlugins,
     physics_transform::{PhysicsTransformConfig, PhysicsTransformSystems},
-    prelude::PhysicsSystems,
+    prelude::{Collider, PhysicsSystems, RigidBody},
 };
 use bevy::prelude::*;
 
@@ -49,6 +49,8 @@ impl Plugin for PhysicsIntegrationPlugin {
                     grid_writeback::physics_position_to_transform.after(PhysicsSystems::Writeback),
                 ),
             )
+            .add_observer(grid_propagate::reseed_nested_global_transform::<Collider>)
+            .add_observer(grid_propagate::reseed_nested_global_transform::<RigidBody>)
             .add_observer(collider_grid_transform::mark_ancestors_of_new_collider)
             .add_observer(collider_grid_transform::mark_ancestors_of_reparented)
             .add_observer(collider_grid_transform::restart_detached)

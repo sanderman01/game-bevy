@@ -27,9 +27,15 @@
 //! A `Position` given at spawn loses to `Transform`, as it does in avian whenever
 //! `position_to_transform` is off: place grid entities by `CellCoord` and `Transform`.
 //!
-//! Not covered: an entity nested under a non-grid parent keeps the old behaviour, and a nested
-//! grid that moves within a frame gives its bodies last frame's grid pose, because its
-//! floating-origin transform is also only updated in `PostUpdate`.
+//! An entity nested under a non-grid parent gets the same cell-less seed when it gains a collider
+//! or a body. big_space recomputes such an entity only when its `Transform` changes, so on a
+//! settled entity, such as a glTF mesh that gets its collider once its scene is ready, the seed
+//! would stay and the mesh would render cells away. [`reseed_nested_global_transform`] puts it
+//! back under its parent.
+//!
+//! Not covered: a nested entity that moves within a frame keeps last frame's pose until
+//! `PostUpdate`, and a nested grid that moves within a frame gives its bodies last frame's grid
+//! pose, because its floating-origin transform is also only updated in `PostUpdate`.
 
 use avian3d::prelude::{Collider, Position, RigidBody};
 use bevy::prelude::*;
@@ -62,5 +68,28 @@ pub(crate) fn propagate_grid_bodies(
             continue;
         };
         global_transform.set_if_neq(grid.global_transform(&cell, &transform));
+    }
+}
+
+/// Undoes avian's cell-less `GlobalTransform` seed on an entity nested under a non-grid parent,
+/// from its parent's `GlobalTransform`. Runs after avian's insert hook for `C`.
+pub(crate) fn reseed_nested_global_transform<C: Component>(
+    add: On<Add<C>>,
+    grids: Query<(), With<Grid>>,
+    mut entities: Query<(Option<&ChildOf>, Option<&Transform>, &mut GlobalTransform)>,
+) {
+    let Ok((Some(child_of), Some(&transform), _)) = entities.get(add.entity) else {
+        return;
+    };
+    let parent = child_of.parent();
+    // Directly in a grid: placed through its cell by `propagate_grid_bodies`.
+    if grids.contains(parent) {
+        return;
+    }
+    let Ok((_, _, &parent_global)) = entities.get(parent) else {
+        return;
+    };
+    if let Ok((_, _, mut global_transform)) = entities.get_mut(add.entity) {
+        global_transform.set_if_neq(parent_global.mul_transform(transform));
     }
 }
