@@ -1,0 +1,19 @@
+ename_engine/src/stage/commands.rs
+  s_34c20b4285f5da::t_96a028fdf3ada7 239-240
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6b6bc8b13435deed03a72cf7e5dde882b0a85f65",
+  "prompts": {},
+  "sessions": {
+    "s_34c20b4285f5da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62043e9f-637a-427c-b922-2ecdf9c3647b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
