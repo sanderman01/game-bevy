@@ -15,6 +15,7 @@ use crate::{
     is_rules_file, validate_alias,
 };
 use ename_asset_vfs::{BoxedFuture, DirEntry, Vfs, VfsError};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     fmt::Display,
@@ -34,7 +35,7 @@ const MAX_DEPTH: usize = 64;
 
 /// One addressable asset: the alias it claims, the file it is, and the identity tooling tracks it
 /// by.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DiscoveredAsset {
     /// Fully namespaced, straight out of the folder rule or the `.alias` file, and already checked
     /// by [`validate_alias`] -- an asset whose alias could never resolve is a [`Problem`] instead
@@ -49,7 +50,7 @@ pub struct DiscoveredAsset {
 
 /// What kind of thing went wrong. One flat list, because a user asking "what is wrong with my
 /// content" wants one answer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProblemKind {
     UnreadableDirectory,
     UnparseableAliasFile,
@@ -93,6 +94,9 @@ pub enum ProblemKind {
     /// The user's load order file could not be read. The scan carries on with no user
     /// constraints. Produced by `ename_asset_content`.
     UnparseableLoadOrder,
+    /// The browser build's baked discovery is missing or unparseable, so no package loaded.
+    /// Produced by `ename_asset_content`.
+    UnreadableBakedDiscovery,
     /// An archive mount is shadowed, conflicting or unreadable; the detail says which. Produced
     /// by whoever mounts archives (`ename_asset_content`, `ename_xtask`); this crate has no
     /// archive vocabulary.
@@ -119,6 +123,7 @@ impl Display for ProblemKind {
             Self::DeadOverride => "dead overrides entry",
             Self::DeadRemoval => "dead removes entry",
             Self::UnparseableLoadOrder => "unparseable load order",
+            Self::UnreadableBakedDiscovery => "unreadable baked discovery",
             Self::Mount => "archive mount",
         };
         f.write_str(text)
@@ -126,7 +131,7 @@ impl Display for ProblemKind {
 }
 
 /// Something a walk could not do, and where.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Problem {
     pub path: PathBuf,
     pub kind: ProblemKind,

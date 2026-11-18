@@ -15,7 +15,8 @@ mod archive_vfs;
 mod mount;
 mod vfs;
 
-#[cfg(feature = "bevy")]
+// Desktop only: it finds archives through `FileAssetReader`, which wasm does not have.
+#[cfg(all(feature = "bevy", not(target_arch = "wasm32")))]
 mod archive_source;
 
 pub use crate::{
@@ -24,8 +25,7 @@ pub use crate::{
     vfs::{BoxedFuture, DirEntry, StdVfs, Vfs, VfsError, is_hidden_from_listings},
 };
 
+#[cfg(all(feature = "bevy", not(target_arch = "wasm32")))]
+pub use crate::archive_source::{ArchiveMounts, ArchiveSourcePlugin, check_writable};
 #[cfg(feature = "bevy")]
-pub use crate::{
-    archive_source::{ArchiveMounts, ArchiveSourcePlugin, check_writable},
-    vfs::AssetReaderVfs,
-};
+pub use crate::vfs::AssetReaderVfs;

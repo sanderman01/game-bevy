@@ -126,3 +126,9 @@ fn read_exact_at(file: &File, mut buf: &mut [u8], mut offset: u64) -> io::Result
     }
     Ok(())
 }
+
+/// The browser has no files to read, so no archive mounts either (`docs/assets-archives.md`).
+#[cfg(not(any(unix, windows)))]
+fn read_exact_at(_file: &File, _buf: &mut [u8], _offset: u64) -> io::Result<()> {
+    Err(io::ErrorKind::Unsupported.into())
+}

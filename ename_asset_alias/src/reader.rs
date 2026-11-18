@@ -32,7 +32,7 @@ use bevy::{
     ecs::{resource::Resource, system::Res},
     image::{ImageFormat, ImageFormatSetting, ImageLoaderSettings},
     reflect::TypePath,
-    tasks::ConditionalSendFuture,
+    tasks::{ConditionalSendFuture, futures::now_or_never},
 };
 use std::{path::Path, sync::Arc};
 
@@ -323,6 +323,8 @@ fn capture_asset_server(
     server: Res<AssetServer>,
 ) {
     server.register_loader(AliasShaderLoader);
-    let _ = cell.0.set_blocking(server.clone());
-    let _ = mode.0.set_blocking(server.mode());
+    // Nothing else sets these cells, so `set` is ready at once. Polled rather than
+    // `set_blocking`, which wasm does not have.
+    let _ = now_or_never(cell.0.set(server.clone()));
+    let _ = now_or_never(mode.0.set(server.mode()));
 }

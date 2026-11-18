@@ -32,13 +32,17 @@ use bevy::{
     tasks::IoTaskPool,
 };
 use ename_asset_alias::{AliasSourcePlugin, ContentIndexCell, IgnoredFiles};
-use ename_asset_package::{build_index, scan_packages};
-#[cfg(any(feature = "zip", feature = "tar"))]
+use ename_asset_package::build_index;
+#[cfg(not(target_arch = "wasm32"))]
+use ename_asset_package::scan_packages;
+#[cfg(all(any(feature = "zip", feature = "tar"), not(target_arch = "wasm32")))]
 use ename_asset_vfs::ArchiveSourcePlugin;
 use ename_asset_vfs::AssetReaderVfs;
 /// Re-exported so the engine's stage save can refuse a write into an archive. Lives with the
 /// mounts, so it works whichever crate turned an archive format on.
+#[cfg(not(target_arch = "wasm32"))]
 pub use ename_asset_vfs::check_writable;
+#[cfg(not(target_arch = "wasm32"))]
 use ename_asset_vfs::{ArchiveMounts, MountProblem};
 use std::{path::PathBuf, sync::Arc};
 
@@ -139,6 +143,8 @@ pub struct ContentScanSettings {
     asset_root: String,
     search_paths: Vec<String>,
     load_order_file: Option<PathBuf>,
+    // The browser reads a discovery baked with the build's own ignores.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     ignored: IgnoredFiles,
 }
 
@@ -168,8 +174,9 @@ struct ContentReportCell(Arc<OnceCell<ContentReport>>);
 
 impl Plugin for AssetContentPlugin {
     fn build(&self, app: &mut App) {
-        // A target that registers the archive source itself keeps its own.
-        #[cfg(any(feature = "zip", feature = "tar"))]
+        // A target that registers the archive source itself keeps its own. Archives are desktop
+        // only (`docs/assets-archives.md`).
+        #[cfg(all(any(feature = "zip", feature = "tar"), not(target_arch = "wasm32")))]
         if !app.is_plugin_added::<ArchiveSourcePlugin>() {
             app.add_plugins(
                 ArchiveSourcePlugin::default().with_asset_root(self.asset_root.clone()),
@@ -198,8 +205,9 @@ fn start_content_scan(
     cell: Res<ContentIndexCell>,
     report: Res<ContentReportCell>,
     config: Res<ContentScanSettings>,
-    mounts: Option<Res<ArchiveMounts>>,
+    #[cfg(not(target_arch = "wasm32"))] mounts: Option<Res<ArchiveMounts>>,
 ) {
+    #[cfg(not(target_arch = "wasm32"))]
     let mounts = mounts.map(|mounts| mounts.0.clone());
     let cell = cell.0.clone();
     let report_cell = report.0.clone();
@@ -227,12 +235,20 @@ fn start_content_scan(
                 None => LoadOrder::default(),
             };
 
+            #[cfg(not(target_arch = "wasm32"))]
             let scan =
                 scan_packages(&vfs, &config.search_paths, &load_order, &config.ignored).await;
+            // No directory listings over HTTP: the build baked what a walk would have found.
+            #[cfg(target_arch = "wasm32")]
+            let scan = ename_asset_package::resolve_discovery(
+                read_baked_discovery(&vfs, &mut problems).await,
+                &load_order,
+            );
             let (index, mut report) = build_index(&scan);
             report.problems.extend(problems);
             // Mounts the scan passed through have been classified and indexed by now.
             // Problems found later, by a read, are only logged.
+            #[cfg(not(target_arch = "wasm32"))]
             if let Some(mounts) = &mounts {
                 report
                     .problems
@@ -279,6 +295,35 @@ fn mirror_content_scan(
     commands.insert_resource(report.clone());
 }
 
+/// The [`BAKED_DISCOVERY_FILE`](ename_asset_package::BAKED_DISCOVERY_FILE) the web build wrote.
+/// Missing or unreadable, the game runs with no packages and says why in the report.
+#[cfg(target_arch = "wasm32")]
+async fn read_baked_discovery(
+    vfs: &AssetReaderVfs,
+    problems: &mut Vec<Problem>,
+) -> ename_asset_package::Discovery {
+    use ename_asset_package::{BAKED_DISCOVERY_FILE, Discovery};
+    use ename_asset_vfs::Vfs;
+
+    let path = std::path::Path::new(BAKED_DISCOVERY_FILE);
+    let parsed = match vfs.read_file(path).await {
+        Ok(bytes) => {
+            Discovery::from_ron(&String::from_utf8_lossy(&bytes)).map_err(|e| e.to_string())
+        }
+        Err(err) => Err(err.to_string()),
+    };
+    parsed.unwrap_or_else(|detail| {
+        warn!("No packages: cannot read {BAKED_DISCOVERY_FILE}: {detail}");
+        problems.push(Problem {
+            path: path.to_path_buf(),
+            kind: ProblemKind::UnreadableBakedDiscovery,
+            detail,
+        });
+        Discovery::default()
+    })
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn mount_problem(problem: &MountProblem) -> Problem {
     Problem {
         path: problem.logical.clone(),

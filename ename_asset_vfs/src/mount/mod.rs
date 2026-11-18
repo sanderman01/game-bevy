@@ -502,7 +502,7 @@ impl Mounts {
 
     /// Whether `path` names a mounted archive file, from what is already known. An archive in a
     /// directory nobody has looked at yet was never mounted, so `false` is right for it too.
-    #[cfg(feature = "bevy")]
+    #[cfg(all(feature = "bevy", not(target_arch = "wasm32")))]
     pub(crate) fn is_known_archive(&self, path: &Path) -> bool {
         matches!(
             self.locate(path, true, false),

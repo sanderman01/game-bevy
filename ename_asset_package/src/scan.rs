@@ -18,6 +18,7 @@
 use crate::{Disabled, LoadOrder, OrderEdges, PackageManifest, resolve, validate_package_id};
 use ename_asset_alias::{DiscoveredAsset, IgnoredFiles, Problem, ProblemKind, scan_aliases};
 use ename_asset_vfs::{Vfs, VfsError};
+use serde::{Deserialize, Serialize};
 use std::{
     fmt::Display,
     path::{Path, PathBuf},
@@ -33,7 +34,7 @@ pub const PACKAGE_INFO_FILE: &str = "package-info.toml";
 ///
 /// `root` and every asset `path` are relative to the vfs root, so a path can be handed straight to
 /// the default `AssetReader`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Package {
     pub manifest: PackageManifest,
     pub root: PathBuf,
@@ -57,8 +58,51 @@ pub struct Scan {
     pub edges: OrderEdges,
 }
 
+/// The packages on disk before load order is applied: what [`discover_packages`] found, and what a
+/// build bakes to [`BAKED_DISCOVERY_FILE`] for a target that cannot list directories.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct Discovery {
+    /// In search path order, then directory name.
+    pub packages: Vec<Package>,
+    pub problems: Vec<Problem>,
+}
+
+/// Where a build leaves the baked [`Discovery`], relative to the asset root. The browser reads it
+/// instead of walking the tree, because HTTP has no directory listings (`docs/web.md`).
+pub const BAKED_DISCOVERY_FILE: &str = "content-discovery.ron";
+
+impl Discovery {
+    /// Paths are written with `/` whichever OS baked it, so the file reads the same everywhere.
+    pub fn to_ron(&self) -> Result<String, ron::Error> {
+        let mut portable = self.clone();
+        for package in &mut portable.packages {
+            portable_path(&mut package.root);
+            portable_path(&mut package.search_path);
+            for asset in &mut package.assets {
+                portable_path(&mut asset.path);
+            }
+        }
+        for problem in &mut portable.problems {
+            portable_path(&mut problem.path);
+        }
+        ron::ser::to_string_pretty(&portable, ron::ser::PrettyConfig::default())
+    }
+
+    pub fn from_ron(text: &str) -> Result<Self, ron::error::SpannedError> {
+        ron::from_str(text)
+    }
+}
+
+fn portable_path(path: &mut PathBuf) {
+    if let Some(text) = path.to_str()
+        && text.contains('\\')
+    {
+        *path = PathBuf::from(text.replace('\\', "/"));
+    }
+}
+
 /// Scans every search path for packages, resolves their constraints, and discovers the assets in
-/// each.
+/// each: [`discover_packages`] then [`resolve_discovery`].
 ///
 /// A search path holds one directory per package. Package discovery does not recurse:
 /// `basegame/core` is a package, `basegame/core/props` is not. *Asset* discovery inside a package
@@ -75,22 +119,44 @@ pub async fn scan_packages(
     load_order: &LoadOrder,
     ignored: &IgnoredFiles,
 ) -> Scan {
+    resolve_discovery(
+        discover_packages(vfs, search_paths, ignored).await,
+        load_order,
+    )
+}
+
+/// Reads every package and its assets under `search_paths`, without ordering them.
+pub async fn discover_packages(
+    vfs: &dyn Vfs,
+    search_paths: &[String],
+    ignored: &IgnoredFiles,
+) -> Discovery {
     let mut ignored = ignored.clone();
     ignored.file_names.push(PACKAGE_INFO_FILE.to_owned());
 
-    let mut scan = Scan::default();
+    let mut discovery = Discovery::default();
     for search_path in search_paths {
-        read_packages_in(vfs, Path::new(search_path), &ignored, &mut scan).await;
+        read_packages_in(vfs, Path::new(search_path), &ignored, &mut discovery).await;
     }
+    discovery
+}
 
-    let resolution = resolve(&scan.packages, load_order);
-    let found = std::mem::take(&mut scan.packages);
-    // A clone per package rather than a `swap_remove` dance. This list is dozens of entries long
-    // and reading straight is worth more than the allocation.
-    scan.packages = resolution.order.iter().map(|i| found[*i].clone()).collect();
-    scan.disabled = resolution.disabled;
+/// Puts what [`discover_packages`] found in load order, and logs the outcome.
+pub fn resolve_discovery(discovery: Discovery, load_order: &LoadOrder) -> Scan {
+    let resolution = resolve(&discovery.packages, load_order);
+    let mut scan = Scan {
+        // A clone per package rather than a `swap_remove` dance. This list is dozens of entries
+        // long and reading straight is worth more than the allocation.
+        packages: resolution
+            .order
+            .iter()
+            .map(|i| discovery.packages[*i].clone())
+            .collect(),
+        disabled: resolution.disabled,
+        problems: discovery.problems,
+        edges: resolution.edges,
+    };
     scan.problems.extend(resolution.problems);
-    scan.edges = resolution.edges;
 
     let assets: usize = scan.packages.iter().map(|p| p.assets.len()).sum();
     info!(
@@ -118,7 +184,7 @@ async fn read_packages_in(
     vfs: &dyn Vfs,
     search_path: &Path,
     ignored: &IgnoredFiles,
-    scan: &mut Scan,
+    scan: &mut Discovery,
 ) {
     let entries = match vfs.read_dir(search_path).await {
         Ok(entries) => entries,

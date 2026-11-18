@@ -19,7 +19,13 @@ use thiserror::Error;
 
 /// A boxed, `Send` future. Spelled out here rather than borrowed from Bevy, because this crate
 /// compiles without Bevy.
+#[cfg(not(target_arch = "wasm32"))]
 pub type BoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// Not `Send` on wasm, where Bevy's reader futures are not either: there is one thread, so
+/// `IoTaskPool` does not ask for it.
+#[cfg(target_arch = "wasm32")]
+pub type BoxedFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
 
 /// Why a [`Vfs`] call failed.
 ///
