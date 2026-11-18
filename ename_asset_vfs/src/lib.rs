@@ -22,7 +22,7 @@ mod archive_source;
 pub use crate::{
     archive_vfs::ArchiveVfs,
     mount::{Limits, MountProblem, MountProblemKind, Mounts, Origin},
-    vfs::{BoxedFuture, DirEntry, StdVfs, Vfs, VfsError, is_hidden_from_listings},
+    vfs::{BoxedFuture, DirEntry, META_LIST_FILE, StdVfs, Vfs, VfsError, is_hidden_from_listings},
 };
 
 #[cfg(all(feature = "bevy", not(target_arch = "wasm32")))]

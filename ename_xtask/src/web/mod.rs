@@ -11,6 +11,7 @@ pub use bake::{bake, discover};
 pub use serve::serve;
 
 use ename_asset_package::BAKED_DISCOVERY_FILE;
+use ename_asset_vfs::META_LIST_FILE;
 use std::{
     path::{Path, PathBuf},
     process::Command,
@@ -83,8 +84,15 @@ pub fn web_build(
         );
     write(&options.out.join("index.html"), html.as_bytes())?;
 
-    let files = mirror_assets(asset_root, &assets_out)?;
-    println!("linked {files} asset files");
+    let mirrored = mirror_assets(asset_root, &assets_out)?;
+    let mut list = mirrored.metas.join("\n");
+    list.push('\n');
+    write(&assets_out.join(META_LIST_FILE), list.as_bytes())?;
+    println!(
+        "linked {} asset files, {} of them .meta",
+        mirrored.files,
+        mirrored.metas.len()
+    );
     println!(
         "done: {} (serve it with `cargo xtask ename_web_serve`)",
         options.out.display()
@@ -178,10 +186,18 @@ fn cargo_build(package: &str, options: &WebBuild) -> Result<PathBuf, String> {
         .ok_or_else(|| format!("no {package}.wasm in {}", dir.display()))
 }
 
+/// What [`mirror_assets`] linked.
+#[derive(Debug, Default)]
+struct Mirrored {
+    files: usize,
+    /// Relative to the asset root, with `/`, sorted: the body of [`META_LIST_FILE`].
+    metas: Vec<String>,
+}
+
 /// Hard-links (or copies, across filesystems) every servable file under `from` into `to`.
 /// Dot-files and archives are left out: the browser cannot read archives (`bake` refuses them).
-fn mirror_assets(from: &Path, to: &Path) -> Result<usize, String> {
-    let mut count = 0;
+fn mirror_assets(from: &Path, to: &Path) -> Result<Mirrored, String> {
+    let mut mirrored = Mirrored::default();
     let mut stack = vec![PathBuf::new()];
     while let Some(relative) = stack.pop() {
         let dir = from.join(&relative);
@@ -215,10 +231,15 @@ fn mirror_assets(from: &Path, to: &Path) -> Result<usize, String> {
                     format!("{} -> {}: {err}", source.display(), target.display())
                 })?;
             }
-            count += 1;
+            mirrored.files += 1;
+            if name_text.to_ascii_lowercase().ends_with(".meta") {
+                let parts: Vec<_> = relative.iter().map(|part| part.to_string_lossy()).collect();
+                mirrored.metas.push(parts.join("/"));
+            }
         }
     }
-    Ok(count)
+    mirrored.metas.sort();
+    Ok(mirrored)
 }
 
 fn is_archive(name: &str) -> bool {
@@ -270,8 +291,11 @@ mod tests {
         std::fs::write(from.join("pkg/sub/a.png"), "a").unwrap();
         std::fs::write(from.join("pkg/.hidden"), "").unwrap();
         std::fs::write(from.join("pkg.zip"), "").unwrap();
+        std::fs::write(from.join("pkg/sub/a.png.meta"), "").unwrap();
         let to = root.path().join("to");
-        assert_eq!(mirror_assets(&from, &to).unwrap(), 1);
+        let mirrored = mirror_assets(&from, &to).unwrap();
+        assert_eq!(mirrored.files, 2);
+        assert_eq!(mirrored.metas, ["pkg/sub/a.png.meta"]);
         assert_eq!(
             std::fs::read_to_string(to.join("pkg/sub/a.png")).unwrap(),
             "a"

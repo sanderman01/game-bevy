@@ -20,6 +20,10 @@ pub use ename_asset_package::{
     UserConstraint, Version, VersionReq,
 };
 
+// Registered in the browser only; compiled for tests so they run on desktop.
+#[cfg(any(test, target_arch = "wasm32"))]
+mod meta_list;
+
 use async_lock::OnceCell;
 use bevy::{
     app::{App, Plugin, Startup, Update},
@@ -180,6 +184,21 @@ impl Plugin for AssetContentPlugin {
         if !app.is_plugin_added::<ArchiveSourcePlugin>() {
             app.add_plugins(
                 ArchiveSourcePlugin::default().with_asset_root(self.asset_root.clone()),
+            );
+        }
+        // Over HTTP a missing `.meta` is a 404 per asset: ask only for the ones the build saw.
+        #[cfg(target_arch = "wasm32")]
+        {
+            use bevy::asset::{
+                AssetApp,
+                io::{AssetSource, AssetSourceBuilder, AssetSourceId},
+            };
+            let mut make_reader = AssetSource::get_default_reader(self.asset_root.clone());
+            app.register_asset_source(
+                AssetSourceId::Default,
+                AssetSourceBuilder::new(move || {
+                    Box::new(meta_list::MetaListReader::new(make_reader()))
+                }),
             );
         }
         app.add_plugins(AliasSourcePlugin::default().with_asset_root(self.asset_root.clone()))

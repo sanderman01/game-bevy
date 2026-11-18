@@ -64,6 +64,10 @@ pub trait Vfs: Send + Sync {
     fn read_dir<'a>(&'a self, path: &'a Path) -> BoxedFuture<'a, Result<Vec<DirEntry>, VfsError>>;
 }
 
+/// The `.meta` files a build saw under the asset root, one path per line, relative to it. For a
+/// reader that cannot list directories, so it asks only for those (`docs/web.md`).
+pub const META_LIST_FILE: &str = "asset-metas.txt";
+
 /// True for an entry a listing must hide: a `.meta` sidecar or a dot-file.
 pub fn is_hidden_from_listings(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {

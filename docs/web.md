@@ -37,7 +37,7 @@ compile for wasm. The build passes `--no-default-features`.
 - `index.html`, which says so if the browser has no WebGPU.
 - `game.js` and `game_bg.wasm`, the module and the glue `wasm-bindgen` generates for it.
 - `assets/`, the asset tree as loose files (hard links where possible), plus
-  `content-discovery.ron`.
+  `content-discovery.ron` and `asset-metas.txt`.
 
 Bevy fetches each asset over HTTP relative to the page. HTTP cannot list a directory, so the game
 cannot walk the tree for packages the way the desktop build does. `ename_web_build` runs the walk
@@ -57,8 +57,9 @@ Copy the output directory to any static web server. Two requirements:
 Precompressing `game_bg.wasm` with Brotli or gzip, where the server supports that, cuts the
 download a lot.
 
-Bevy asks for a `.meta` beside every asset it loads, so the browser console shows one 404 per
-asset. Those are expected: a missing `.meta` means default settings.
+Bevy asks for a `.meta` beside every asset it loads, and over HTTP each missing one would be a
+404 and a round trip. The build lists the `.meta` files that exist in `assets/asset-metas.txt`,
+and the game asks only for those.
 
 ## What the browser build leaves out
 
