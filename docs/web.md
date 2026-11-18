@@ -17,15 +17,18 @@ cargo xtask ename_web_build --release  # what you publish
 - `--webgl2` renders through WebGL2 instead. More browsers, but no compute shaders or storage
   buffers, so only a game that uses neither works.
 - `--out <dir>` writes somewhere other than `target/web/dist`.
+- Without `--release` the build uses the `web-dev` profile: dev without debug info. With debug
+  info the module is about 800 MB, and generating its glue needs over 10 GB of memory.
 - `--release` uses the `web-release` profile: release, `opt-level = "s"`, thin LTO. The player
   downloads the module, so size matters more than speed here.
 
 The build uses its own target dir, `target/web`, so it never waits on the desktop build's lock.
 `cargo web-check` and `cargo web-clippy` check the default binary for wasm the same way.
 
-The binary needs a `webgpu` feature that turns on `bevy/webgpu`, and its default features must not
-include `dev`: `bevy/dev` turns on the file watcher, which does not compile for wasm. The build
-passes `--no-default-features`.
+A game workspace needs both profiles in its own `Cargo.toml`, since cargo reads profiles from the
+workspace root. The binary also needs a `webgpu` feature that turns on `bevy/webgpu`, and its
+default features must not include `dev`: `bevy/dev` turns on the file watcher, which does not
+compile for wasm. The build passes `--no-default-features`.
 
 ## What the output is
 

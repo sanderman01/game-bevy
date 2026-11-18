@@ -19,7 +19,8 @@ use std::{
 /// The wasm target, and the target dir the build uses so it never waits on `target/`'s lock.
 pub const TARGET: &str = "wasm32-unknown-unknown";
 pub const TARGET_DIR: &str = "target/web";
-/// The workspace profile `--release` builds with.
+/// The workspace profiles the build uses, without and with `--release`.
+pub const DEV_PROFILE: &str = "web-dev";
 pub const RELEASE_PROFILE: &str = "web-release";
 /// Where the output goes by default, relative to the workspace root.
 pub const DEFAULT_OUT: &str = "target/web/dist";
@@ -70,7 +71,6 @@ pub fn web_build(
         .web(true)
         .map_err(|err| err.to_string())?
         .typescript(false)
-        .keep_debug(!options.release)
         .generate(&options.out)
         .map_err(|err| format!("wasm-bindgen: {err}"))?;
 
@@ -155,9 +155,12 @@ fn cargo_build(package: &str, options: &WebBuild) -> Result<PathBuf, String> {
     if !options.webgl2 {
         command.args(["--features", "webgpu"]);
     }
-    if options.release {
-        command.args(["--profile", RELEASE_PROFILE]);
-    }
+    let profile = if options.release {
+        RELEASE_PROFILE
+    } else {
+        DEV_PROFILE
+    };
+    command.args(["--profile", profile]);
     println!("building {package} for {TARGET}");
     let status = command
         .status()
@@ -166,12 +169,7 @@ fn cargo_build(package: &str, options: &WebBuild) -> Result<PathBuf, String> {
         return Err(format!("cargo build failed: {status}"));
     }
 
-    let profile_dir = if options.release {
-        RELEASE_PROFILE
-    } else {
-        "debug"
-    };
-    let dir = Path::new(TARGET_DIR).join(TARGET).join(profile_dir);
+    let dir = Path::new(TARGET_DIR).join(TARGET).join(profile);
     // A bin keeps its name; `-` becomes `_` only for libraries, but accept either.
     [package.to_owned(), package.replace('-', "_")]
         .iter()

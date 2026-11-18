@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{TITLE}}</title>
+  <!-- No favicon request, so no 404 for it. -->
+  <link rel="icon" href="data:,">
   <style>
     html, body { margin: 0; height: 100%; background: #111; color: #ddd; overflow: hidden; }
     body { font: 16px system-ui, sans-serif; }
@@ -27,7 +29,7 @@
           observer.disconnect();
         }
       }).observe(document.body, { childList: true });
-      import("./{{NAME}}.js").then((module) => module.default()).catch((error) => {
+      import("./{{NAME}}.js").then((module) => module.default({ module_or_path: "./{{NAME}}_bg.wasm" })).catch((error) => {
         // winit unwinds out of the start call on purpose; that one is not a failure.
         if (!String(error).includes("Using exceptions for control flow")) {
           status.textContent = "Failed to start: " + error;

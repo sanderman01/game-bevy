@@ -169,8 +169,13 @@ impl PluginGroup for EnginePlugins {
             .set(LogPlugin {
                 // The subscriber-wide filter gates every layer, so it is opened all the way and
                 // each consumer carries its own: `terminal_layer` for stderr, `log::CaptureLevel`
-                // for the buffer.
-                level: log::MAX_LEVEL,
+                // for the buffer. In the browser Bevy's console layer has no filter of its own, so
+                // the subscriber-wide one stays at the terminal's level.
+                level: if cfg!(target_arch = "wasm32") {
+                    log::DEFAULT_LEVEL
+                } else {
+                    log::MAX_LEVEL
+                },
                 custom_layer: log::capture_layer,
                 fmt_layer: log::terminal_layer,
                 ..default()

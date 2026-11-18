@@ -96,7 +96,15 @@ description = ""
         ));
         let (baked_index, _) = build_index(&resolve_discovery(baked, &order));
         let (live_index, _) = build_index(&live);
-        assert_eq!(format!("{baked_index:?}"), format!("{live_index:?}"));
+        let sorted = |index: &ename_asset_alias::ContentIndex| {
+            let mut pairs: Vec<(String, PathBuf)> = index
+                .iter()
+                .map(|(alias, path)| (alias.to_owned(), path.to_path_buf()))
+                .collect();
+            pairs.sort();
+            pairs
+        };
+        assert_eq!(sorted(&baked_index), sorted(&live_index));
         assert!(baked_index.resolve("core::crate").is_some());
     }
 }
