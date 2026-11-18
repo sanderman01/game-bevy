@@ -30,6 +30,15 @@ pub enum Command {
         mesh: Option<String>,
         images: bool,
     },
+    /// `ename_web_build [-p <package>] [--release] [--webgl2] [--out <dir>]` -- the browser build.
+    WebBuild {
+        package: Option<String>,
+        release: bool,
+        webgl2: bool,
+        out: Option<PathBuf>,
+    },
+    /// `ename_web_serve [--dir <dir>] [--port <port>]` -- serves the browser build locally.
+    WebServe { dir: Option<PathBuf>, port: u16 },
 }
 
 /// Why the command line could not be read.
@@ -43,6 +52,9 @@ pub enum CliError {
     GltfInfoNeedsOneAsset,
     MeshNeedsSubstring,
     UnknownFlag(String),
+    /// A flag such as `--out` was given without its value.
+    FlagNeedsValue(&'static str),
+    BadPort(String),
 }
 
 impl Display for CliError {
@@ -50,7 +62,7 @@ impl Display for CliError {
         match self {
             Self::NoCommand => write!(
                 f,
-                "usage: cargo xtask <ename_check|ename_fix|ename_content_build|ename_content_list|ename_mv <from> <to>|ename_dep_src <crate>|ename_image_info <asset>...|ename_gltf_info <asset> [--mesh <substring>] [--images]>"
+                "usage: cargo xtask <ename_check|ename_fix|ename_content_build|ename_content_list|ename_mv <from> <to>|ename_dep_src <crate>|ename_image_info <asset>...|ename_gltf_info <asset> [--mesh <substring>] [--images]|ename_web_build [-p <package>] [--release] [--webgl2] [--out <dir>]|ename_web_serve [--dir <dir>] [--port <port>]>"
             ),
             Self::Unknown(name) => write!(f, "unknown subcommand `{name}`"),
             Self::MvNeedsTwoPaths => write!(f, "ename_mv needs a <from> and a <to> path"),
@@ -65,6 +77,8 @@ impl Display for CliError {
             ),
             Self::MeshNeedsSubstring => write!(f, "--mesh needs a <substring>"),
             Self::UnknownFlag(flag) => write!(f, "unknown flag `{flag}`"),
+            Self::FlagNeedsValue(flag) => write!(f, "{flag} needs a value"),
+            Self::BadPort(port) => write!(f, "`{port}` is not a port number"),
         }
     }
 }
@@ -127,8 +141,46 @@ pub fn parse(mut args: impl Iterator<Item = String>) -> Result<Command, CliError
                 images,
             })
         }
+        "ename_web_build" => {
+            let (mut package, mut release, mut webgl2, mut out) = (None, false, false, None);
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "-p" | "--package" => package = Some(value(&mut args, "-p")?),
+                    "--release" => release = true,
+                    "--webgl2" => webgl2 = true,
+                    "--out" => out = Some(value(&mut args, "--out")?.into()),
+                    flag => return Err(CliError::UnknownFlag(flag.to_owned())),
+                }
+            }
+            Ok(Command::WebBuild {
+                package,
+                release,
+                webgl2,
+                out,
+            })
+        }
+        "ename_web_serve" => {
+            let (mut dir, mut port) = (None, 8080);
+            while let Some(arg) = args.next() {
+                match arg.as_str() {
+                    "--dir" => dir = Some(value(&mut args, "--dir")?.into()),
+                    "--port" => {
+                        let text = value(&mut args, "--port")?;
+                        port = text.parse().map_err(|_| CliError::BadPort(text))?;
+                    }
+                    flag => return Err(CliError::UnknownFlag(flag.to_owned())),
+                }
+            }
+            Ok(Command::WebServe { dir, port })
+        }
         other => Err(CliError::Unknown(other.to_owned())),
     }
+}
+
+fn value(args: &mut impl Iterator<Item = String>, flag: &'static str) -> Result<String, CliError> {
+    args.next()
+        .filter(|value| !value.is_empty())
+        .ok_or(CliError::FlagNeedsValue(flag))
 }
 
 #[cfg(test)]
@@ -152,6 +204,34 @@ mod tests {
             Ok(Command::ContentBuild)
         );
         assert_eq!(parse(args(&["ename_content_list"])), Ok(Command::List));
+    }
+
+    #[test]
+    fn web_build_reads_its_flags() {
+        assert_eq!(
+            parse(args(&[
+                "ename_web_build",
+                "-p",
+                "bin",
+                "--release",
+                "--out",
+                "dist"
+            ])),
+            Ok(Command::WebBuild {
+                package: Some("bin".into()),
+                release: true,
+                webgl2: false,
+                out: Some("dist".into()),
+            })
+        );
+        assert_eq!(
+            parse(args(&["ename_web_build", "--out"])),
+            Err(CliError::FlagNeedsValue("--out"))
+        );
+        assert_eq!(
+            parse(args(&["ename_web_serve", "--port", "x"])),
+            Err(CliError::BadPort("x".into()))
+        );
     }
 
     #[test]

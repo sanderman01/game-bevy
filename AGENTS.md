@@ -15,6 +15,7 @@ Where the two overlap, this file wins.
 | [docs/agent-tools.md](docs/agent-tools.md) | How to drive the running game from a coding agent: the MCP tools, what they can see, and how to run them. |
 | [docs/code-style.md](docs/code-style.md) | How the Rust code is written: modern Rust, lifetime rules, crates, dependencies, and API hygiene. Read it before writing or reviewing code. |
 | [docs/agent-environment.md](docs/agent-environment.md) | This machine and repo for agents: shell quoting, processes, disk, git commands that lose work, tests, logs, dependency source, review sandboxes, subagent reports. |
+| [docs/web.md](docs/web.md) | The browser build: building, serving and publishing it, and what it leaves out. |
 
 ## What this project is
 

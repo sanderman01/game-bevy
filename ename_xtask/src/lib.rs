@@ -9,6 +9,8 @@
 //! Every subcommand is a function that takes its inputs and returns a value, callable from a test
 //! with no `env::args()` or process spawn involved. `main.rs` is the only place that reads argv,
 //! decides the project's real asset root and search paths, and turns a result into an `ExitCode`.
+//!
+//! [`web`] still links no Bevy: it runs a second cargo to build the game for the browser.
 
 pub mod check;
 pub mod cli;
@@ -22,3 +24,4 @@ pub mod mv;
 pub mod policy;
 pub mod read_asset;
 mod scan;
+pub mod web;

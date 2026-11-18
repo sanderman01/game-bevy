@@ -100,6 +100,8 @@ with [archives](assets-archives.md) mounted), so what it reports matches what th
 - `cargo xtask ename_mv <from> <to>` -- moves an asset and its `.meta`, `.alias` and `.license` sidecars together,
   using `git mv` where possible so history follows the rename. Refuses paths inside an archive.
 - `cargo xtask ename_content_build` -- stub; will bake `content-index.ron` for a shipping build.
+- `cargo xtask ename_web_build` -- the browser build, with the package discovery baked to
+  `content-discovery.ron` ([web.md](web.md)).
 - `cargo xtask ename_gltf_info <asset> [--mesh <substring>] [--images]` -- what is inside a
   `.glb` or `.gltf`: scene bounds, nodes, each attribute's range read from the data (vertex
   colour alpha included), materials, images, and notes on what Bevy will render differently:

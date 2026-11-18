@@ -69,3 +69,14 @@ jobs:
 
       - name: Layer graph
         run: ./scripts/check-layers.sh
+
+  # The browser build (`docs/web.md`). Its own job: a second Bevy build for another target.
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Clippy for wasm
+        run: cargo web-clippy -- -D warnings

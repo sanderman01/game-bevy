@@ -6,6 +6,7 @@ use ename_xtask::{
     gltf_info::{GltfOptions, gltf_info},
     image_info, list, mv, policy,
     read_asset::{ScanPolicy, is_alias, read_asset},
+    web::{self, WebBuild},
 };
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -81,6 +82,40 @@ fn main() -> ExitCode {
             }
         },
         cli::Command::DepSrc { name } => dep_src(&name),
+        cli::Command::WebBuild {
+            package,
+            release,
+            webgl2,
+            out,
+        } => {
+            let options = WebBuild {
+                package,
+                release,
+                webgl2,
+                out: out.unwrap_or_else(|| web::DEFAULT_OUT.into()),
+            };
+            match web::web_build(
+                &options,
+                Path::new(policy::ASSET_ROOT),
+                &policy::search_paths(),
+            ) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(err) => {
+                    eprintln!("ename_web_build: {err}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        cli::Command::WebServe { dir, port } => {
+            let dir = dir.unwrap_or_else(|| web::DEFAULT_OUT.into());
+            match web::serve(&dir, port) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(err) => {
+                    eprintln!("ename_web_serve: {err}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
         cli::Command::ImageInfo { assets } => {
             let Some(load_order_path) = load_order_path_for(&assets) else {
                 return ExitCode::FAILURE;
