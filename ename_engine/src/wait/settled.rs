@@ -5,7 +5,8 @@
 //! a pipeline queued a frame behind in the render world), so one idle sample is not enough.
 //! Frames are real frames, which keep running while the world is paused.
 
-use std::{collections::BTreeMap, time::Instant};
+use bevy::platform::time::Instant;
+use std::collections::BTreeMap;
 
 use bevy::{diagnostic::FrameCount, prelude::*};
 use schemars::JsonSchema;

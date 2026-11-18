@@ -6,11 +6,8 @@
 //! still runs marks it cancelled, so no job waits on work that is gone. Finished jobs are kept for
 //! [`RETENTION`] and then forgotten.
 
-use std::{
-    collections::HashMap,
-    marker::PhantomData,
-    time::{Duration, Instant},
-};
+use bevy::platform::time::Instant;
+use std::{collections::HashMap, marker::PhantomData, time::Duration};
 
 use bevy::{
     ecs::{lifecycle::HookContext, world::DeferredWorld},

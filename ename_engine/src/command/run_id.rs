@@ -18,10 +18,12 @@ impl RunId {
     /// the OS-seeded key `RandomState` draws for each process.
     pub(crate) fn for_this_process() -> Self {
         let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+        // The browser has no pid; the time and the key still differ per page load.
+        #[cfg(not(target_arch = "wasm32"))]
         hasher.write_u32(std::process::id());
         hasher.write_u128(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            web_time::SystemTime::now()
+                .duration_since(web_time::UNIX_EPOCH)
                 .map_or(0, |since| since.as_nanos()),
         );
         Self::from_hash(hasher.finish())

@@ -1,11 +1,8 @@
 //! Frame records: the main world's own frame, and the render world's `CpuFrame` and `GpuFrame`
 //! drained from one channel, kept for a bounded time while timing is demanded.
 
-use std::{
-    collections::VecDeque,
-    sync::mpsc::Receiver,
-    time::{Duration, Instant},
-};
+use bevy::platform::time::Instant;
+use std::{collections::VecDeque, sync::mpsc::Receiver, time::Duration};
 
 use bevy::{
     app::MainScheduleOrder,

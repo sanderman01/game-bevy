@@ -5,10 +5,8 @@
 //! ran for several cameras has one measurement per run under the same path; a group sums them
 //! with the run count. Frames Bevy drops in its single-slot mutex are simply missing.
 
-use std::{
-    collections::{BTreeMap, VecDeque},
-    time::Instant,
-};
+use bevy::platform::time::Instant;
+use std::collections::{BTreeMap, VecDeque};
 
 use bevy::{diagnostic::DiagnosticsStore, prelude::*};
 

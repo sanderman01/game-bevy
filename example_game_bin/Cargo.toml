@@ -10,6 +10,8 @@ license.workspace = true
 default = ["dev"]
 # Development-only Bevy features. Must be off for a shipping build.
 dev = ["bevy/dynamic_linking", "bevy/dev"]
+# The browser build renders through WebGPU; without it, through WebGL2 (`docs/web.md`).
+webgpu = ["bevy/webgpu"]
 
 [dependencies]
 bevy = { workspace = true }

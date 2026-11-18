@@ -5,7 +5,7 @@
 //! succeeds. `time: "run"` resumes the world when the job starts and pauses it in the frame the
 //! job ends, by any path: [`UntilWait`]'s remove hook covers cancel and despawn.
 
-use std::time::Instant;
+use bevy::platform::time::Instant;
 
 use bevy::{
     diagnostic::FrameCount,

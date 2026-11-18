@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use bevy::{asset::io::file::FileAssetReader, prelude::*};
+use bevy::prelude::*;
 use ename_asset_content::{ContentIndex, ContentReport, ContentScanSettings};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -85,7 +85,7 @@ pub(super) fn report(
     let limit = limit(call.params.limit)?;
     let settings = scan_settings(world)?;
     // `BEVY_ASSET_ROOT=.` gives `<cwd>/./assets`; drop the `.`.
-    let asset_root: PathBuf = FileAssetReader::get_base_path()
+    let asset_root: PathBuf = crate::asset_base_path()
         .join(settings.asset_root())
         .components()
         .filter(|component| !matches!(component, std::path::Component::CurDir))

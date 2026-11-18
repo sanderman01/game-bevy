@@ -18,14 +18,16 @@
 //! formatted. Left at trace the physics solver alone allocates a few hundred strings a second and
 //! fills the ring in about fifteen seconds. Off, those callsites cost a filter check.
 
+use bevy::platform::time::Instant;
+// `std`'s on desktop; the browser has no `SystemTime::now`.
 use std::{
     collections::{HashMap, VecDeque},
     sync::{
         Arc, Mutex, MutexGuard, TryLockError,
         atomic::{AtomicU64, Ordering},
     },
-    time::{Instant, SystemTime},
 };
+use web_time::SystemTime;
 
 use bevy::{
     log::{

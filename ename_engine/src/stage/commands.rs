@@ -59,7 +59,7 @@ pub(super) fn spawn_stage_root(world: &mut World, path: &str, replaced_others: b
 /// at its default (`"assets"`, true everywhere this project ships) -- `StagePlugin` uses this to
 /// give [`AssetRoot`] a working default with no configuration.
 pub(super) fn default_asset_root() -> std::path::PathBuf {
-    bevy::asset::io::file::FileAssetReader::get_base_path().join("assets")
+    crate::asset_base_path().join("assets")
 }
 
 /// Derives a stage's cosmetic name from the path it was opened with: the filename minus
@@ -295,6 +295,8 @@ pub enum SaveStageError {
 /// membership tagging depends on. See `scratch/scenes-spec.md`.
 pub fn write_stage_file(path: &str, world: &mut World, id: StageId) -> Result<(), SaveStageError> {
     // Before anything is serialised or reparented: a stage inside an archive cannot be saved back.
+    // The browser has no archives, and its `fs::write` below fails on its own.
+    #[cfg(not(target_arch = "wasm32"))]
     ename_asset_content::check_writable(world, std::path::Path::new(path))
         .map_err(SaveStageError::ReadOnlySource)?;
     let root = world.resource_scope(

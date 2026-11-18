@@ -31,6 +31,7 @@ sysinfo = { workspace = true, features = ["system"] }
 tempfile.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
+web-time.workspace = true
 wgpu.workspace = true
 
 [dev-dependencies]

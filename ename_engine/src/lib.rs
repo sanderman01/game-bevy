@@ -21,10 +21,15 @@ pub mod game_focus;
 pub mod log;
 pub mod perf;
 pub mod physics;
+// Only screenshots and video read frames back, and the browser has neither.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 mod readback;
+// Desktop only: they write files, and video runs ffmpeg. See `docs/web.md`.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod screenshot;
 pub mod stage;
 pub mod time;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod video;
 pub mod wait;
 
@@ -38,6 +43,15 @@ use ename_asset_content::AssetContentPlugin;
 use std::path::PathBuf;
 
 pub use ename_asset_content::DEFAULT_ASSET_ROOT;
+
+/// The directory `AssetPlugin::file_path` is relative to. Empty in the browser, where assets are
+/// fetched relative to the page and there is no filesystem path.
+pub(crate) fn asset_base_path() -> PathBuf {
+    #[cfg(not(target_arch = "wasm32"))]
+    return bevy::asset::io::file::FileAssetReader::get_base_path();
+    #[cfg(target_arch = "wasm32")]
+    PathBuf::new()
+}
 /// Re-exported so a target can name the user's load order file without depending on the asset
 /// crates itself. It defaults to the persistent data directory; `with_load_order_file` moves it.
 pub use ename_asset_content::LOAD_ORDER_FILE;
@@ -142,9 +156,14 @@ impl PluginGroup for EnginePlugins {
     fn build(self) -> PluginGroupBuilder {
         let application_paths = self.application_paths();
         let load_order_file = self.load_order_file(&application_paths);
+        // In the browser the page decides the size: the canvas fills its parent.
+        let window = Window {
+            fit_canvas_to_parent: cfg!(target_arch = "wasm32") || self.window.fit_canvas_to_parent,
+            ..self.window
+        };
         let group = DefaultPlugins
             .set(WindowPlugin {
-                primary_window: Some(self.window),
+                primary_window: Some(window),
                 ..default()
             })
             .set(LogPlugin {
@@ -193,11 +212,13 @@ impl PluginGroup for EnginePlugins {
             .add(asset_info::AssetInfoPlugin)
             .add(wait::WaitPlugin)
             .add(capture::CapturePlugin)
-            .add(screenshot::ScreenshotPlugin)
-            .add(video::VideoPlugin)
             // A member, so a game can disable or replace it; `PerfPlugin` draws its panel with it.
             .add(bevy::feathers::FeathersCorePlugin)
             .add(perf::PerfPlugin);
+        #[cfg(not(target_arch = "wasm32"))]
+        let group = group
+            .add(screenshot::ScreenshotPlugin)
+            .add(video::VideoPlugin);
         // After `DefaultPlugins`, because it resizes the buffer `LogPlugin` just built.
         group.add(log::LogBufferPlugin {
             capacity: self.log_capacity,

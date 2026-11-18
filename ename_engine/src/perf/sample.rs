@@ -9,11 +9,8 @@
 //! the first window and after each one, never during a window. `perf.compare` drives a
 //! [`Sampler`] per step.
 
-use std::{
-    collections::BTreeMap,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use bevy::platform::time::Instant;
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use bevy::{
     diagnostic::DiagnosticsStore,
@@ -43,7 +40,6 @@ use crate::{
         Call, CommandAppExt, CommandError, CommandSpec, JobCancelRequested, JobHandle, JobWork,
         Jobs, Length, OnCancel, parse_timecode,
     },
-    video::VideoRequest,
     wait::{Activity, SettleGate, SettleParams, SettleTimedOut, Settled, WaitSystems},
 };
 
@@ -492,7 +488,8 @@ struct ViewState<'w, 's> {
     monitors: Query<'w, 's, (&'static Monitor, Has<PrimaryMonitor>)>,
     occlusion: Res<'w, WindowOcclusion>,
     overlay: Res<'w, PerfOverlay>,
-    recordings: Query<'w, 's, (), With<VideoRequest>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    recordings: Query<'w, 's, (), With<crate::video::VideoRequest>>,
 }
 
 impl ViewState<'_, '_> {
@@ -810,6 +807,7 @@ fn observe_frame(context: &mut Context, view: &ViewState) {
             "the statistics panel (`overlay.stats`) was on; its UI and text cost is in the numbers",
         );
     }
+    #[cfg(not(target_arch = "wasm32"))]
     if !view.recordings.is_empty() {
         context.warnings.add(
             "video_recording",

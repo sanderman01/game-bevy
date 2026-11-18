@@ -24,6 +24,10 @@ dev-build = "build --workspace --features example_game_editor_bin/dev"
 dev-run = "run -p example_game_editor_bin --features dev"
 dev-clippy = "clippy --workspace --all-targets --features example_game_editor_bin/dev"
 dev-test = "test --workspace --features example_game_editor_bin/dev"
+# The browser build, in its own target dir so it never waits on `target/`'s lock. `--features
+# webgpu` without `dev`, which turns on the file watcher that does not exist on wasm.
+web-check = "check -p example_game_bin --target wasm32-unknown-unknown --target-dir target/web --no-default-features --features webgpu"
+web-clippy = "clippy -p example_game_bin --target wasm32-unknown-unknown --target-dir target/web --no-default-features --features webgpu"
 
 # `ename_xtask` links no Bevy, so this does not need the shared `dev`-feature build the aliases
 # above do. Its own target dir keeps it off `target/`'s lock, and keeps `dev-build`'s

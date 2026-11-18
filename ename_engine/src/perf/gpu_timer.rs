@@ -11,6 +11,7 @@
 //! bracket, and work submitted outside the graph (uncovered window clears, screenshot and
 //! readback copies, direct `queue.submit` calls) is not in the total.
 
+use bevy::platform::time::Instant;
 use std::{
     borrow::Cow,
     sync::{
@@ -18,7 +19,6 @@ use std::{
         atomic::{AtomicU8, Ordering},
         mpsc::Sender,
     },
-    time::Instant,
 };
 
 use bevy::{

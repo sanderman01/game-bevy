@@ -1,3 +1,5 @@
 [toolchain]
 channel = "1.98.1"
 components = ["rustfmt", "clippy"]
+# The browser build (`docs/web.md`).
+targets = ["wasm32-unknown-unknown"]
