@@ -69,11 +69,26 @@ pub struct Discovery {
 
 /// Where a build leaves the baked [`Discovery`], relative to the asset root. The browser reads it
 /// instead of walking the tree, because HTTP has no directory listings (`docs/web.md`).
-pub const BAKED_DISCOVERY_FILE: &str = "content-discovery.ron";
+pub const BAKED_DISCOVERY_FILE: &str = "content-discovery.ron.gz";
+
+/// Why a baked [`Discovery`] could not be read.
+#[derive(Debug, thiserror::Error)]
+pub enum BakeError {
+    #[error("gzip: {0}")]
+    Gzip(std::io::Error),
+    #[error(transparent)]
+    Parse(#[from] ron::error::SpannedError),
+    #[error(transparent)]
+    Serialize(#[from] ron::Error),
+}
 
 impl Discovery {
-    /// Paths are written with `/` whichever OS baked it, so the file reads the same everywhere.
-    pub fn to_ron(&self) -> Result<String, ron::Error> {
+    /// Compact RON, gzipped. A map of a few hundred thousand tiles is a 40 MB listing, and a
+    /// static server is not obliged to compress it. Paths are written with `/` whichever OS baked
+    /// it, so the file reads the same everywhere.
+    pub fn encode(&self) -> Result<Vec<u8>, BakeError> {
+        use std::io::Write;
+
         let mut portable = self.clone();
         for package in &mut portable.packages {
             portable_path(&mut package.root);
@@ -85,11 +100,30 @@ impl Discovery {
         for problem in &mut portable.problems {
             portable_path(&mut problem.path);
         }
-        ron::ser::to_string_pretty(&portable, ron::ser::PrettyConfig::default())
+        let text = ron::to_string(&portable)?;
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder
+            .write_all(text.as_bytes())
+            .and_then(|()| encoder.finish())
+            .map_err(BakeError::Gzip)
     }
 
-    pub fn from_ron(text: &str) -> Result<Self, ron::error::SpannedError> {
-        ron::from_str(text)
+    /// Reads what [`Discovery::encode`] wrote. Also takes it already decompressed, for a server
+    /// that sent the file with `Content-Encoding: gzip` and let the browser unpack it.
+    pub fn decode(bytes: &[u8]) -> Result<Self, BakeError> {
+        use std::io::Read;
+
+        const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
+        let text = if bytes.starts_with(&GZIP_MAGIC) {
+            let mut text = String::new();
+            flate2::read::GzDecoder::new(bytes)
+                .read_to_string(&mut text)
+                .map_err(BakeError::Gzip)?;
+            text
+        } else {
+            String::from_utf8_lossy(bytes).into_owned()
+        };
+        Ok(ron::from_str(&text)?)
     }
 }
 
@@ -257,5 +291,55 @@ fn problem(path: &Path, kind: ProblemKind, detail: impl Display) -> Problem {
         path: path.to_path_buf(),
         kind,
         detail: detail.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ename_asset_alias::AliasOrigin;
+
+    fn discovery() -> Discovery {
+        let manifest: PackageManifest = toml::from_str(
+            "[package]\nid = \"core\"\nversion = \"1.0.0\"\nauthors = []\ntitle = \"\"\ndescription = \"\"",
+        )
+        .unwrap();
+        let asset = |alias: &str, origin| DiscoveredAsset {
+            alias: alias.to_owned(),
+            path: PathBuf::from(format!("basegame\\core\\{alias}.png")),
+            guid: None,
+            origin,
+        };
+        Discovery {
+            packages: vec![Package {
+                manifest,
+                root: "basegame/core".into(),
+                search_path: "basegame".into(),
+                assets: vec![
+                    asset("core::a", AliasOrigin::Derived),
+                    asset("core::b", AliasOrigin::Authored),
+                ],
+            }],
+            problems: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_bake_round_trips_gzipped_or_not() {
+        let bytes = discovery().encode().unwrap();
+        let decoded = Discovery::decode(&bytes).unwrap();
+        let assets = &decoded.packages[0].assets;
+        assert_eq!(assets[0].path, Path::new("basegame/core/core::a.png"));
+        assert_eq!(assets[0].origin, AliasOrigin::Derived);
+        assert_eq!(assets[1].origin, AliasOrigin::Authored);
+
+        let mut plain = String::new();
+        std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(&bytes[..]), &mut plain)
+            .unwrap();
+        assert!(!plain.contains("derived"), "the default origin is left out");
+        assert_eq!(
+            Discovery::decode(plain.as_bytes()).unwrap().packages[0].assets,
+            decoded.packages[0].assets
+        );
     }
 }

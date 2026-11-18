@@ -46,11 +46,11 @@ pub fn bake(asset_root: &Path, search_paths: &[String], out: &Path) -> Result<us
             problem.detail
         );
     }
-    let text = discovery.to_ron().map_err(|err| err.to_string())?;
+    let bytes = discovery.encode().map_err(|err| err.to_string())?;
     if let Some(dir) = out.parent() {
         std::fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
     }
-    std::fs::write(out, text).map_err(|err| format!("{}: {err}", out.display()))?;
+    std::fs::write(out, bytes).map_err(|err| format!("{}: {err}", out.display()))?;
     Ok(discovery.packages.len())
 }
 
@@ -85,7 +85,7 @@ description = ""
 
         let out = root.path().join("out/discovery.ron");
         assert_eq!(bake(root.path(), &search_paths, &out).unwrap(), 1);
-        let baked = Discovery::from_ron(&std::fs::read_to_string(&out).unwrap()).unwrap();
+        let baked = Discovery::decode(&std::fs::read(&out).unwrap()).unwrap();
 
         let order = LoadOrder::default();
         let live = futures_lite::future::block_on(scan_packages(

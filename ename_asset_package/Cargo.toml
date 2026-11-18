@@ -17,7 +17,8 @@ bevy = ["dep:bevy", "ename_asset_alias/bevy"]
 bevy = { workspace = true, optional = true }
 ename_asset_alias = { workspace = true }
 ename_asset_vfs.workspace = true
-# The baked `Discovery` (`BAKED_DISCOVERY_FILE`).
+# The baked `Discovery` (`BAKED_DISCOVERY_FILE`): gzipped RON.
+flate2.workspace = true
 ron.workspace = true
 semver.workspace = true
 serde = { workspace = true, features = ["derive"] }

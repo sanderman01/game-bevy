@@ -44,8 +44,20 @@ pub struct DiscoveredAsset {
     /// Relative to the vfs root, so it can be handed straight to an `AssetReader`.
     pub path: PathBuf,
     /// `None` until tooling assigns one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guid: Option<Uuid>,
+    /// Left out of a bake when [`AliasOrigin::Derived`], the folder rule case nearly every asset
+    /// is: a map's tiles are hundreds of thousands of them.
+    #[serde(default = "derived", skip_serializing_if = "is_derived")]
     pub origin: AliasOrigin,
+}
+
+fn derived() -> AliasOrigin {
+    AliasOrigin::Derived
+}
+
+fn is_derived(origin: &AliasOrigin) -> bool {
+    *origin == AliasOrigin::Derived
 }
 
 /// What kind of thing went wrong. One flat list, because a user asking "what is wrong with my

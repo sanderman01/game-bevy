@@ -326,9 +326,7 @@ async fn read_baked_discovery(
 
     let path = std::path::Path::new(BAKED_DISCOVERY_FILE);
     let parsed = match vfs.read_file(path).await {
-        Ok(bytes) => {
-            Discovery::from_ron(&String::from_utf8_lossy(&bytes)).map_err(|e| e.to_string())
-        }
+        Ok(bytes) => Discovery::decode(&bytes).map_err(|e| e.to_string()),
         Err(err) => Err(err.to_string()),
     };
     parsed.unwrap_or_else(|detail| {

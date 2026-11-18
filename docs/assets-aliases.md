@@ -93,7 +93,7 @@ Scanning walks through a `Vfs` trait, never `std::fs` or a Bevy type directly. T
 `HttpWasmAssetReader::read_directory` and `is_directory` log an error and return `Ok` anyway (an
 empty stream, `false`) instead of failing loudly, so a directory walk over wasm finds nothing and
 every alias fails with no explanation. So the browser build does not walk: `ename_web_build` bakes
-the package discovery to `content-discovery.ron` and the game resolves that at startup, which is a
+the package discovery to `content-discovery.ron.gz` and the game resolves that at startup, which is a
 manifest of packages instead of a directory walk, not a third `Vfs` implementation. See
 [web.md](web.md). `ename_xtask` supplies a `std::fs` implementation
 with no Bevy in its graph, which is why both asset crates keep Bevy behind a default feature and CI

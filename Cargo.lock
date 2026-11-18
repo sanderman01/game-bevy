@@ -3163,6 +3163,7 @@ dependencies = [
  "bevy",
  "ename_asset_alias",
  "ename_asset_vfs",
+ "flate2",
  "futures-lite",
  "ron",
  "semver",

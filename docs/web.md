@@ -37,11 +37,11 @@ compile for wasm. The build passes `--no-default-features`.
 - `index.html`, which says so if the browser has no WebGPU.
 - `game.js` and `game_bg.wasm`, the module and the glue `wasm-bindgen` generates for it.
 - `assets/`, the asset tree as loose files (hard links where possible), plus
-  `content-discovery.ron` and `asset-metas.txt`.
+  `content-discovery.ron.gz` and `asset-metas.txt`.
 
 Bevy fetches each asset over HTTP relative to the page. HTTP cannot list a directory, so the game
 cannot walk the tree for packages the way the desktop build does. `ename_web_build` runs the walk
-at build time and bakes the result to `content-discovery.ron`. The game reads that file at startup
+at build time and bakes the result to `content-discovery.ron.gz`. The game reads that file at startup
 and resolves load order from it as usual (`ename_asset_package::resolve_discovery`).
 
 Archives are not supported in the browser. The bake fails if a package lives in a `.zip` or
