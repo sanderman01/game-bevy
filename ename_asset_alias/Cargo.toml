@@ -20,6 +20,8 @@ async-lock.workspace = true
 bevy = { workspace = true, optional = true }
 ename_asset_vfs.workspace = true
 glob.workspace = true
+# The content index's table of entry indices. Bevy's version.
+hashbrown = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 toml.workspace = true

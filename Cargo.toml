@@ -86,6 +86,8 @@ gltf = { version = "1.4.1", default-features = false, features = [
   "names",
   "utils",
 ] }
+# `HashTable` for `ename_asset_alias`'s content index. Bevy's version.
+hashbrown = { version = "0.16.1", default-features = false }
 # The version `bevy_image` already uses, so `Image::try_into_dynamic` hands back this crate's type.
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 libc = "0.2.189"

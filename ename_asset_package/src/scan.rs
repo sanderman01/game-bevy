@@ -178,13 +178,13 @@ pub async fn discover_packages(
 /// Puts what [`discover_packages`] found in load order, and logs the outcome.
 pub fn resolve_discovery(discovery: Discovery, load_order: &LoadOrder) -> Scan {
     let resolution = resolve(&discovery.packages, load_order);
+    // Moved, not cloned: a tiled map's package holds hundreds of thousands of assets.
+    let mut found: Vec<Option<Package>> = discovery.packages.into_iter().map(Some).collect();
     let mut scan = Scan {
-        // A clone per package rather than a `swap_remove` dance. This list is dozens of entries
-        // long and reading straight is worth more than the allocation.
         packages: resolution
             .order
             .iter()
-            .map(|i| discovery.packages[*i].clone())
+            .filter_map(|&i| found[i].take())
             .collect(),
         disabled: resolution.disabled,
         problems: discovery.problems,

@@ -211,11 +211,11 @@ pub(super) fn resolve(
     };
     let path = path.map(|path| asset_path_string(Path::new(&path)));
     let contains = contains.map(|text| text.to_lowercase());
-    let mut entries: Vec<(&str, String)> = match &alias {
+    let mut entries: Vec<(String, String)> = match &alias {
         // One lookup, not a scan of the whole index.
         Some(alias) => index
             .resolve(alias)
-            .map(|path| (alias.as_str(), asset_path_string(path)))
+            .map(|path| (alias.clone(), asset_path_string(path)))
             .into_iter()
             .collect(),
         None => index

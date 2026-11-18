@@ -7,8 +7,8 @@ use std::path::Path;
 pub fn list(asset_root: &Path, search_paths: &[String], load_order_path: Option<&Path>) {
     let (scan, _) = crate::scan::scan(asset_root, search_paths, load_order_path);
     let (index, _) = build_index(&scan);
-    let mut entries: Vec<(&str, &Path)> = index.iter().collect();
-    entries.sort_by_key(|(alias, _)| *alias);
+    let mut entries: Vec<(String, &Path)> = index.iter().collect();
+    entries.sort();
     for (alias, path) in entries {
         println!("{alias:32} {}", path.display());
     }

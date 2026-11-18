@@ -170,9 +170,10 @@ pub(super) fn list(In(call): In<Call<ListParams>>, world: &World) -> Result<List
     let mut counts = Counts::default();
     let mut matched = 0;
     let mut assets = Vec::new();
-    let mut entries: Vec<(&str, &Path)> = index.iter().collect();
-    entries.sort_by_key(|(alias, _)| *alias);
-    for (alias, path) in entries {
+    let mut entries: Vec<(String, &Path)> = index.iter().collect();
+    entries.sort();
+    for (alias, path) in &entries {
+        let (alias, path) = (alias.as_str(), *path);
         let probe = AliasProbe::new(
             world,
             alias,
@@ -222,34 +223,41 @@ pub(super) fn list(In(call): In<Call<ListParams>>, world: &World) -> Result<List
 
 /// The index both ways: which aliases claim a physical path (several may), and whether a name is
 /// an alias at all.
-struct Aliases<'a> {
-    names: HashSet<&'a str>,
-    by_path: HashMap<String, Vec<&'a str>>,
+struct Aliases {
+    names: HashSet<String>,
+    by_path: HashMap<String, Vec<String>>,
 }
 
-impl<'a> Aliases<'a> {
-    fn new(index: &'a ContentIndex) -> Self {
+impl Aliases {
+    fn new(index: &ContentIndex) -> Self {
         let mut names = HashSet::new();
-        let mut by_path: HashMap<String, Vec<&'a str>> = HashMap::new();
+        let mut by_path: HashMap<String, Vec<String>> = HashMap::new();
         for (alias, path) in index.iter() {
-            names.insert(alias);
             by_path
                 .entry(asset_path_string(path))
                 .or_default()
-                .push(alias);
+                .push(alias.clone());
+            names.insert(alias);
         }
         Self { names, by_path }
     }
 
     /// The aliases a path without a label belongs to: its own name under `alias://` if the index
     /// has it, or every alias claiming its physical path.
-    fn of(&self, path: &AssetPath) -> Vec<&'a str> {
+    fn of(&self, path: &AssetPath) -> Vec<&str> {
         let text = asset_path_string(path.path());
         match path.source() {
-            AssetSourceId::Name(name) if name.as_ref() == ALIAS_SOURCE => {
-                self.names.get(text.as_str()).copied().into_iter().collect()
-            }
-            AssetSourceId::Default => self.by_path.get(&text).cloned().unwrap_or_default(),
+            AssetSourceId::Name(name) if name.as_ref() == ALIAS_SOURCE => self
+                .names
+                .get(text.as_str())
+                .map(String::as_str)
+                .into_iter()
+                .collect(),
+            AssetSourceId::Default => self
+                .by_path
+                .get(&text)
+                .map(|aliases| aliases.iter().map(String::as_str).collect())
+                .unwrap_or_default(),
             AssetSourceId::Name(_) => Vec::new(),
         }
     }
@@ -398,7 +406,7 @@ impl<'w> AliasProbe<'w> {
 /// came from.
 fn labeled_by_alias<'a>(
     world: &World,
-    aliases: &Aliases<'a>,
+    aliases: &'a Aliases,
 ) -> HashMap<&'a str, Vec<UntypedAssetId>> {
     let server = world.resource::<AssetServer>();
     let mut labeled: HashMap<&'a str, Vec<UntypedAssetId>> = HashMap::new();

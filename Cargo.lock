@@ -3136,6 +3136,7 @@ dependencies = [
  "ename_asset_vfs",
  "futures-lite",
  "glob",
+ "hashbrown 0.16.1",
  "serde",
  "tempfile",
  "thiserror 2.0.20",

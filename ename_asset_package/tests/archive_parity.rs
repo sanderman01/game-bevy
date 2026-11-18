@@ -41,7 +41,7 @@ fn scan(vfs: &dyn Vfs, search_paths: &[&str]) -> Scan {
 /// Everything a scan decides, in a comparable form.
 fn outcome(scan: &Scan) -> String {
     let (index, report) = build_index(scan);
-    let mut index: Vec<(&str, &Path)> = index.iter().collect();
+    let mut index: Vec<(String, &Path)> = index.iter().collect();
     index.sort();
     format!(
         "{:#?}\n{:#?}\n{:#?}\n{index:#?}\n{report:#?}",
