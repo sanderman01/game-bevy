@@ -1,0 +1,71 @@
+ename_asset_alias/src/discovery.rs
+  s_0a3f8eb77a8294::t_2d47708a1aafad 75-84
+  s_0a3f8eb77a8294::t_a4a6eed41a0e77 451-452
+  s_0a3f8eb77a8294::t_b3fcafcd416e9c 166-189
+  s_0a3f8eb77a8294::t_e043b33133a16e 137-139
+ename_asset_package/src/lib.rs
+  s_0a3f8eb77a8294::t_91b171c90f8c40 25-27
+  s_0a3f8eb77a8294::t_cbf9f9a27f0847 9-11
+  s_0a3f8eb77a8294::t_10fb4766204baf 15
+  s_0a3f8eb77a8294::t_88d2e96ed79b04 23
+ename_asset_package/tests/catalog.rs
+  s_0a3f8eb77a8294::t_89c007f926fdfa 1-74,76-147,149-213,238-266
+  s_0a3f8eb77a8294::t_e221dca292d861 214-237
+  s_0a3f8eb77a8294::t_6decda0ea15656 75
+  s_0a3f8eb77a8294::t_141868156f0483 148
+ename_asset_package/src/catalog.rs
+  s_0a3f8eb77a8294::t_8773a8683abf61 1-204
+  s_0a3f8eb77a8294::t_e88e3739366574 205-207
+ename_asset_package/src/index.rs
+  s_0a3f8eb77a8294::t_c95f519ed20acd 329-330
+  s_0a3f8eb77a8294::t_c8fdd9ad597a83 11-12,17
+  s_0a3f8eb77a8294::t_4cee3facb39d01 111,113-117
+  s_0a3f8eb77a8294::t_b546a8b2d78a1d 47-49,52-88,95-104
+  s_0a3f8eb77a8294::t_da6f6e6237f6a3 162,164-170
+  s_0a3f8eb77a8294::t_99a5b8be544815 255-304,306,308-309,314-328,331-333
+  s_0a3f8eb77a8294::t_83395038cfbaa7 305,307,310-313
+  s_0a3f8eb77a8294::t_42bd3d5104cd9d 334-335
+ename_asset_alias/tests/asset_discovery.rs
+  s_0a3f8eb77a8294::t_5ca4850c444d12 227-232
+ename_xtask/src/policy.rs
+  s_0a3f8eb77a8294::t_529dd42cad6dd9 11
+  s_0a3f8eb77a8294::t_56cabfa6442c19 37-64
+  s_0a3f8eb77a8294::t_43da63c09a38ec 122-143,145
+  s_0a3f8eb77a8294::t_26bb171c15fb74 144
+ename_xtask/tests/check.rs
+  s_0a3f8eb77a8294::t_df8bf32352fd8b 3,13-40,44,53-54,61-76
+  s_0a3f8eb77a8294::t_5b2d3b8c0c76c7 77-79
+  s_0a3f8eb77a8294::t_9e4eaf85191235 80-85
+ename_xtask/src/check.rs
+  s_0a3f8eb77a8294::t_809373ba69860e 3,13-22,24,26,53-62
+  s_0a3f8eb77a8294::t_235eb45b49200d 63-64
+ename_xtask/src/main.rs
+  s_0a3f8eb77a8294::t_4cc67a4f405b36 212-228
+  s_0a3f8eb77a8294::t_fccb7244917745 31-43
+ename_xtask/tests/archives.rs
+  s_357daa3d5571ab::t_17c19ccbcd39a3 4,52-57,62-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cc4ea93fbaaf24c7fe2d1b3663a974dd6c3dee1b",
+  "prompts": {},
+  "sessions": {
+    "s_0a3f8eb77a8294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "800cc546-8045-488b-88c8-b2833b144bf5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_357daa3d5571ab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9d67359a28dca6fb",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
