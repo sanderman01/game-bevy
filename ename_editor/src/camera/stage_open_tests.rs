@@ -1,11 +1,23 @@
 //! Where the editor camera goes when a stage is opened: to the new stage's Main Camera, in its
 //! root grid's frame, or the default start pose without one; nowhere on a hot reload or an
-//! additive open.
+//! additive open. The same for a game's own content announced with `WorldLoaded`.
 
-use std::{path::Path, time::Duration};
+use std::{
+    path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 
 use bevy::{
     asset::{AssetPlugin, uuid::Uuid},
+    log::tracing_subscriber::{
+        Layer,
+        layer::{Context, SubscriberExt as _},
+        registry::Registry,
+    },
     math::{DQuat, DVec3},
     time::TimeUpdateStrategy,
     world_serialization::{DynamicWorld, DynamicWorldRoot, WorldSerializationPlugin},
@@ -14,8 +26,8 @@ use ename_engine::{
     bigspace::{BigSpace, BigSpaceDefaultPlugins, BigSpacePlugin, CellCoord, Grid},
     camera::MainCamera,
     stage::{
-        AssetRoot, DynamicWorldFormat, StageFormat, StagePlugin, new_stage, open_stage,
-        open_stage_additive,
+        AssetRoot, DynamicWorldFormat, StageFormat, StagePlugin, WorldUnloading, new_stage,
+        open_stage, open_stage_additive, unload_world,
     },
 };
 
@@ -452,4 +464,186 @@ fn a_hot_reload_or_an_additive_open_keeps_the_camera_where_it_is() {
         position.distance(kept_position) < 1e-3 && rotation.dot(kept_rotation).abs() > 1.0 - 1e-6,
         "an additive open moved the camera to {position}"
     );
+}
+
+/// A world a game spawns itself, outside any stage.
+#[derive(Component)]
+struct GameContent;
+
+fn unload_game_content(
+    _: On<WorldUnloading>,
+    content: Query<Entity, With<GameContent>>,
+    mut commands: Commands,
+) {
+    for entity in &content {
+        commands.entity(entity).despawn();
+    }
+}
+
+/// Replaces the world with a game's own grid root and, with `shot`, a Main Camera in it, as game
+/// code would, and announces it. Returns the root.
+fn load_game_world(app: &mut App, shot: Option<Shot>) -> Entity {
+    let world = app.world_mut();
+    unload_world(world);
+    let root = world
+        .spawn((GameContent, BigSpace::default(), Grid::new(EDGE, 0.0)))
+        .id();
+    if let Some(shot) = shot {
+        world.spawn((main_camera(shot.transform()), shot.cell, ChildOf(root)));
+    }
+    announce_game_world(app, root);
+    root
+}
+
+/// Counts warnings logged by the editor camera's module.
+struct CameraWarnings(Arc<AtomicUsize>);
+
+impl<S: bevy::log::tracing::Subscriber> Layer<S> for CameraWarnings {
+    fn on_event(&self, event: &bevy::log::tracing::Event<'_>, _: Context<'_, S>) {
+        let metadata = event.metadata();
+        if *metadata.level() == bevy::log::Level::WARN
+            && metadata.target() == "ename_editor::camera"
+        {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+/// Triggers `WorldLoaded` for `root` and lets the camera settle. Returns how many warnings the
+/// camera placement logged.
+fn announce_game_world(app: &mut App, root: Entity) -> usize {
+    let warnings = Arc::new(AtomicUsize::new(0));
+    let subscriber = Registry::default().with(CameraWarnings(warnings.clone()));
+    // The placement is a queued command, which this flush applies on this thread.
+    bevy::log::tracing::subscriber::with_default(subscriber, || {
+        let world = app.world_mut();
+        world.trigger(WorldLoaded { root });
+        world.flush();
+    });
+    for _ in 0..3 {
+        app.update();
+    }
+    warnings.load(Ordering::Relaxed)
+}
+
+fn big_space_count(app: &mut App) -> usize {
+    app.world_mut()
+        .query_filtered::<(), With<BigSpace>>()
+        .iter(app.world())
+        .count()
+}
+
+#[test]
+fn a_game_world_moves_the_camera_and_a_stage_open_replaces_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = app(dir.path());
+    app.add_observer(unload_game_content);
+    let stage_shot = Shot {
+        cell: CellCoord::new(2, 0, -1),
+        translation: Vec3::new(5.0, 3.0, 1.0),
+        yaw: 0.7,
+    };
+    let game_shot = Shot {
+        cell: CellCoord::new(-3, 1, 4),
+        translation: Vec3::new(-7.0, 2.0, 9.0),
+        yaw: -1.2,
+    };
+    write_shot_stage(&app, dir.path(), "first.scn.ron", Some(stage_shot));
+    open(&mut app, "first.scn.ron", open_stage);
+    fly_away(&mut app);
+
+    let root = load_game_world(&mut app, Some(game_shot));
+    assert_eq!(big_space_count(&mut app), 1, "the stage was not unloaded");
+    assert_pose(
+        &mut app,
+        Some(root),
+        game_shot.position(),
+        game_shot.rotation(),
+        "game world",
+    );
+    assert_fresh_pivot(&mut app, "game world");
+
+    fly_away(&mut app);
+    let root = load_game_world(&mut app, None);
+    assert_eq!(
+        big_space_count(&mut app),
+        1,
+        "the previous game world survived"
+    );
+    assert_default_pose(&mut app, Some(root), "game world without a camera");
+
+    let root = open(&mut app, "first.scn.ron", open_stage);
+    assert_eq!(
+        big_space_count(&mut app),
+        1,
+        "the game world survived the open"
+    );
+    assert_pose(
+        &mut app,
+        Some(root),
+        stage_shot.position(),
+        stage_shot.rotation(),
+        "stage after game world",
+    );
+}
+
+#[test]
+fn a_main_camera_outside_the_announced_root_is_ignored() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = app(dir.path());
+    let shot = Shot {
+        cell: CellCoord::new(1, 0, 1),
+        translation: Vec3::new(2.0, 2.0, 2.0),
+        yaw: 0.3,
+    };
+    write_shot_stage(&app, dir.path(), "other.scn.ron", Some(shot));
+    let root = load_game_world(&mut app, None);
+    open(&mut app, "other.scn.ron", open_stage_additive);
+    fly_away(&mut app);
+
+    let warnings = announce_game_world(&mut app, root);
+
+    assert_default_pose(&mut app, Some(root), "camera in an additive stage");
+    assert_eq!(warnings, 0);
+}
+
+#[test]
+fn with_two_main_cameras_under_the_root_the_lowest_id_wins_with_a_warning() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = app(dir.path());
+    let shots = [
+        Shot {
+            cell: CellCoord::new(2, 0, -1),
+            translation: Vec3::new(5.0, 3.0, 1.0),
+            yaw: 0.7,
+        },
+        Shot {
+            cell: CellCoord::new(-3, 1, 4),
+            translation: Vec3::new(-7.0, 2.0, 9.0),
+            yaw: -1.2,
+        },
+    ];
+    let world = app.world_mut();
+    unload_world(world);
+    let root = world
+        .spawn((BigSpace::default(), Grid::new(EDGE, 0.0)))
+        .id();
+    let cameras = shots.map(|shot| {
+        world
+            .spawn((main_camera(shot.transform()), shot.cell, ChildOf(root)))
+            .id()
+    });
+    let lowest = if cameras[0] < cameras[1] { 0 } else { 1 };
+
+    let warnings = announce_game_world(&mut app, root);
+
+    let shot = shots[lowest];
+    assert_pose(
+        &mut app,
+        Some(root),
+        shot.position(),
+        shot.rotation(),
+        "two Main Cameras",
+    );
+    assert_eq!(warnings, 1);
 }

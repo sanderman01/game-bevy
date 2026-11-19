@@ -121,6 +121,18 @@ owns the policy: on an open that replaced the others it places `EditorCamera` at
 in the stage's root grid when there is none, then resets its motion and puts the orbit pivot the
 default distance ahead. An additive open keeps the camera where it is.
 
+A game can also fill the world itself, outside any stage, so no stage save can write that content.
+`open_stage` and `new_stage` first call `unload_world`, which triggers `WorldUnloading` and applies
+its observers' commands before any stage is unloaded or spawned: an observer despawns the game's
+content there, so the old and new content never share a frame. A game replacing the world itself
+calls `unload_world`, spawns its content, then triggers `WorldLoaded { root }`, where `root` is
+the content's top-level `BigSpace`; the editor treats that as an open that replaced the others,
+with the `MainCamera` under `root`. Unlike `StageOpened`, `WorldLoaded` waits for nothing, so the
+game triggers it once its content, Main Camera included, is spawned. Without it the editor camera
+keeps its root-frame pose from the previous content. An additive open triggers neither. A
+`WorldUnloading` observer must only remove its own content; `unload_world` refuses, with an error,
+to run again from inside one.
+
 `StageOpened` waits for the stage's nested loaded content (a `WorldAssetRoot` or
 `DynamicWorldRoot` inside it), which spawns frames later and is marked `StageLoading` until it
 does, so a Main Camera inside it is there when the event fires. A failed nested load, or a handle

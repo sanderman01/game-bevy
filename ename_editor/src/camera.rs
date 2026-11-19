@@ -11,14 +11,14 @@ use bevy::{
 };
 use ename_engine::bigspace::grid;
 use ename_engine::bigspace::{
-    BigSpaceCameraController, BigSpaceCameraInput, CellCoord, FloatingOriginCandidate,
+    BigSpace, BigSpaceCameraController, BigSpaceCameraInput, CellCoord, FloatingOriginCandidate,
     FrozenOrigin, Grid, GridCameraSystems, GridFollowCamera, Grids, root_frame_pose,
     set_origin_frozen,
 };
 use ename_engine::camera::MainCameraFilter;
 use ename_engine::debug_switch::{DebugSwitchAppExt, DebugSwitchSpec};
 use ename_engine::perf::StatsPanelHost;
-use ename_engine::stage::{StageId, StageMember, StageOpened};
+use ename_engine::stage::{StageId, StageMember, StageOpened, WorldLoaded};
 
 use crate::panels::{ActiveViewport, UiState};
 
@@ -238,6 +238,7 @@ impl Plugin for EditorCameraPlugin {
                 apply_focus_on_f_key.in_set(crate::EditorSystems::ApplySelection),
             )
             .add_observer(place_camera_in_opened_stage)
+            .add_observer(place_camera_in_loaded_world)
             .add_bool_debug_switch(
                 DebugSwitchSpec::new(
                     "camera",
@@ -311,17 +312,37 @@ fn place_camera_in_opened_stage(opened: On<StageOpened>, mut commands: Commands)
         return;
     }
     let (root, id) = (opened.root, opened.id);
-    commands.queue(move |world: &mut World| place_camera_at_stage_start(world, root, id));
+    commands.queue(move |world: &mut World| {
+        let main = stage_main_camera(world, id);
+        place_camera_at_start(world, root, main);
+    });
 }
 
-fn place_camera_at_stage_start(world: &mut World, root: Entity, id: StageId) {
+/// Moves the editor camera into non-stage content a game put in place, as a stage that replaced
+/// every other: to the Main Camera under the content's root, or the default pose.
+fn place_camera_in_loaded_world(loaded: On<WorldLoaded>, mut commands: Commands) {
+    let root = loaded.root;
+    commands.queue(move |world: &mut World| {
+        if world.get::<BigSpace>(root).is_none() || world.get::<ChildOf>(root).is_some() {
+            warn!(
+                "WorldLoaded's root {root} is not a top-level BigSpace; the editor camera may \
+                 land in the wrong frame"
+            );
+        }
+        let main = main_camera_under(world, root);
+        place_camera_at_start(world, root, main);
+    });
+}
+
+/// Puts the editor camera at `main`'s pose, or at [`default_camera_transform`] in `root`'s grid.
+fn place_camera_at_start(world: &mut World, root: Entity, main: Option<Entity>) {
     let Some(camera) = editor_camera(world) else {
         return;
     };
     // An anchor on a grid the camera leaves would keep that grid's origin.
     set_origin_frozen(world, camera, false);
 
-    let (grid_entity, position, rotation) = match stage_main_camera(world, id) {
+    let (grid_entity, position, rotation) = match main {
         // In the root grid's frame, as `sync_grid_attachment` would place it; the pivot then
         // lands in the same grid. Absolute when the Main Camera is under no grid.
         Some(main) => root_frame_pose(world, main),
@@ -364,16 +385,43 @@ fn place_camera_at_stage_start(world: &mut World, root: Entity, id: StageId) {
 /// several, the one with the lowest entity id (a stable choice, not necessarily the first spawned),
 /// and a warning.
 fn stage_main_camera(world: &mut World, id: StageId) -> Option<Entity> {
-    let mut cameras: Vec<Entity> = world
+    let cameras = world
         .query_filtered::<(Entity, &StageMember), MainCameraFilter>()
         .iter(world)
         .filter(|(_, member)| member.0 == id)
         .map(|(entity, _)| entity)
         .collect();
+    lowest_main_camera(cameras)
+}
+
+/// The Main Camera at or below `root` in the hierarchy, chosen as [`stage_main_camera`] does.
+fn main_camera_under(world: &mut World, root: Entity) -> Option<Entity> {
+    let cameras: Vec<Entity> = world
+        .query_filtered::<Entity, MainCameraFilter>()
+        .iter(world)
+        .collect();
+    let under_root = |mut entity: Entity| loop {
+        if entity == root {
+            return true;
+        }
+        match world.get::<ChildOf>(entity) {
+            Some(child_of) => entity = child_of.parent(),
+            None => return false,
+        }
+    };
+    lowest_main_camera(
+        cameras
+            .into_iter()
+            .filter(|&camera| under_root(camera))
+            .collect(),
+    )
+}
+
+fn lowest_main_camera(mut cameras: Vec<Entity>) -> Option<Entity> {
     cameras.sort();
     if cameras.len() > 1 {
         warn!(
-            "the opened stage has {} Main Cameras; the editor camera starts at the one with \
+            "the opened content has {} Main Cameras; the editor camera starts at the one with \
              the lowest entity id",
             cameras.len()
         );

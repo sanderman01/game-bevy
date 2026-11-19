@@ -96,6 +96,9 @@ impl UiState {
     }
 
     fn ui(&mut self, world: &mut World, ui: &mut egui::Ui) {
+        // After the menu bar, whose File menu may have just unloaded what was selected.
+        self.selected_entities
+            .retain(|entity| world.get_entity(entity).is_ok());
         let mut drawn = DrawnViewports::default();
         let mut tab_viewer = TabViewer {
             world,
@@ -513,6 +516,20 @@ mod tests {
         pass(&mut state, &mut world, &ctx);
         assert_eq!(state.active_viewport, ActiveViewport::Scene);
         assert_eq!(state.viewport_rect, scene_rect);
+    }
+
+    #[test]
+    fn a_despawned_entity_is_dropped_from_the_selection_before_the_panels_draw() {
+        let (mut world, ctx, mut state) = (world(), egui::Context::default(), shared_leaf());
+        let kept = world.spawn_empty().id();
+        let gone = world.spawn_empty().id();
+        state.selected_entities.select_replace(kept);
+        state.selected_entities.select_maybe_add(gone, true);
+        world.despawn(gone);
+
+        pass(&mut state, &mut world, &ctx);
+
+        assert_eq!(state.selected_entities.as_slice(), [kept]);
     }
 
     #[test]
