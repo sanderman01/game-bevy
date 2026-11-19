@@ -10,12 +10,13 @@ use super::{
     AssetRoot, SaveStageError, SourcePath, StageId, StageMember, StageSource,
     commands::{resolve_source_path, spawn_stage_root, write_stage_file},
     opening::StageOpened,
+    world::unload_world,
 };
 
-/// Unloads every currently loaded stage and spawns a fresh, empty one. Returns its root entity,
+/// Unloads the world ([`unload_world`]) and spawns a fresh, empty stage. Returns its root entity,
 /// so a caller (the editor's File menu) can select it.
 pub fn new_stage(world: &mut World) -> Entity {
-    despawn_stage_members(world, None);
+    unload_world(world);
     let id = StageId(Uuid::new_v4());
     let root = world
         .spawn((id, StageMember(id), Name::new("New Stage")))
@@ -29,7 +30,7 @@ pub fn new_stage(world: &mut World) -> Entity {
     root
 }
 
-/// Unloads every currently loaded stage, then starts loading `path` (a plain asset path or an
+/// Unloads the world ([`unload_world`]), then starts loading `path` (a plain asset path or an
 /// `alias://` URL). Returns the load's container entity immediately -- loading is async.
 ///
 /// A file the asset server already holds is spawned from that copy, not read again. With file
@@ -41,7 +42,7 @@ pub fn new_stage(world: &mut World) -> Entity {
 /// for a reload here instead cannot be tied to its completion, so the open could not tell the
 /// cached spawn from the fresh one.
 pub fn open_stage(world: &mut World, path: &str) -> Entity {
-    despawn_stage_members(world, None);
+    unload_world(world);
     spawn_stage_root(world, path, true)
 }
 
@@ -88,7 +89,7 @@ pub fn stage_of(world: &World, entities: &[Entity]) -> Option<StageId> {
 /// A container is never `StageMember`-tagged (see this plan's design notes on why it's still part
 /// of what an unload must remove), so `id: None` also matches on `SourcePath` directly, and
 /// `id: Some(_)` looks up that one stage's source to match its own container specifically.
-fn despawn_stage_members(world: &mut World, id: Option<StageId>) {
+pub(super) fn despawn_stage_members(world: &mut World, id: Option<StageId>) {
     let matching_source = id.and_then(|id| stage_source_path(world, id));
 
     // Collected as owned data first: the query below needs `&mut World` to build, and normalizing

@@ -1,5 +1,6 @@
 //! The four menu-facing stage operations: unload-then-load semantics for `new_stage`/`open_stage`,
-//! keep-others-loaded for `open_stage_additive`, and source-tracking for `save_stage`.
+//! keep-others-loaded for `open_stage_additive`, and source-tracking for `save_stage`. Also
+//! `unload_world` and `WorldUnloading`, through which a game's own content unloads with them.
 
 use bevy::{
     app::{App, TaskPoolPlugin},
@@ -12,8 +13,8 @@ use big_space::prelude::CellCoord;
 use ename_engine::bigspace::{BigSpacePlugin, GridFollowCamera};
 use ename_engine::stage::{
     AssetRoot, DynamicWorldFormat, SaveStageError, StageAppExt, StageId, StageMember, StageOpened,
-    StagePlugin, StageSource, new_stage, open_stage, open_stage_additive, save_stage, stage_of,
-    write_stage_file,
+    StagePlugin, StageSource, WorldUnloading, new_stage, open_stage, open_stage_additive,
+    save_stage, stage_of, unload_world, write_stage_file,
 };
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -685,4 +686,207 @@ fn a_repeated_ready_report_keeps_the_stage() {
             .count(),
         1
     );
+}
+
+/// Content a game spawned itself, outside any stage.
+#[derive(Component)]
+struct GameContent;
+
+/// How many times [`WorldUnloading`] fired.
+#[derive(Resource, Default)]
+struct Unloadings(usize);
+
+fn unload_game_content(
+    _: On<WorldUnloading>,
+    content: Query<Entity, With<GameContent>>,
+    mut unloadings: ResMut<Unloadings>,
+    mut commands: Commands,
+) {
+    unloadings.0 += 1;
+    for entity in &content {
+        commands.entity(entity).despawn();
+    }
+}
+
+/// How many `GameContent` entities existed at each [`StageOpened`].
+#[derive(Resource, Default)]
+struct GameContentAtOpen(Vec<usize>);
+
+fn record_game_content_at_open(
+    _: On<StageOpened>,
+    content: Query<(), With<GameContent>>,
+    mut seen: ResMut<GameContentAtOpen>,
+) {
+    seen.0.push(content.iter().count());
+}
+
+fn game_content_count(app: &mut App) -> usize {
+    app.world_mut()
+        .query_filtered::<(), With<GameContent>>()
+        .iter(app.world())
+        .count()
+}
+
+#[test]
+fn world_unloading_fires_once_per_replacing_open_and_not_for_an_additive_one() {
+    let dir = temp_stage_dir("world_unloading");
+    write_fixture_stage(&dir, "target.scn.ron", StageId(Uuid::new_v4()));
+    let mut app = test_app(&dir);
+    app.init_resource::<Unloadings>()
+        .add_observer(unload_game_content);
+
+    open_stage(app.world_mut(), "target.scn.ron");
+    assert_eq!(app.world().resource::<Unloadings>().0, 1, "open_stage");
+    new_stage(app.world_mut());
+    assert_eq!(app.world().resource::<Unloadings>().0, 2, "new_stage");
+    open_stage_additive(app.world_mut(), "target.scn.ron");
+    assert_eq!(
+        app.world().resource::<Unloadings>().0,
+        2,
+        "open_stage_additive"
+    );
+    unload_world(app.world_mut());
+    assert_eq!(app.world().resource::<Unloadings>().0, 3, "unload_world");
+}
+
+#[test]
+fn content_an_observer_unloads_is_gone_before_the_replacing_stage_exists() {
+    let dir = temp_stage_dir("world_unloading_order");
+    let id = StageId(Uuid::new_v4());
+    write_fixture_stage(&dir, "target.scn.ron", id);
+    let mut app = test_app(&dir);
+    app.init_resource::<Unloadings>()
+        .init_resource::<GameContentAtOpen>()
+        .add_observer(unload_game_content)
+        .add_observer(record_game_content_at_open);
+
+    app.world_mut().spawn((GameContent, Name::new("game root")));
+    let container = open_stage(app.world_mut(), "target.scn.ron");
+    assert_eq!(
+        game_content_count(&mut app),
+        0,
+        "the game's content must be gone when open_stage returns"
+    );
+    assert!(app.world().get_entity(container).is_ok());
+    wait_until(&mut app, |world| {
+        !world.resource::<GameContentAtOpen>().0.is_empty()
+    });
+
+    app.world_mut().spawn((GameContent, Name::new("game root")));
+    new_stage(app.world_mut());
+    assert_eq!(
+        app.world().resource::<GameContentAtOpen>().0,
+        [0, 0],
+        "each new stage must be announced with no game content left"
+    );
+    let mut roots = app.world_mut().query::<&StageId>();
+    assert_eq!(roots.iter(app.world()).count(), 1, "exactly one root");
+}
+
+#[test]
+fn unload_world_unloads_every_stage_and_load_in_flight_but_nothing_else() {
+    let dir = temp_stage_dir("unload_world");
+    write_fixture_stage(&dir, "target.scn.ron", StageId(Uuid::new_v4()));
+    let mut app = test_app(&dir);
+    let old_id = StageId(Uuid::new_v4());
+    app.world_mut().spawn((old_id, StageMember(old_id)));
+    let container = open_stage_additive(app.world_mut(), "target.scn.ron");
+    let bystander = app.world_mut().spawn(Name::new("editor ui")).id();
+
+    unload_world(app.world_mut());
+    for _ in 0..10 {
+        app.update();
+    }
+
+    let mut members = app.world_mut().query::<&StageMember>();
+    assert_eq!(members.iter(app.world()).count(), 0, "a stage survived");
+    assert!(
+        app.world().get_entity(container).is_err(),
+        "the load in flight survived"
+    );
+    let mut roots = app.world_mut().query::<&StageId>();
+    assert_eq!(
+        roots.iter(app.world()).count(),
+        0,
+        "the load in flight spawned after the unload"
+    );
+    assert!(app.world().get_entity(bystander).is_ok());
+}
+
+#[test]
+fn unload_world_applies_the_observers_despawns_before_it_returns() {
+    let dir = temp_stage_dir("unload_world_flush");
+    let mut app = test_app(&dir);
+    app.init_resource::<Unloadings>()
+        .add_observer(unload_game_content);
+    app.world_mut().spawn(GameContent);
+
+    unload_world(app.world_mut());
+
+    // A query applies no commands, so this sees only what `unload_world` itself applied.
+    assert_eq!(game_content_count(&mut app), 0);
+}
+
+/// How many stage entities existed at each [`WorldUnloading`].
+#[derive(Resource, Default)]
+struct StageMembersAtUnloading(Vec<usize>);
+
+fn record_stage_members(
+    _: On<WorldUnloading>,
+    members: Query<(), With<StageMember>>,
+    mut seen: ResMut<StageMembersAtUnloading>,
+) {
+    seen.0.push(members.iter().count());
+}
+
+#[test]
+fn world_unloading_fires_before_any_stage_is_unloaded() {
+    let dir = temp_stage_dir("unload_world_before_stages");
+    let mut app = test_app(&dir);
+    app.init_resource::<StageMembersAtUnloading>()
+        .add_observer(record_stage_members);
+    let id = StageId(Uuid::new_v4());
+    app.world_mut().spawn((id, StageMember(id)));
+
+    unload_world(app.world_mut());
+
+    assert_eq!(app.world().resource::<StageMembersAtUnloading>().0, [1]);
+    let mut members = app.world_mut().query::<&StageMember>();
+    assert_eq!(members.iter(app.world()).count(), 0);
+}
+
+fn open_stage_while_unloading(
+    _: On<WorldUnloading>,
+    mut unloadings: ResMut<Unloadings>,
+    mut commands: Commands,
+) {
+    unloadings.0 += 1;
+    commands.queue(|world: &mut World| {
+        open_stage(world, "target.scn.ron");
+    });
+}
+
+#[test]
+fn opening_a_stage_from_a_world_unloading_observer_is_refused_instead_of_recursing() {
+    let dir = temp_stage_dir("unload_world_reentry");
+    write_fixture_stage(&dir, "target.scn.ron", StageId(Uuid::new_v4()));
+    let mut app = test_app(&dir);
+    app.init_resource::<Unloadings>()
+        .add_observer(open_stage_while_unloading);
+
+    unload_world(app.world_mut());
+    assert_eq!(app.world().resource::<Unloadings>().0, 1);
+    for _ in 0..10 {
+        app.update();
+    }
+    let mut roots = app.world_mut().query::<&StageId>();
+    assert_eq!(
+        roots.iter(app.world()).count(),
+        0,
+        "the stage opened from the observer outlived the unload"
+    );
+
+    // The guard is lifted once the call returns.
+    unload_world(app.world_mut());
+    assert_eq!(app.world().resource::<Unloadings>().0, 2);
 }
