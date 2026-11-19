@@ -110,7 +110,9 @@ let planet: Handle<Planet> = server.load("alias://core::earth");
 ```
 
 `register_ron_asset` makes `Planet` an asset type if it is not one yet. An extension registered
-twice, as a plain asset or as a kind, panics at registration. A plain asset is not in the catalog,
+twice, as a plain asset or as a kind, panics at registration. So does a plain extension that ends
+in a kind's extension (`planet.ron` with a kind on `ron`), in either order: the scan would make its
+files entries of that kind. A plain asset is not in the catalog,
 so a file that fails to load has no `UnloadableContent` line: its handle's load state is `Failed`,
 Bevy logs the error, and its unknown fields are cleared. The code that loaded it reports the
 failure where it matters, for example as a problem of the map that names it.

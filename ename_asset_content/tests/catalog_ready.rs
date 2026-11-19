@@ -433,3 +433,28 @@ fn a_kind_on_a_ron_asset_extension_fails() {
     app.register_ron_asset::<Planet>("planet.ron")
         .register_content_kind::<Memo>("memo", "planet.ron");
 }
+
+/// `earth.planet.ron` would load as `Planet` but be catalogued as `note`.
+#[test]
+#[should_panic(expected = "content kind `note` already uses that extension or one it ends in")]
+fn a_ron_asset_ending_in_a_kind_extension_fails() {
+    let mut app = base_app(FIXTURE_ROOT);
+    app.register_ron_content_kind::<Note>("note", "ron")
+        .register_ron_asset::<Planet>("planet.ron");
+}
+
+#[test]
+#[should_panic(expected = "`planet.ron` is already registered as RON asset")]
+fn a_kind_that_a_ron_asset_extension_ends_in_fails() {
+    let mut app = base_app(FIXTURE_ROOT);
+    app.register_ron_asset::<Planet>("planet.ron")
+        .register_ron_content_kind::<Note>("note", "ron");
+}
+
+/// Kinds on `note.ron` and `ron` are fine: the longest kind wins, for the catalog as for Bevy.
+#[test]
+fn a_kind_ending_in_another_kind_extension_is_allowed() {
+    let mut app = base_app(FIXTURE_ROOT);
+    app.register_ron_content_kind::<Note>("note", "note.ron")
+        .register_ron_content_kind::<Planet>("planet", "ron");
+}

@@ -86,8 +86,9 @@ pub trait ContentAppExt {
     /// [`read_ron_lenient`](crate::read_ron_lenient) so unknown fields are reported.
     ///
     /// Register before `Startup`, when the scan reads the kinds. Panics on a kind or an extension
-    /// registered twice, on an extension of a [`register_ron_asset`](Self::register_ron_asset)
-    /// type, and at startup when `A` is not an asset type of the app (`init_asset`).
+    /// registered twice, on an extension that a [`register_ron_asset`](Self::register_ron_asset)
+    /// extension is or ends in, and at startup when `A` is not an asset type of the app
+    /// (`init_asset`).
     fn register_content_kind<A: Asset>(&mut self, kind: &str, extension: &str) -> &mut Self;
 
     /// [`register_content_kind`](Self::register_content_kind) with a
@@ -107,7 +108,8 @@ pub trait ContentAppExt {
     /// Not being in the catalog, a file that fails to load has no `UnloadableContent` line: the
     /// handle's load state is `Failed`, Bevy logs the error, and its unknown fields are cleared.
     ///
-    /// Panics on an extension registered twice, or one a content kind already uses.
+    /// Panics on an extension registered twice, or one that is or ends in a content kind's
+    /// extension (`planet.ron` with a kind on `ron`), since the catalog would claim its files.
     fn register_ron_asset<A: Asset + DeserializeOwned>(
         &mut self,
         extension: &'static str,
@@ -124,14 +126,20 @@ impl ContentAppExt for App {
         let mut registry = self
             .world_mut()
             .get_resource_or_init::<ContentKindRegistry>();
-        if let Err(err) = registry.kinds.insert(kind, extension) {
-            panic!("cannot register content kind `{kind}`: {err}");
-        }
-        if let Some(type_name) = registry.ron_loaders.get(extension) {
+        // A plain asset's files would also be of this kind, and the catalog would load them.
+        // Checked before the insert, which would make an equal extension look like a kind's.
+        let plain = registry.ron_loaders.iter().find(|(plain, _)| {
+            ends_in(plain, extension)
+                && !registry.kinds.iter().any(|(_, ext)| ext == plain.as_str())
+        });
+        if let Some((plain, type_name)) = plain {
             panic!(
-                "cannot register content kind `{kind}`: extension `{extension}` is already \
+                "cannot register content kind `{kind}` on `{extension}`: `{plain}` is already \
                  registered as RON asset `{type_name}`"
             );
+        }
+        if let Err(err) = registry.kinds.insert(kind, extension) {
+            panic!("cannot register content kind `{kind}`: {err}");
         }
         registry.loaders.insert(
             kind.to_owned(),
@@ -161,13 +169,16 @@ impl ContentAppExt for App {
             .world()
             .get_resource::<ContentKindRegistry>()
             .and_then(|registry| {
-                let (kind, _) = registry.kinds.iter().find(|(_, ext)| *ext == extension)?;
-                Some(kind.to_owned())
+                let (kind, ext) = registry
+                    .kinds
+                    .iter()
+                    .find(|(_, ext)| ends_in(extension, ext))?;
+                Some((kind.to_owned(), ext.to_owned()))
             });
-        if let Some(kind) = kind {
+        if let Some((kind, ext)) = kind {
             panic!(
                 "cannot register RON asset `{}` for `{extension}`: content kind `{kind}` \
-                 already uses that extension",
+                 already uses that extension or one it ends in (`{ext}`)",
                 std::any::type_name::<A>()
             );
         }
@@ -180,6 +191,14 @@ impl ContentAppExt for App {
             .map(|registry| registry.kinds.clone())
             .unwrap_or_default()
     }
+}
+
+/// Whether a file ending in `.{plain}` also ends in `.{kind}`, so `ContentKinds::kind_of` would
+/// make it an entry of that kind: `planet.ron` ends in `ron`.
+fn ends_in(plain: &str, kind: &str) -> bool {
+    plain
+        .strip_suffix(kind)
+        .is_some_and(|rest| rest.is_empty() || rest.ends_with('.'))
 }
 
 /// Makes `A` an asset type if it is not one yet and registers its `RonContentLoader`. Panics on an
