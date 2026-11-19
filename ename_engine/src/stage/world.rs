@@ -40,6 +40,13 @@ struct UnloadingWorld;
 /// Unloads the world's content: triggers [`WorldUnloading`] and applies what its observers
 /// queued, then unloads every open stage and every stage load in flight.
 ///
+/// It despawns at once, so commands other systems queued for that content earlier in the same
+/// schedule find it gone when they apply. Call it at the start of a frame (`First`) or between
+/// schedules, or make such commands tolerant (`try_insert` and friends). The editor's File menu
+/// calls [`open_stage`](super::open_stage) and [`new_stage`](super::new_stage) from the egui pass,
+/// which runs in `PostUpdate`, so `PostUpdate` systems that queue commands on world content must
+/// be tolerant.
+///
 /// Called from a [`WorldUnloading`] observer, it logs an error and does nothing.
 pub fn unload_world(world: &mut World) {
     if world.contains_resource::<UnloadingWorld>() {
