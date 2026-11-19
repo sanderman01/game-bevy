@@ -100,6 +100,8 @@ ron = "0.12.2"
 schemars = "1.0.4"
 semver = { version = "1.0.28", features = ["serde"] }
 serde = "1.0.228"
+# Lists the fields a lenient RON reader skipped (`ename_asset_content`).
+serde_ignored = "0.1.10"
 serde_json = "1.0.145"
 # Process facts on every platform. Same version as Bevy's `bevy_diagnostic`.
 sysinfo = { version = "0.39.5", default-features = false }

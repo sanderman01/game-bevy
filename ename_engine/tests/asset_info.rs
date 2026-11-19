@@ -10,7 +10,7 @@ use bevy::{
     prelude::*,
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
-use ename_asset_content::{AssetContentPlugin, ContentIndex};
+use ename_asset_content::{AssetContentPlugin, ContentAppExt, ContentCatalog, ContentIndex};
 use ename_engine::{
     asset_info::AssetInfoPlugin,
     command::{Caller, CommandPlugin, CommandScope, CommandWorldExt, Reply},
@@ -529,6 +529,41 @@ fn content_commands_without_a_scan_say_so() {
         .err()
         .unwrap();
     assert_eq!(err.kind, "no_content_scan");
+}
+
+#[test]
+fn content_list_shows_the_entries_of_a_kind_once_the_catalog_is_ready() {
+    let mut app = scanning_app();
+    app.init_asset::<Note>()
+        .register_asset_loader(NoteLoader)
+        .register_content_kind::<Note>("note", "note");
+    update_until(&mut app, |app| {
+        app.world().contains_resource::<ContentCatalog>()
+    });
+
+    assert_eq!(
+        call(&mut app, "content.list", json!({"kind": "note"})),
+        json!({"kind": "note", "extension": "note", "entries": {
+            "count": 1, "truncated": false, "items": [
+                {"id": "fixture::thing", "package": "fixture", "path": "content/fixture/thing.note"}
+            ]
+        }})
+    );
+    let report = call(&mut app, "content.report", json!({}));
+    assert_eq!(report["catalog"], "ready", "{report:#}");
+    assert_eq!(report["kinds"][0]["kind"], "note");
+    assert_eq!(report["kinds"][0]["entries"]["count"], 1);
+
+    let caller = Caller {
+        scope: CommandScope::Safe,
+        cwd: None,
+    };
+    let err = app
+        .world_mut()
+        .call_command("content.list", json!({"kind": "map"}), caller)
+        .err()
+        .unwrap();
+    assert_eq!(err.kind, "unknown_kind");
 }
 
 #[test]

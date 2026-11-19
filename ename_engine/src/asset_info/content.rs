@@ -1,10 +1,10 @@
-//! `content.report` (the package scan as the running game sees it) and `content.resolve`
-//! (alias to path, path to alias).
+//! `content.report` (the package scan as the running game sees it), `content.resolve` (alias to
+//! path, path to alias) and `content.list` (the catalog entries of one content kind).
 
 use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
-use ename_asset_content::{ContentIndex, ContentReport, ContentScanSettings};
+use ename_asset_content::{ContentCatalog, ContentIndex, ContentReport, ContentScanSettings};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -39,6 +39,35 @@ pub(super) struct Report {
     problems: Items<ProblemItem>,
     /// Aliases in the index.
     aliases: usize,
+    /// `loading` until every content descriptor has loaded or failed, then `ready`.
+    catalog: &'static str,
+    /// Each registered content kind and its entries; empty while the catalog loads.
+    kinds: Vec<KindItem>,
+    /// Fields a loader skipped because it did not know them, per asset.
+    unknown_fields: Items<UnknownFieldsItem>,
+}
+
+#[derive(Serialize, JsonSchema)]
+struct KindItem {
+    kind: String,
+    /// Files ending in `.<extension>` are of this kind.
+    extension: String,
+    entries: Items<CatalogItem>,
+}
+
+#[derive(Serialize, JsonSchema)]
+struct CatalogItem {
+    /// The alias, which `alias://<id>` loads.
+    id: String,
+    package: String,
+}
+
+#[derive(Serialize, JsonSchema)]
+struct UnknownFieldsItem {
+    /// The asset path the loader read.
+    asset: String,
+    /// Field paths such as `parts.0.colour`.
+    fields: Vec<String>,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -106,6 +135,7 @@ pub(super) fn report(
         .collect();
     let empty = ContentReport::default();
     let report_or_empty = report.unwrap_or(&empty);
+    let catalog = world.get_resource::<ContentCatalog>();
     Ok(Report {
         scan: if report.is_some() { "done" } else { "running" },
         asset_root: asset_root.display().to_string(),
@@ -151,6 +181,112 @@ pub(super) fn report(
         aliases: world
             .get_resource::<ContentIndex>()
             .map_or(0, ContentIndex::len),
+        catalog: if catalog.is_some() {
+            "ready"
+        } else {
+            "loading"
+        },
+        kinds: catalog.map_or_else(Vec::new, |catalog| {
+            catalog
+                .kinds()
+                .iter()
+                .map(|(kind, extension)| KindItem {
+                    kind: kind.to_owned(),
+                    extension: extension.to_owned(),
+                    entries: Items::of(
+                        catalog
+                            .entries(kind)
+                            .map(|entry| CatalogItem {
+                                id: entry.id.clone(),
+                                package: entry.package.clone(),
+                            })
+                            .collect::<Vec<_>>()
+                            .into_iter(),
+                        limit,
+                    ),
+                })
+                .collect()
+        }),
+        unknown_fields: Items::of(
+            report_or_empty
+                .unknown_fields
+                .iter()
+                .map(|unknown| UnknownFieldsItem {
+                    asset: unknown.asset.clone(),
+                    fields: unknown.fields.clone(),
+                }),
+            limit,
+        ),
+    })
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ListParams {
+    /// A registered content kind, such as `map`.
+    kind: String,
+    /// Most entries returned, 1 to 500. Default 50.
+    #[serde(default)]
+    limit: Option<u32>,
+}
+
+#[derive(Serialize, JsonSchema)]
+pub(super) struct Listed {
+    kind: String,
+    extension: String,
+    /// Sorted by id.
+    entries: Items<ListedEntry>,
+}
+
+#[derive(Serialize, JsonSchema)]
+struct ListedEntry {
+    /// The alias, which `alias://<id>` loads.
+    id: String,
+    package: String,
+    /// The file that won the alias, under the asset root, with `/`.
+    path: Option<String>,
+}
+
+pub(super) fn list(In(call): In<Call<ListParams>>, world: &World) -> Result<Listed, CommandError> {
+    let limit = limit(call.params.limit)?;
+    scan_settings(world)?;
+    let Some(catalog) = world.get_resource::<ContentCatalog>() else {
+        return Err(CommandError::failed(
+            "content_catalog_loading",
+            "the content catalog is not ready: the scan runs or descriptors still load",
+        )
+        .with_hint("`content.report` says `catalog: ready` once it is"));
+    };
+    let kind = call.params.kind;
+    let Some((_, extension)) = catalog.kinds().iter().find(|(known, _)| *known == kind) else {
+        let known: Vec<&str> = catalog.kinds().iter().map(|(kind, _)| kind).collect();
+        return Err(CommandError::invalid(
+            "unknown_kind",
+            format!(
+                "no content kind `{kind}`; registered: {}",
+                if known.is_empty() {
+                    "none".to_owned()
+                } else {
+                    known.join(", ")
+                }
+            ),
+        ));
+    };
+    let index = world.get_resource::<ContentIndex>();
+    let entries: Vec<ListedEntry> = catalog
+        .entries(&kind)
+        .map(|entry| ListedEntry {
+            id: entry.id.clone(),
+            package: entry.package.clone(),
+            path: index
+                .and_then(|index| index.resolve(&entry.id))
+                .map(asset_path_string),
+        })
+        .collect();
+    Ok(Listed {
+        extension: extension.to_owned(),
+        kind,
+        entries: Items::of(entries.into_iter(), limit),
     })
 }
 

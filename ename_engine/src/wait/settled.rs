@@ -509,7 +509,8 @@ mod tests {
         let err = call(&mut app, "wait.settled", json!({ "probes": ["moon"] })).unwrap_err();
         assert_eq!(err.kind, "unknown_probe");
         assert!(
-            err.message.contains("assets, other, pipelines, test"),
+            err.message
+                .contains("assets, content_catalog, other, pipelines, test"),
             "{err}"
         );
         let err = call(&mut app, "wait.settled", json!({ "stable_frames": 0 })).unwrap_err();
@@ -583,7 +584,7 @@ mod tests {
         );
         assert_eq!(
             value["probes"],
-            json!(["assets", "other", "pipelines", "test"])
+            json!(["assets", "content_catalog", "other", "pipelines", "test"])
         );
     }
 }

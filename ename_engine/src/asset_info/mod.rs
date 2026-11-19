@@ -1,5 +1,6 @@
 //! Read-only commands over asset and content state: the package scan as the running game sees it
-//! (`content.report`), alias to path and back (`content.resolve`), which indexed assets loaded,
+//! (`content.report`), alias to path and back (`content.resolve`), the catalog entries of one
+//! content kind (`content.list`), which indexed assets loaded,
 //! which failed and why (`asset.list`), and what one of them holds (`asset.inspect`).
 //!
 //! Bevy keeps its table of assets private, so `asset.list` enumerates the alias index
@@ -44,11 +45,22 @@ impl Plugin for AssetInfoPlugin {
                 CommandSpec::new(
                     "content.report",
                     "The package scan as the game sees it: asset root, search paths, load order \
-                     file, packages, disabled packages, contests and problems.",
+                     file, packages, disabled packages, contests, problems, content catalog \
+                     entries per kind and unknown fields.",
                 )
                 .scope(CommandScope::Safe)
                 .read_only(),
                 content::report,
+            )
+            .register_command(
+                CommandSpec::new(
+                    "content.list",
+                    "The content catalog entries of one kind (such as `map`), each with its \
+                     package and file.",
+                )
+                .scope(CommandScope::Safe)
+                .read_only(),
+                content::list,
             )
             .register_command(
                 CommandSpec::new(

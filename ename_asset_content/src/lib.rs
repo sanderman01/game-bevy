@@ -7,6 +7,10 @@
 //!
 //! With the `zip` or `tar` feature it also mounts archives under the `Default` asset source, and
 //! folds their problems into the [`ContentReport`]. See `docs/assets-archives.md`.
+//!
+//! A game registers content kinds with [`ContentAppExt::register_content_kind`]; the scan builds
+//! the [`ContentCatalog`] of them, and this crate loads every descriptor before publishing it. See
+//! `docs/assets-catalog.md`.
 
 // The door a consumer opens by depending on this crate alone: enough to read a `ContentReport`
 // -- every type its fields name, down to the version requirement inside a `Requirement` -- and to
@@ -15,28 +19,37 @@
 // belongs on `ename_asset_package`, which owns it.
 pub use ename_asset_alias::{ContentIndex, Problem, ProblemKind};
 pub use ename_asset_package::{
-    ConstraintSource, ContentReport, ContestReason, ContestedAlias, DisableReason, Disabled,
-    LOAD_ORDER_FILE, LoadOrder, LoadOrderError, PackageRef, PackageSummary, Requirement, Tiebreak,
-    UserConstraint, Version, VersionReq,
+    CatalogEntry, ConstraintSource, ContentCatalog, ContentKinds, ContentReport, ContestReason,
+    ContestedAlias, DisableReason, Disabled, LOAD_ORDER_FILE, LoadOrder, LoadOrderError,
+    PackageRef, PackageSummary, Requirement, Tiebreak, UnknownFields, UserConstraint, Version,
+    VersionReq,
 };
 
+mod catalog;
+mod lenient;
 // Registered in the browser only; compiled for tests so they run on desktop.
 #[cfg(any(test, target_arch = "wasm32"))]
 mod meta_list;
 
+pub use crate::catalog::{ContentAppExt, ContentCatalogState};
+pub use crate::lenient::{UnknownFieldSink, ron_from_bytes_lenient};
+
+use crate::catalog::{ContentKindRegistry, PendingCatalog, finish_content_catalog};
 use async_lock::OnceCell;
 use bevy::{
     app::{App, Plugin, Startup, Update},
     asset::AssetServer,
     ecs::{
         resource::Resource,
+        schedule::{IntoScheduleConfigs, common_conditions::resource_exists},
         system::{Commands, Res},
     },
     log::{info, warn},
+    state::app::{AppExtStates, StatesPlugin},
     tasks::IoTaskPool,
 };
 use ename_asset_alias::{AliasSourcePlugin, ContentIndexCell, IgnoredFiles};
-use ename_asset_package::build_index;
+use ename_asset_package::build_index_with_catalog;
 #[cfg(not(target_arch = "wasm32"))]
 use ename_asset_package::scan_packages;
 #[cfg(all(any(feature = "zip", feature = "tar"), not(target_arch = "wasm32")))]
@@ -169,12 +182,13 @@ impl ContentScanSettings {
     }
 }
 
-/// Where [`start_content_scan`] leaves the report for [`mirror_content_scan`] to pick up.
+/// Where [`start_content_scan`] leaves the report and the scanned catalog for
+/// [`mirror_content_scan`] to pick up.
 ///
 /// Private: the report reaches the rest of the world as `Res<ContentReport>`, and a second way to
 /// read it would be a second thing to keep in step.
 #[derive(Resource, Clone, Default)]
-struct ContentReportCell(Arc<OnceCell<ContentReport>>);
+struct ContentReportCell(Arc<OnceCell<(ContentReport, ContentCatalog)>>);
 
 impl Plugin for AssetContentPlugin {
     fn build(&self, app: &mut App) {
@@ -203,6 +217,8 @@ impl Plugin for AssetContentPlugin {
         }
         app.add_plugins(AliasSourcePlugin::default().with_asset_root(self.asset_root.clone()))
             .init_resource::<ContentReportCell>()
+            .init_resource::<ContentKindRegistry>()
+            .init_resource::<UnknownFieldSink>()
             .insert_resource(ContentScanSettings {
                 asset_root: self.asset_root.clone(),
                 search_paths: self.search_paths.clone(),
@@ -210,7 +226,23 @@ impl Plugin for AssetContentPlugin {
                 ignored: self.ignored.clone(),
             })
             .add_systems(Startup, start_content_scan)
-            .add_systems(Update, mirror_content_scan);
+            .add_systems(
+                Update,
+                (
+                    mirror_content_scan,
+                    finish_content_catalog.run_if(resource_exists::<PendingCatalog>),
+                    lenient::collect_unknown_fields,
+                )
+                    .chain(),
+            );
+    }
+
+    fn finish(&self, app: &mut App) {
+        // `DefaultPlugins` builds `StatesPlugin` after `AssetPlugin`, which this plugin must
+        // precede, so the state can only be set up once every plugin has built.
+        if app.is_plugin_added::<StatesPlugin>() {
+            app.init_state::<ContentCatalogState>();
+        }
     }
 }
 
@@ -224,6 +256,7 @@ fn start_content_scan(
     cell: Res<ContentIndexCell>,
     report: Res<ContentReportCell>,
     config: Res<ContentScanSettings>,
+    registry: Res<ContentKindRegistry>,
     #[cfg(not(target_arch = "wasm32"))] mounts: Option<Res<ArchiveMounts>>,
 ) {
     #[cfg(not(target_arch = "wasm32"))]
@@ -231,6 +264,7 @@ fn start_content_scan(
     let cell = cell.0.clone();
     let report_cell = report.0.clone();
     let config = config.clone();
+    let kinds = registry.kinds.clone();
     let vfs = AssetReaderVfs::new(server.clone());
     IoTaskPool::get()
         .spawn(async move {
@@ -263,7 +297,7 @@ fn start_content_scan(
                 read_baked_discovery(&vfs, &mut problems).await,
                 &load_order,
             );
-            let (index, mut report) = build_index(&scan);
+            let (index, catalog, mut report) = build_index_with_catalog(&scan, &kinds);
             report.problems.extend(problems);
             // Mounts the scan passed through have been classified and indexed by now.
             // Problems found later, by a read, are only logged.
@@ -287,14 +321,14 @@ fn start_content_scan(
             // The report goes first. Filling the index cell is what releases every `alias://`
             // read waiting on it, so anything that observes the index must already be able to
             // observe the report that explains it.
-            let _ = report_cell.set(report).await;
+            let _ = report_cell.set((report, catalog)).await;
             let _ = cell.set(index).await;
         })
         .detach();
 }
 
 /// Copies the finished scan out of the task's cells and into the `World`, as `ContentIndex` and
-/// `ContentReport` resources.
+/// `ContentReport` resources, and starts loading the catalog's descriptors.
 ///
 /// `OnceCell::get` is a non-blocking read, so this is one cheap poll per frame until the scan
 /// lands, and none after: the resource's own presence is the "already done" flag.
@@ -303,15 +337,18 @@ fn mirror_content_scan(
     mirrored: Option<Res<ContentReport>>,
     index: Res<ContentIndexCell>,
     report: Res<ContentReportCell>,
+    registry: Res<ContentKindRegistry>,
+    server: Res<AssetServer>,
 ) {
     if mirrored.is_some() {
         return;
     }
-    let (Some(index), Some(report)) = (index.0.get(), report.0.get()) else {
+    let (Some(index), Some((report, catalog))) = (index.0.get(), report.0.get()) else {
         return;
     };
     commands.insert_resource(index.clone());
     commands.insert_resource(report.clone());
+    commands.insert_resource(PendingCatalog::start(catalog.clone(), &registry, &server));
 }
 
 /// The [`BAKED_DISCOVERY_FILE`](ename_asset_package::BAKED_DISCOVERY_FILE) the web build wrote.

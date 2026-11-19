@@ -17,11 +17,15 @@ bevy.workspace = true
 ename_asset_alias = { workspace = true, features = ["bevy"] }
 ename_asset_package = { workspace = true, features = ["bevy"] }
 ename_asset_vfs = { workspace = true, features = ["bevy"] }
+# The lenient RON reader (`lenient.rs`).
+ron.workspace = true
+serde.workspace = true
+serde_ignored.workspace = true
 
 [dev-dependencies]
 # `archive_composition.rs` turns a format on here rather than through this crate's features.
 ename_asset_vfs = { workspace = true, features = ["bevy", "zip"] }
-# Loader settings in `archive_load.rs`, which a fixture `.meta` sets.
+# Loader settings in `archive_load.rs`, which a fixture `.meta` sets, and the lenient reader's tests.
 serde = { workspace = true, features = ["derive"] }
 tempfile.workspace = true
 

@@ -1,0 +1,6 @@
+[package]
+id = "notes"
+version = "1.0.0"
+authors = ["Test"]
+title = "Catalog test package"
+description = "Content descriptors, one broken."

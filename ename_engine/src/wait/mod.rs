@@ -8,6 +8,7 @@
 //! No network code: `ename_remote` exposes the commands like any other.
 
 mod assets;
+mod content;
 mod pipelines;
 mod predicate;
 mod probe;
@@ -33,8 +34,8 @@ pub enum WaitSystems {
 
 /// The settle probe registry, its sampling, and the wait commands.
 ///
-/// Registers [`SettleSample`], the `assets` and `pipelines` probes, `wait.settled` and
-/// `wait.activity` and `wait.until`, and orders [`WaitSystems`] after
+/// Registers [`SettleSample`], the `assets`, `content_catalog` and `pipelines` probes,
+/// `wait.settled` and `wait.activity` and `wait.until`, and orders [`WaitSystems`] after
 /// [`TimeControlSystems::Countdown`], so a stepped frame is judged with its step already counted.
 pub struct WaitPlugin;
 
@@ -57,7 +58,8 @@ impl Plugin for WaitPlugin {
                     .in_set(WaitSystems::Sample)
                     .run_if(any_with_component::<SettleWaiter>),
             );
-        app.register_settle_probe("assets", assets::assets_probe);
+        app.register_settle_probe("assets", assets::assets_probe)
+            .register_settle_probe("content_catalog", content::content_catalog_probe);
         pipelines::register(app);
         settled::register(app);
         until::register(app);
