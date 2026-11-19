@@ -99,6 +99,9 @@ impl Discovery {
         }
         for problem in &mut portable.problems {
             portable_path(&mut problem.path);
+            if let Some(other) = &mut problem.other {
+                portable_path(other);
+            }
         }
         let text = ron::to_string(&portable)?;
         let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
@@ -232,6 +235,7 @@ async fn read_packages_in(
                 path: search_path.to_path_buf(),
                 kind: ProblemKind::UnreadableDirectory,
                 detail: err.to_string(),
+                other: None,
             });
             return;
         }
@@ -291,6 +295,7 @@ fn problem(path: &Path, kind: ProblemKind, detail: impl Display) -> Problem {
         path: path.to_path_buf(),
         kind,
         detail: detail.to_string(),
+        other: None,
     }
 }
 
@@ -341,5 +346,30 @@ mod tests {
             Discovery::decode(plain.as_bytes()).unwrap().packages[0].assets,
             decoded.packages[0].assets
         );
+    }
+
+    /// A duplicate alias names the winning file in `other`, which a bake makes portable too.
+    #[test]
+    fn a_bake_makes_a_problems_second_path_portable() {
+        let mut discovery = discovery();
+        discovery.problems.push(Problem {
+            path: "basegame\\core\\a.png".into(),
+            kind: ProblemKind::DuplicateAlias,
+            detail: String::new(),
+            other: Some("basegame\\core\\a.map.ron".into()),
+        });
+        let decoded = Discovery::decode(&discovery.encode().unwrap()).unwrap();
+        assert_eq!(
+            decoded.problems[0].other.as_deref(),
+            Some(Path::new("basegame/core/a.map.ron"))
+        );
+    }
+
+    /// A bake written before problems had `other` still reads.
+    #[test]
+    fn a_bake_without_a_problems_second_path_still_decodes() {
+        let text = r#"(packages:[],problems:[(path:"a.png",kind:DuplicateAlias,detail:"")])"#;
+        let decoded = Discovery::decode(text.as_bytes()).unwrap();
+        assert_eq!(decoded.problems[0].other, None);
     }
 }

@@ -264,3 +264,121 @@ fn a_baked_discovery_gives_the_same_catalog() {
     assert_eq!(problem_kinds(&baked_report), problem_kinds(&live_report));
     assert!(problem_kinds(&baked_report).contains(&ProblemKind::DuplicateContentAlias));
 }
+
+/// `dir` claims `alias` with `file`, through a `.alias` sidecar.
+fn claim(root: &Path, dir: &str, file: &str, alias: &str, guid: u8) {
+    write(
+        root,
+        &format!("{dir}/{file}.alias"),
+        &format!("alias = \"{alias}\"\nguid = \"0190d5b0-0000-7000-8000-0000000000{guid:02x}\"\n"),
+    );
+    write(root, &format!("{dir}/{file}"), "()");
+}
+
+/// Removal is a step in load order: a later package may claim the alias back, and the entry is
+/// its file's.
+#[test]
+fn an_alias_removed_and_claimed_back_with_the_same_kind_is_the_new_packages() {
+    let root = tempfile::tempdir().unwrap();
+    base(root.path());
+    package(
+        root.path(),
+        "mods/a_remove",
+        r#"removes = ["core::island"]"#,
+    );
+    package(root.path(), "mods/b_back", r#"overrides = ["core"]"#);
+    claim(
+        root.path(),
+        "mods/b_back",
+        "island.map.ron",
+        "core::island",
+        3,
+    );
+    let (catalog, report) = catalog(root.path());
+
+    assert_eq!(
+        catalog.get("map", "core::island"),
+        Some(&entry("map", "core::island", "b_back"))
+    );
+    assert!(report.problems.is_empty(), "{:?}", report.problems);
+}
+
+/// After a `removes` the alias starts over, so claiming it back with another kind is a new entry
+/// and no kind change.
+#[test]
+fn an_alias_removed_and_claimed_back_with_another_kind_reports_no_kind_change() {
+    let root = tempfile::tempdir().unwrap();
+    base(root.path());
+    package(
+        root.path(),
+        "mods/a_remove",
+        r#"removes = ["core::island"]"#,
+    );
+    package(root.path(), "mods/b_back", r#"overrides = ["core"]"#);
+    claim(
+        root.path(),
+        "mods/b_back",
+        "island.landscape.ron",
+        "core::island",
+        4,
+    );
+    let (catalog, report) = catalog(root.path());
+
+    assert_eq!(catalog.get("map", "core::island"), None);
+    assert_eq!(
+        catalog.get("landscape", "core::island"),
+        Some(&entry("landscape", "core::island", "b_back"))
+    );
+    assert!(report.problems.is_empty(), "{:?}", report.problems);
+}
+
+/// A map replaced by a texture and then by a map again is still a map: no kind change to report.
+#[test]
+fn a_kind_change_that_a_later_package_reverts_reports_nothing() {
+    let root = tempfile::tempdir().unwrap();
+    base(root.path());
+    package(root.path(), "mods/b_png", r#"overrides = ["core"]"#);
+    claim(root.path(), "mods/b_png", "island.png", "core::island", 5);
+    package(root.path(), "mods/c_map", r#"overrides = ["b_png"]"#);
+    claim(
+        root.path(),
+        "mods/c_map",
+        "island.map.ron",
+        "core::island",
+        6,
+    );
+    let (catalog, report) = catalog(root.path());
+
+    assert_eq!(
+        catalog.get("map", "core::island"),
+        Some(&entry("map", "core::island", "c_map"))
+    );
+    assert_eq!(report.contests.len(), 2);
+    assert!(report.problems.is_empty(), "{:?}", report.problems);
+}
+
+/// A package whose `requires` fails is not loaded, so its content is not in the catalog.
+#[test]
+fn a_disabled_packages_content_is_not_catalogued() {
+    let root = tempfile::tempdir().unwrap();
+    base(root.path());
+    package(root.path(), "mods/needy", r#"requires = ["absent >= 1.0"]"#);
+    write(root.path(), "mods/needy/cove.map.ron", "()");
+    let (catalog, report) = catalog(root.path());
+
+    assert_eq!(catalog.get("map", "needy::cove"), None);
+    assert_eq!(catalog.len(), 2);
+    assert_eq!(report.disabled.len(), 1);
+}
+
+/// A hidden file has no stem before its first dot, so it is no content.
+#[test]
+fn a_hidden_file_is_not_content() {
+    let root = tempfile::tempdir().unwrap();
+    base(root.path());
+    write(root.path(), "basegame/core/.map.ron", "()");
+    let (catalog, _) = catalog(root.path());
+
+    assert_eq!(catalog.len(), 2);
+    assert!(catalog.iter().all(|entry| entry.id != "core::"));
+}

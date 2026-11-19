@@ -161,10 +161,11 @@ pub struct Problem {
     pub path: PathBuf,
     pub kind: ProblemKind,
     pub detail: String,
+    /// A second file the problem is about: for [`ProblemKind::DuplicateAlias`], the file that won
+    /// the alias, while `path` is the one that lost it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub other: Option<PathBuf>,
 }
-
-/// Separates the alias from the winning path in a duplicate alias problem's detail.
-const CLAIMED_BY: &str = "` is already claimed by ";
 
 impl Problem {
     /// `loser` lost `alias` to `winner`, an earlier file in the same walk.
@@ -172,18 +173,9 @@ impl Problem {
         Self {
             path: loser.to_path_buf(),
             kind: ProblemKind::DuplicateAlias,
-            detail: format!("`{alias}{CLAIMED_BY}{}", winner.display()),
+            detail: format!("`{alias}` is already claimed by {}", winner.display()),
+            other: Some(winner.to_path_buf()),
         }
-    }
-
-    /// The alias and the winning file of a [`ProblemKind::DuplicateAlias`]; `path` is the losing
-    /// file. Read back from the detail, which a baked discovery carries as text.
-    pub fn duplicated_alias(&self) -> Option<(&str, &Path)> {
-        if self.kind != ProblemKind::DuplicateAlias {
-            return None;
-        }
-        let (alias, winner) = self.detail.strip_prefix('`')?.rsplit_once(CLAIMED_BY)?;
-        Some((alias, Path::new(winner)))
     }
 }
 
@@ -268,6 +260,7 @@ fn problem(path: &Path, kind: ProblemKind, detail: impl Display) -> Problem {
         path: path.to_path_buf(),
         kind,
         detail: detail.to_string(),
+        other: None,
     }
 }
 
@@ -314,6 +307,7 @@ impl<'a> Walk<'a> {
                     path: dir,
                     kind: ProblemKind::DirectoryTooDeep,
                     detail: format!("more than {MAX_DEPTH} directories deep; stopped descending"),
+                    other: None,
                 });
                 return;
             }
@@ -374,6 +368,7 @@ impl<'a> Walk<'a> {
                     path,
                     kind: ProblemKind::OrphanAliasFile,
                     detail: format!("names `{target}`, which is not in this directory"),
+                    other: None,
                 });
             }
 
@@ -444,6 +439,7 @@ impl<'a> Walk<'a> {
                 path: path.to_path_buf(),
                 kind: ProblemKind::MissingGuid,
                 detail: format!("`{alias}` has a .alias file with no guid"),
+                other: None,
             });
         }
 

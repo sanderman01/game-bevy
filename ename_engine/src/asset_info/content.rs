@@ -209,7 +209,7 @@ pub(super) fn report(
         }),
         unknown_fields: Items::of(
             report_or_empty
-                .unknown_fields
+                .unknown_fields()
                 .iter()
                 .map(|unknown| UnknownFieldsItem {
                     asset: unknown.asset.clone(),

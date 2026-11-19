@@ -26,16 +26,53 @@ pub enum ContentKindError {
         extension: String,
         existing: String,
     },
+    #[error("`[workspace.metadata.ename.content_kinds]` must be a table")]
+    NotATable,
+    #[error("content kind `{0}` needs its extension as a string, such as \"map.ron\"")]
+    ExtensionNotAString(String),
 }
 
 /// The registered kinds and the file extension that marks each.
+///
+/// Kept sorted by kind, so two tables with the same kinds compare equal whatever order they were
+/// registered in.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ContentKinds {
-    /// `(kind, extension)`, in registration order.
-    kinds: Vec<(String, String)>,
+    /// Kind to extension.
+    kinds: BTreeMap<String, String>,
 }
 
+/// Where a workspace's root `Cargo.toml` declares its content kinds, one `kind = "extension"` per
+/// line.
+pub const CONTENT_KINDS_TABLE: &str = "[workspace.metadata.ename.content_kinds]";
+
 impl ContentKinds {
+    /// The kinds declared in a workspace's root `Cargo.toml` under [`CONTENT_KINDS_TABLE`]. No
+    /// table means no kinds.
+    ///
+    /// `ename_xtask` reads them from there because it cannot run the game's
+    /// `register_content_kind` calls; a game test compares this table with the registered kinds,
+    /// so the two cannot drift apart.
+    pub fn from_workspace_manifest(manifest: &toml::Table) -> Result<Self, ContentKindError> {
+        let mut kinds = Self::default();
+        let Some(table) = manifest
+            .get("workspace")
+            .and_then(|v| v.get("metadata"))
+            .and_then(|v| v.get("ename"))
+            .and_then(|v| v.get("content_kinds"))
+        else {
+            return Ok(kinds);
+        };
+        let table = table.as_table().ok_or(ContentKindError::NotATable)?;
+        for (kind, extension) in table {
+            let extension = extension
+                .as_str()
+                .ok_or_else(|| ContentKindError::ExtensionNotAString(kind.clone()))?;
+            kinds.insert(kind.as_str(), extension)?;
+        }
+        Ok(kinds)
+    }
+
     /// Registers `kind` for files ending in `.{extension}`. The kind name is opaque to the engine.
     pub fn insert(
         &mut self,
@@ -49,25 +86,29 @@ impl ContentKinds {
         if extension.is_empty() || extension.starts_with('.') || extension.ends_with('.') {
             return Err(ContentKindError::BadExtension { kind, extension });
         }
-        if self.kinds.iter().any(|(existing, _)| *existing == kind) {
+        if self.kinds.contains_key(&kind) {
             return Err(ContentKindError::DuplicateKind(kind));
         }
-        if let Some((existing, _)) = self.kinds.iter().find(|(_, ext)| *ext == extension) {
+        if let Some((existing, _)) = self.kinds.iter().find(|(_, ext)| **ext == extension) {
             return Err(ContentKindError::DuplicateExtension {
                 existing: existing.clone(),
                 kind,
                 extension,
             });
         }
-        self.kinds.push((kind, extension));
+        self.kinds.insert(kind, extension);
         Ok(())
     }
 
     /// The kind of the file at `path`, if any. Matched like Bevy matches a loader: on the file
     /// name's extensions, case-sensitive, the longest registered one winning (`a.map.ron` is a
-    /// `map.ron` before it is a `ron`).
+    /// `map.ron` before it is a `ron`). A hidden file such as `.map.ron` is of no kind: the alias
+    /// stem ends at the first dot, so it has none.
     pub fn kind_of(&self, path: &Path) -> Option<&str> {
         let name = path.file_name()?.to_str()?;
+        if name.starts_with('.') {
+            return None;
+        }
         self.kinds
             .iter()
             .filter(|(_, extension)| {
@@ -79,7 +120,7 @@ impl ContentKinds {
             .map(|(kind, _)| kind.as_str())
     }
 
-    /// `(kind, extension)`, in registration order.
+    /// `(kind, extension)`, sorted by kind.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
         self.kinds
             .iter()
@@ -159,15 +200,21 @@ impl ContentCatalog {
         }
     }
 
-    /// Takes an entry out, for a descriptor that failed to load.
-    pub fn remove(&mut self, kind: &str, id: &str) -> Option<CatalogEntry> {
-        self.entries.get_mut(kind)?.remove(id)
+    /// This catalog without the `(kind, id)` entries named, for descriptors that failed to load.
+    /// Consuming, so a published catalog cannot be changed in place.
+    pub fn without<'a>(mut self, failed: impl IntoIterator<Item = (&'a str, &'a str)>) -> Self {
+        for (kind, id) in failed {
+            if let Some(entries) = self.entries.get_mut(kind) {
+                entries.remove(id);
+            }
+        }
+        self
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ContentKindError, ContentKinds};
+    use super::{CatalogEntry, ContentCatalog, ContentKindError, ContentKinds};
     use std::path::Path;
 
     fn kinds() -> ContentKinds {
@@ -186,6 +233,55 @@ mod tests {
         assert_eq!(kinds.kind_of(Path::new("core/fujixmap.ron")), Some("data"));
         assert_eq!(kinds.kind_of(Path::new("core/fujix.png")), None);
         assert_eq!(kinds.kind_of(Path::new("core/fujix.MAP.RON")), None);
+        assert_eq!(kinds.kind_of(Path::new("core/.map.ron")), None);
+        assert_eq!(kinds.kind_of(Path::new("core/.ron")), None);
+    }
+
+    /// A game test compares the declared table with its registrations, so order must not matter.
+    #[test]
+    fn kinds_compare_equal_whatever_the_registration_order() {
+        let mut reversed = ContentKinds::default();
+        reversed.insert("data", "ron").unwrap();
+        reversed.insert("map", "map.ron").unwrap();
+        assert_eq!(reversed, kinds());
+    }
+
+    #[test]
+    fn kinds_come_from_workspace_metadata() {
+        let manifest: toml::Table =
+            "[workspace.metadata.ename.content_kinds]\ndata = \"ron\"\nmap = \"map.ron\""
+                .parse()
+                .unwrap();
+        assert_eq!(
+            ContentKinds::from_workspace_manifest(&manifest),
+            Ok(kinds())
+        );
+        assert_eq!(
+            ContentKinds::from_workspace_manifest(&toml::Table::new()),
+            Ok(ContentKinds::default())
+        );
+        let bad: toml::Table = "[workspace.metadata.ename.content_kinds]\nmap = 1"
+            .parse()
+            .unwrap();
+        assert_eq!(
+            ContentKinds::from_workspace_manifest(&bad),
+            Err(ContentKindError::ExtensionNotAString("map".into()))
+        );
+    }
+
+    #[test]
+    fn without_drops_the_named_entries() {
+        let mut catalog = ContentCatalog::new(kinds());
+        for id in ["core::a", "core::b"] {
+            catalog.insert(CatalogEntry {
+                kind: "map".into(),
+                id: id.into(),
+                package: "core".into(),
+            });
+        }
+        let catalog = catalog.without([("map", "core::a"), ("vehicle", "core::b")]);
+        let ids: Vec<&str> = catalog.entries("map").map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["core::b"]);
     }
 
     #[test]

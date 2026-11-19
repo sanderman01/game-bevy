@@ -223,7 +223,8 @@ fn workspace_content_kinds() -> Result<ename_asset_package::ContentKinds, String
     let manifest: toml::Table = text
         .parse()
         .map_err(|err| format!("{}: {err}", path.display()))?;
-    policy::content_kinds(&manifest)
+    ename_asset_package::ContentKinds::from_workspace_manifest(&manifest)
+        .map_err(|err| format!("{}: {err}", path.display()))
 }
 
 /// [`load_order_path`], read only when one of `assets` is an alias: a plain path needs no scan,

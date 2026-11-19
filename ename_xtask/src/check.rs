@@ -20,11 +20,22 @@ pub fn check(
     load_order_path: Option<&Path>,
     kinds: &ContentKinds,
 ) -> bool {
-    let (scan, _) = crate::scan::scan(asset_root, search_paths, load_order_path);
-    let (_, catalog, report) = build_index_with_catalog(&scan, kinds);
+    let (catalog, report) = scan_catalog(asset_root, search_paths, load_order_path, kinds);
     print_report(&report);
     print_catalog(&catalog);
     report.problems.is_empty() && report.contests.is_empty()
+}
+
+/// What [`check`] judges: the catalog of `kinds` and the report of the scan.
+pub fn scan_catalog(
+    asset_root: &Path,
+    search_paths: &[String],
+    load_order_path: Option<&Path>,
+    kinds: &ContentKinds,
+) -> (ContentCatalog, ContentReport) {
+    let (scan, _) = crate::scan::scan(asset_root, search_paths, load_order_path);
+    let (_, catalog, report) = build_index_with_catalog(&scan, kinds);
+    (catalog, report)
 }
 
 fn print_report(report: &ContentReport) {

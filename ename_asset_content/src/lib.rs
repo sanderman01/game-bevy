@@ -32,9 +32,14 @@ mod lenient;
 mod meta_list;
 
 pub use crate::catalog::{ContentAppExt, ContentCatalogState};
-pub use crate::lenient::{UnknownFieldSink, ron_from_bytes_lenient};
+pub use crate::lenient::{
+    RonContentError, RonContentLoader, UnknownFieldSink, read_ron_lenient, ron_from_bytes_lenient,
+};
 
-use crate::catalog::{ContentKindRegistry, PendingCatalog, finish_content_catalog};
+use crate::catalog::{
+    ContentDescriptors, ContentKindRegistry, PendingCatalog, finish_content_catalog,
+    watch_content_descriptors,
+};
 use async_lock::OnceCell;
 use bevy::{
     app::{App, Plugin, Startup, Update},
@@ -231,6 +236,7 @@ impl Plugin for AssetContentPlugin {
                 (
                     mirror_content_scan,
                     finish_content_catalog.run_if(resource_exists::<PendingCatalog>),
+                    watch_content_descriptors.run_if(resource_exists::<ContentDescriptors>),
                     lenient::collect_unknown_fields,
                 )
                     .chain(),
@@ -242,6 +248,16 @@ impl Plugin for AssetContentPlugin {
         // precede, so the state can only be set up once every plugin has built.
         if app.is_plugin_added::<StatesPlugin>() {
             app.init_state::<ContentCatalogState>();
+        } else if !app
+            .world()
+            .resource::<ContentKindRegistry>()
+            .kinds
+            .is_empty()
+        {
+            warn!(
+                "Content kinds are registered but StatesPlugin is not added: \
+                 ContentCatalogState will not exist; wait for Res<ContentCatalog> instead"
+            );
         }
     }
 }
@@ -281,6 +297,7 @@ fn start_content_scan(
                             path: path.clone(),
                             kind: ProblemKind::UnparseableLoadOrder,
                             detail: err.to_string(),
+                            other: None,
                         });
                         LoadOrder::default()
                     }
@@ -372,6 +389,7 @@ async fn read_baked_discovery(
             path: path.to_path_buf(),
             kind: ProblemKind::UnreadableBakedDiscovery,
             detail,
+            other: None,
         });
         Discovery::default()
     })
@@ -388,5 +406,6 @@ fn mount_problem(problem: &MountProblem) -> Problem {
             problem.physical.display(),
             problem.detail
         ),
+        other: None,
     }
 }

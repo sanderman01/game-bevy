@@ -14,7 +14,7 @@ use crate::{
 use ename_asset_alias::{ContentIndex, Problem, ProblemKind};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 use tracing::{info, warn};
 
@@ -44,9 +44,8 @@ pub struct ContentReport {
     /// Every alias more than one package claimed, and why the winner won.
     pub contests: Vec<ContestedAlias>,
     pub problems: Vec<Problem>,
-    /// Fields a loader did not know, per asset, sorted by asset. Loaders that read leniently
-    /// record them while the game runs; the scan itself adds none.
-    pub unknown_fields: Vec<UnknownFields>,
+    /// Sorted by asset. Read through [`ContentReport::unknown_fields`].
+    unknown_fields: Vec<UnknownFields>,
 }
 
 /// The fields one asset's file holds that its loader does not know, such as `parts.0.colour`.
@@ -58,8 +57,17 @@ pub struct UnknownFields {
 }
 
 impl ContentReport {
+    /// Fields a loader did not know, per asset, sorted by asset. The scan adds none: lenient
+    /// loaders record them while the game runs.
+    pub fn unknown_fields(&self) -> &[UnknownFields] {
+        &self.unknown_fields
+    }
+
     /// Replaces what was recorded for `asset`. No fields clears it, so a fixed file that reloads
     /// drops its warning.
+    ///
+    /// Only `ename_asset_content` should call this, from what its lenient loaders recorded; it is
+    /// public because that crate is a layer up.
     pub fn record_unknown_fields(&mut self, asset: String, fields: Vec<String>) {
         let at = self
             .unknown_fields
@@ -94,9 +102,10 @@ pub fn build_index(scan: &Scan) -> (ContentIndex, ContentReport) {
 /// package, and one malformed package must not cost the game.
 ///
 /// The catalog is every alias whose winning file has a kind's extension. A `removes` drops an
-/// entry silently; an override whose file has another kind, or none, replaces it and is reported
-/// as [`ProblemKind::ContentKindChanged`]. A duplicate alias inside one package that involves a
-/// content file is reported as [`ProblemKind::DuplicateContentAlias`] instead of
+/// entry silently. When the final winner of an alias has another kind, or none, than the file
+/// that first claimed it (since any `removes`), that is one [`ProblemKind::ContentKindChanged`];
+/// a change that a later package reverts reports nothing. A duplicate alias inside one package
+/// that involves a content file is reported as [`ProblemKind::DuplicateContentAlias`] instead of
 /// [`ProblemKind::DuplicateAlias`].
 pub fn build_index_with_catalog(
     scan: &Scan,
@@ -119,7 +128,7 @@ pub fn build_index_with_catalog(
     // Who currently holds each alias, by index into `scan.packages`, so a later claim knows who
     // it beat. `ContentIndex` remembers the path but not the package, and the package is the half
     // a report line is about.
-    let mut holders: BTreeMap<String, usize> = BTreeMap::new();
+    let mut holders: BTreeMap<String, Holder<'_>> = BTreeMap::new();
     // Everyone who has ever held each alias, kept beside `holders` rather than folded into it
     // because the two answer different questions. Who holds it *now* is who a contest names as the
     // loser; who has held it is what an `overrides` declaration is judged against. A `removes`
@@ -147,6 +156,7 @@ pub fn build_index_with_catalog(
                     path: package.root.clone(),
                     kind: ProblemKind::DeadRemoval,
                     detail,
+                    other: None,
                 });
             }
         }
@@ -159,19 +169,15 @@ pub fn build_index_with_catalog(
         let mut undeclared: BTreeSet<String> = BTreeSet::new();
         for asset in &package.assets {
             match index.insert(&asset.alias, &asset.path) {
-                Ok(displaced) => {
+                Ok(_) => {
                     aliases += 1;
-                    if let Some(displaced) = displaced
-                        && let Some(problem) =
-                            kind_change(kinds, &asset.alias, &info.id, &displaced, &asset.path)
+                    let previous_holder = holders.get(&asset.alias).copied();
+                    if let Some(holder) = previous_holder
+                        && holder.package != i
                     {
-                        warn!("  !! {}", problem.detail);
-                        report.problems.push(problem);
-                    }
-                    if let Some(&holder) = holders.get(&asset.alias)
-                        && holder != i
-                    {
-                        report.contests.push(contest(scan, &asset.alias, i, holder));
+                        report
+                            .contests
+                            .push(contest(scan, &asset.alias, i, holder.package));
                     }
 
                     let claimed = claimants.entry(asset.alias.clone()).or_default();
@@ -192,7 +198,16 @@ pub fn build_index_with_catalog(
                     }
                     overridden.extend(previous.iter().map(|id| (*id).to_owned()));
                     claimed.insert(i);
-                    holders.insert(asset.alias.clone(), i);
+                    holders.insert(
+                        asset.alias.clone(),
+                        Holder {
+                            package: i,
+                            first: previous_holder.map_or_else(
+                                || (i, kinds.kind_of(&asset.path)),
+                                |holder| holder.first,
+                            ),
+                        },
+                    );
                 }
                 Err(err) => {
                     warn!("  !! {} declares an invalid alias: {err}", info.id);
@@ -200,6 +215,7 @@ pub fn build_index_with_catalog(
                         path: asset.path.clone(),
                         kind: ProblemKind::InvalidAlias,
                         detail: err.to_string(),
+                        other: None,
                     });
                 }
             }
@@ -218,6 +234,7 @@ pub fn build_index_with_catalog(
                 path: package.root.clone(),
                 kind: ProblemKind::UndeclaredOverride,
                 detail,
+                other: None,
             });
         }
         for id in &info.overrides {
@@ -231,6 +248,7 @@ pub fn build_index_with_catalog(
                     path: package.root.clone(),
                     kind: ProblemKind::DeadOverride,
                     detail,
+                    other: None,
                 });
             }
         }
@@ -252,61 +270,69 @@ pub fn build_index_with_catalog(
     // The contests themselves are not listed here. They are in the returned report, and the
     // caller lists them once it has the whole of it -- the fold is not the last thing that can
     // add to a report, so a listing from inside it is a listing of something not yet finished.
-    let catalog = build_catalog(scan, kinds, &index, &holders);
+    let catalog = build_catalog(scan, kinds, &index, &holders, &mut report.problems);
     (index, catalog, report)
 }
 
+/// The live holder of one alias.
+#[derive(Clone, Copy)]
+struct Holder<'k> {
+    package: usize,
+    /// The package and the kind of the file that first claimed the alias, since any `removes`
+    /// took it out.
+    first: (usize, Option<&'k str>),
+}
+
 /// The catalog of the finished fold: `holders` names the package of every live alias, so an alias
-/// a `removes` took out is simply not there.
+/// a `removes` took out is simply not there. Adds one [`ProblemKind::ContentKindChanged`] per
+/// alias whose winner's kind differs from its first claimant's.
 fn build_catalog(
     scan: &Scan,
     kinds: &ContentKinds,
     index: &ContentIndex,
-    holders: &BTreeMap<String, usize>,
+    holders: &BTreeMap<String, Holder<'_>>,
+    problems: &mut Vec<Problem>,
 ) -> ContentCatalog {
     let mut catalog = ContentCatalog::new(kinds.clone());
     if kinds.is_empty() {
         return catalog;
     }
-    for (alias, &holder) in holders {
-        let Some(kind) = index.resolve(alias).and_then(|path| kinds.kind_of(path)) else {
+    let package_id = |i: usize| scan.packages[i].manifest.package.id.as_str();
+    for (alias, holder) in holders {
+        let Some(path) = index.resolve(alias) else {
+            continue;
+        };
+        let kind = kinds.kind_of(path);
+        let (first_package, first_kind) = holder.first;
+        if first_kind != kind {
+            let detail = format!(
+                "{} replaces `{alias}`, {} from {}, with {}",
+                package_id(holder.package),
+                kind_name(first_kind),
+                package_id(first_package),
+                kind_name(kind)
+            );
+            warn!("  !! {detail}");
+            problems.push(Problem {
+                path: path.to_path_buf(),
+                kind: ProblemKind::ContentKindChanged,
+                detail,
+                other: None,
+            });
+        }
+        let Some(kind) = kind else {
             continue;
         };
         catalog.insert(CatalogEntry {
             kind: kind.to_owned(),
             id: alias.clone(),
-            package: scan.packages[holder].manifest.package.id.clone(),
+            package: package_id(holder.package).to_owned(),
         });
     }
     if !catalog.is_empty() {
         info!("Catalogued {} content descriptors", catalog.len());
     }
     catalog
-}
-
-/// The report line for `package` replacing `displaced` with `path` under `alias`, when the two
-/// files are of different kinds and at least one is content.
-fn kind_change(
-    kinds: &ContentKinds,
-    alias: &str,
-    package: &str,
-    displaced: &Path,
-    path: &Path,
-) -> Option<Problem> {
-    let (old, new) = (kinds.kind_of(displaced), kinds.kind_of(path));
-    if old == new {
-        return None;
-    }
-    Some(Problem {
-        path: path.to_path_buf(),
-        kind: ProblemKind::ContentKindChanged,
-        detail: format!(
-            "{package} replaces `{alias}`, {} at {}, with {}",
-            kind_name(old),
-            displaced.display(),
-            kind_name(new)
-        ),
-    })
 }
 
 fn kind_name(kind: Option<&str>) -> String {
@@ -319,7 +345,10 @@ fn kind_name(kind: Option<&str>) -> String {
 /// Turns a duplicate alias that involves a content file into a
 /// [`ProblemKind::DuplicateContentAlias`], naming the kinds.
 fn mark_content_duplicate(problem: &mut Problem, kinds: &ContentKinds) {
-    let Some((_, winner)) = problem.duplicated_alias() else {
+    if problem.kind != ProblemKind::DuplicateAlias {
+        return;
+    }
+    let Some(winner) = &problem.other else {
         return;
     };
     let (lost, won) = (kinds.kind_of(&problem.path), kinds.kind_of(winner));
@@ -504,6 +533,7 @@ mod tests {
                 path: PathBuf::from("base/core/gone.glb.alias"),
                 kind: ProblemKind::OrphanAliasFile,
                 detail: String::new(),
+                other: None,
             }],
             ..Scan::default()
         };
@@ -511,5 +541,23 @@ mod tests {
         let (_, report) = build_index(&scan);
         assert_eq!(report.problems.len(), 1);
         assert_eq!(report.problems[0].kind, ProblemKind::OrphanAliasFile);
+    }
+
+    /// A reload with no unknown fields, or one that failed, clears the earlier warning.
+    #[test]
+    fn an_empty_unknown_field_list_clears_the_earlier_one() {
+        let mut report = super::ContentReport::default();
+        report.record_unknown_fields("alias://core::b".into(), vec!["x".into()]);
+        report.record_unknown_fields("alias://core::a".into(), vec!["colour".into()]);
+        let assets: Vec<&str> = report
+            .unknown_fields()
+            .iter()
+            .map(|entry| entry.asset.as_str())
+            .collect();
+        assert_eq!(assets, ["alias://core::a", "alias://core::b"]);
+
+        report.record_unknown_fields("alias://core::a".into(), Vec::new());
+        assert_eq!(report.unknown_fields().len(), 1);
+        assert_eq!(report.unknown_fields()[0].asset, "alias://core::b");
     }
 }

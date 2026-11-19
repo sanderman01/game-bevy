@@ -279,6 +279,7 @@ fn check_requirements(packages: &[Package], enabled: &mut [bool], resolution: &m
                     path: package.root.clone(),
                     kind: ProblemKind::UnsatisfiedRequirement,
                     detail: format!("{}: {reason}", info.id),
+                    other: None,
                 });
                 resolution.disabled.push(Disabled {
                     id: info.id.clone(),
@@ -353,6 +354,7 @@ fn collect_constraints(
                          the opposite",
                         info.id
                     ),
+                    other: None,
                 });
                 continue;
             }
@@ -455,6 +457,7 @@ fn sort_and_report_cycles(
                 resolution.edges.describe_loop(&ids),
                 ids.join(", ")
             ),
+            other: None,
         });
         for i in members {
             resolution.disabled.push(Disabled {

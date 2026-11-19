@@ -1,7 +1,7 @@
 //! `ename_check` over real fixture trees.
 
-use ename_asset_package::ContentKinds;
-use ename_xtask::check::check;
+use ename_asset_package::{ContentKinds, ProblemKind};
+use ename_xtask::check::{check, scan_catalog};
 use std::path::{Path, PathBuf};
 
 fn fixture(name: &str) -> PathBuf {
@@ -77,10 +77,11 @@ fn a_clean_tree_with_content_passes() {
 fn a_duplicate_alias_of_a_content_file_fails_the_check() {
     let root = content_tree();
     write(root.path(), "basegame/core/island.png", "");
-    assert!(!check(
-        root.path(),
-        &["basegame".to_owned()],
-        None,
-        &map_kind()
-    ));
+    let search_paths = ["basegame".to_owned()];
+    assert!(!check(root.path(), &search_paths, None, &map_kind()));
+
+    let (catalog, report) = scan_catalog(root.path(), &search_paths, None, &map_kind());
+    let kinds: Vec<ProblemKind> = report.problems.iter().map(|p| p.kind).collect();
+    assert_eq!(kinds, [ProblemKind::DuplicateContentAlias]);
+    assert!(catalog.get("map", "core::island").is_some());
 }

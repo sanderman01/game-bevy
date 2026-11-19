@@ -38,6 +38,7 @@ pub(crate) fn scan(
                 problem.physical.display(),
                 problem.detail
             ),
+            other: None,
         }));
     (scan, vfs.mounts().clone())
 }
@@ -54,6 +55,7 @@ fn read_load_order(path: Option<&Path>) -> (LoadOrder, Vec<Problem>) {
                 path: path.to_path_buf(),
                 kind: ProblemKind::UnparseableLoadOrder,
                 detail: err.to_string(),
+                other: None,
             }],
         ),
     }

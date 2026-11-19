@@ -20,7 +20,9 @@ mod manifest;
 mod resolve;
 mod scan;
 
-pub use crate::catalog::{CatalogEntry, ContentCatalog, ContentKindError, ContentKinds};
+pub use crate::catalog::{
+    CONTENT_KINDS_TABLE, CatalogEntry, ContentCatalog, ContentKindError, ContentKinds,
+};
 pub use crate::contest::{ContestReason, ContestedAlias, PackageRef, Tiebreak};
 pub use crate::index::{
     ContentReport, PackageSummary, UnknownFields, build_index, build_index_with_catalog,
