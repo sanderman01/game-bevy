@@ -1,0 +1,32 @@
+docs/assets-catalog.md
+  s_0a3f8eb77a8294::t_1ce866ff0ab023 63-65
+  s_0a3f8eb77a8294::t_582bb86d92b7aa 1-62,66-99
+docs/design/crate-layout.md
+  s_0a3f8eb77a8294::t_1f36bfaa7a37c7 32-33
+docs/assets-packages.md
+  s_0a3f8eb77a8294::t_bb04f89241c45e 96-97
+docs/design.md
+  s_0a3f8eb77a8294::t_006f4f69d1b0dc 16-17
+  s_0a3f8eb77a8294::t_b311fb80d656a6 108-109
+docs/agent-tools.md
+  s_0a3f8eb77a8294::t_e54310d6109bd2 203,205
+  s_0a3f8eb77a8294::t_3c37758709ed17 367-368
+  s_0a3f8eb77a8294::t_59777bdcada8c0 983-986,988-990
+  s_0a3f8eb77a8294::t_36828306154f7e 975
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "15dbc5517310c56e664636c0d23323f4a16e8625",
+  "prompts": {},
+  "sessions": {
+    "s_0a3f8eb77a8294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "800cc546-8045-488b-88c8-b2833b144bf5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
