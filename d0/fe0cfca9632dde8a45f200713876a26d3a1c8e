@@ -1,0 +1,57 @@
+ename_asset_content/tests/catalog_ready.rs
+  s_0a3f8eb77a8294::t_cb4c1e6248d34a 104-105,111
+  s_0a3f8eb77a8294::t_61cb5318f5ec62 259
+  s_0a3f8eb77a8294::t_3f773acc5e1609 256-258
+  s_0a3f8eb77a8294::t_a00500a83efd86 260-262
+  s_357daa3d5571ab::t_cfbe996e932820 208-209,212,230-231,249-253,255,263,266-267,270-291,299,312,318-354
+ename_asset_content/src/catalog.rs
+  s_0a3f8eb77a8294::t_7f02c1b5250260 186,190
+  s_0a3f8eb77a8294::t_6d56928e0226cb 49-76,302
+  s_0a3f8eb77a8294::t_d08145119ea42a 169,171-173
+  s_0a3f8eb77a8294::t_1bb8eb8c13196b 113-120,129-132
+  s_0a3f8eb77a8294::t_b8c8e1866f8fbb 9
+  s_0a3f8eb77a8294::t_fe484e23d0542d 14,18
+  s_0a3f8eb77a8294::t_19ca77d21bf330 8
+  s_0a3f8eb77a8294::t_56d709f9565ecd 228,273,275,277-282,285-288,290-297
+  s_0a3f8eb77a8294::t_ae1c4fdd4eb535 87,92
+  s_0a3f8eb77a8294::t_40214e828ea684 303-305
+  s_0a3f8eb77a8294::t_e7dae7ca969b5e 250,259-263
+ename_xtask/src/main.rs
+  s_0a3f8eb77a8294::t_851bcdd6fbf43b 223
+docs/assets-catalog.md
+  s_0a3f8eb77a8294::t_a547aef1963559 133,136
+  s_0a3f8eb77a8294::t_8cffece7dad7f9 14,17-19,21-22
+  s_0a3f8eb77a8294::t_7f481c589727db 49
+  s_0a3f8eb77a8294::t_4ce4289dcb6dfa 82-88
+ename_asset_content/src/lib.rs
+  s_0a3f8eb77a8294::t_d6ab07519fc9a1 247-249
+ename_asset_package/src/catalog.rs
+  s_0a3f8eb77a8294::t_f99b46f5363b38 52-53,57-61
+  s_0a3f8eb77a8294::t_d88d76dc47fcf5 29-30
+  s_0a3f8eb77a8294::t_4b4b18c7c1605c 257-259,263,267-269,272-273
+  s_0a3f8eb77a8294::t_404f1a637f6d0d 274-275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d0fe0cfca9632dde8a45f200713876a26d3a1c8e",
+  "prompts": {},
+  "sessions": {
+    "s_0a3f8eb77a8294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "800cc546-8045-488b-88c8-b2833b144bf5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_357daa3d5571ab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9d67359a28dca6fb",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
