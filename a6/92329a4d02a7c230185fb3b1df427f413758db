@@ -1,0 +1,72 @@
+ename_engine/tests/stage_workflow.rs
+  s_0a3f8eb77a8294::t_47757c0b3fa6db 16-17
+  s_0a3f8eb77a8294::t_e4041589fce160 696,700,702-705,708-709,712,719,721,728,730,733-736,743,747-748,750,752,755,757-758,765,767,769,773,777,781-782,784,786,789-790,796-799,801,806-810,812,814-892
+  s_0a3f8eb77a8294::t_2c78d0e9671230 2-3
+  s_0a3f8eb77a8294::t_969c56444d4db6 693-695
+  s_0a3f8eb77a8294::t_a8bf8fee52edbb 697-699
+  s_0a3f8eb77a8294::t_845b529629f189 701
+  s_0a3f8eb77a8294::t_9b009b64d56c2a 706-707
+  s_0a3f8eb77a8294::t_252b5757d5b8a8 710-711
+  s_0a3f8eb77a8294::t_0e2ad8836318a4 713-718
+  s_0a3f8eb77a8294::t_f007eb24944765 720
+  s_0a3f8eb77a8294::t_f6583198b84e15 722-727
+  s_0a3f8eb77a8294::t_ec10e1f03e24e7 729
+  s_0a3f8eb77a8294::t_1926fdad9e3a58 731-732
+  s_0a3f8eb77a8294::t_edb89a1b5018d4 737-742
+  s_0a3f8eb77a8294::t_59a84d040f702b 744-746
+  s_0a3f8eb77a8294::t_776edfdde4ec49 749
+  s_0a3f8eb77a8294::t_2d7900e8d65815 751
+  s_0a3f8eb77a8294::t_50209857d89208 753-754
+  s_0a3f8eb77a8294::t_4e8f4bc5b8ccb1 756
+  s_0a3f8eb77a8294::t_43c5fcf4ea6fda 759-764
+  s_0a3f8eb77a8294::t_f7ddecf3e5717c 766
+  s_0a3f8eb77a8294::t_88082f8aefc769 768
+  s_0a3f8eb77a8294::t_2a54a2bb58d1eb 770-772
+  s_0a3f8eb77a8294::t_9d8da627d8b685 774-776
+  s_0a3f8eb77a8294::t_12daef2b0364c1 778-780
+  s_0a3f8eb77a8294::t_f51a92cd0b3618 783
+  s_0a3f8eb77a8294::t_aa29d4ce9364b7 785
+  s_0a3f8eb77a8294::t_913bbf17b176cf 787-788
+  s_0a3f8eb77a8294::t_73262d3479207e 791-795
+  s_0a3f8eb77a8294::t_eb13cf265aeee7 800
+  s_0a3f8eb77a8294::t_530721a80bbcb5 802-805
+  s_0a3f8eb77a8294::t_07a887b585f88c 811
+  s_0a3f8eb77a8294::t_3cbc226770a8b0 813
+  s_2eaf5a198b1a9a::t_195323aef699cc 690-692
+ename_engine/src/stage/workflow.rs
+  s_0a3f8eb77a8294::t_7d4632edb5f7ff 92
+  s_0a3f8eb77a8294::t_9b310167088dde 33
+  s_0a3f8eb77a8294::t_43a15994dd2adb 13,16
+  s_0a3f8eb77a8294::t_1530741c2d29e6 19
+  s_0a3f8eb77a8294::t_d927c13abc74b1 45
+ename_engine/src/stage/world.rs
+  s_0a3f8eb77a8294::t_3a469c56d08e55 1-13,19-23,29-30,32-34,40-41,44,53-55,57
+  s_0a3f8eb77a8294::t_aeae70d1efca67 14-18,24-28,31,35-39,42-43,45-52,56
+ename_engine/src/stage/mod.rs
+  s_0a3f8eb77a8294::t_9b697d71b722d1 17
+  s_0a3f8eb77a8294::t_56f44876db8bce 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a692329a4d02a7c230185fb3b1df427f413758db",
+  "prompts": {},
+  "sessions": {
+    "s_0a3f8eb77a8294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "800cc546-8045-488b-88c8-b2833b144bf5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_2eaf5a198b1a9a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a34c3fe73193022f7",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
