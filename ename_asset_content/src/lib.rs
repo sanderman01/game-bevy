@@ -244,6 +244,9 @@ impl Plugin for AssetContentPlugin {
     }
 
     fn finish(&self, app: &mut App) {
+        app.world()
+            .resource::<ContentKindRegistry>()
+            .assert_asset_types(app.world());
         // `DefaultPlugins` builds `StatesPlugin` after `AssetPlugin`, which this plugin must
         // precede, so the state can only be set up once every plugin has built.
         if app.is_plugin_added::<StatesPlugin>() {

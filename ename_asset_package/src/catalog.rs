@@ -26,6 +26,8 @@ pub enum ContentKindError {
         extension: String,
         existing: String,
     },
+    #[error("the workspace manifest is not valid TOML: {0}")]
+    Manifest(String),
     #[error("`[workspace.metadata.ename.content_kinds]` must be a table")]
     NotATable,
     #[error("content kind `{0}` needs its extension as a string, such as \"map.ron\"")]
@@ -47,13 +49,16 @@ pub struct ContentKinds {
 pub const CONTENT_KINDS_TABLE: &str = "[workspace.metadata.ename.content_kinds]";
 
 impl ContentKinds {
-    /// The kinds declared in a workspace's root `Cargo.toml` under [`CONTENT_KINDS_TABLE`]. No
-    /// table means no kinds.
+    /// The kinds declared under [`CONTENT_KINDS_TABLE`] in `manifest`, the text of a workspace's
+    /// root `Cargo.toml`. No table means no kinds.
     ///
     /// `ename_xtask` reads them from there because it cannot run the game's
     /// `register_content_kind` calls; a game test compares this table with the registered kinds,
-    /// so the two cannot drift apart.
-    pub fn from_workspace_manifest(manifest: &toml::Table) -> Result<Self, ContentKindError> {
+    /// so the two cannot drift apart. Takes text, so that test needs no `toml` of its own.
+    pub fn from_workspace_manifest(manifest: &str) -> Result<Self, ContentKindError> {
+        let manifest: toml::Table = manifest
+            .parse()
+            .map_err(|err: toml::de::Error| ContentKindError::Manifest(err.to_string()))?;
         let mut kinds = Self::default();
         let Some(table) = manifest
             .get("workspace")
@@ -248,25 +253,26 @@ mod tests {
 
     #[test]
     fn kinds_come_from_workspace_metadata() {
-        let manifest: toml::Table =
-            "[workspace.metadata.ename.content_kinds]\ndata = \"ron\"\nmap = \"map.ron\""
-                .parse()
-                .unwrap();
         assert_eq!(
-            ContentKinds::from_workspace_manifest(&manifest),
+            ContentKinds::from_workspace_manifest(
+                "[workspace.metadata.ename.content_kinds]\ndata = \"ron\"\nmap = \"map.ron\""
+            ),
             Ok(kinds())
         );
         assert_eq!(
-            ContentKinds::from_workspace_manifest(&toml::Table::new()),
+            ContentKinds::from_workspace_manifest("[workspace]\nmembers = []"),
             Ok(ContentKinds::default())
         );
-        let bad: toml::Table = "[workspace.metadata.ename.content_kinds]\nmap = 1"
-            .parse()
-            .unwrap();
         assert_eq!(
-            ContentKinds::from_workspace_manifest(&bad),
+            ContentKinds::from_workspace_manifest(
+                "[workspace.metadata.ename.content_kinds]\nmap = 1"
+            ),
             Err(ContentKindError::ExtensionNotAString("map".into()))
         );
+        assert!(matches!(
+            ContentKinds::from_workspace_manifest("[workspace"),
+            Err(ContentKindError::Manifest(_))
+        ));
     }
 
     #[test]

@@ -11,14 +11,15 @@ load order, `overrides` and `removes`.
 A game registers a kind with the file extension that marks it:
 
 ```rust
-app.init_asset::<Map>()
-    .register_ron_content_kind::<Map>("map", "map.ron");
+app.register_ron_content_kind::<Map>("map", "map.ron");
 ```
 
-- `register_ron_content_kind` also registers `RonContentLoader<Map>`, which reads RON and reports
-  unknown fields (below). `Map` needs `Deserialize`.
+- `register_ron_content_kind` makes `Map` an asset type if it is not one yet and registers
+  `RonContentLoader<Map>`, which reads RON and reports unknown fields (below). `Map` needs
+  `Deserialize`.
 - `register_content_kind::<A>(kind, extension)` registers the kind only, for an asset type with a
-  loader of its own.
+  loader of its own. When `A` is not an asset type of the app, startup panics and names the kind,
+  even before any file of that kind exists.
 - The kind name is an opaque string to the engine.
 - Register before `Startup`, when the scan runs. A kind or extension registered twice panics.
 - Packages list nothing. Nothing is added to `package-info.toml`.
@@ -45,7 +46,7 @@ so it gives the same entries.
 | The final winner has another kind, or none, than the first claimant | The entry moves to the new kind, or out of the catalog; one `ContentKindChanged`. A change a later package reverts reports nothing. |
 | Two files of one package claim the alias, one of them content | `DuplicateContentAlias` instead of `DuplicateAlias`. |
 | The package is disabled | Its files are not in the index, so not in the catalog. |
-| A descriptor fails to load at startup | Left out; `UnloadableContent`. |
+| A descriptor fails to load at startup | Left out until a restart; `UnloadableContent`. |
 
 The alias rule cuts the stem at the first dot, so `fujix.map.ron` and `fujix.landscape.ron` are
 both `<package>::fujix`. Give content files distinct stems.
@@ -78,8 +79,13 @@ Without `StatesPlugin` there is no state and a warning says so at startup when k
 registered; `Res<ContentCatalog>` appearing is then the only signal.
 
 The catalog holds package content only, fixed at startup. New files are seen after a restart, as
-for the alias index. Load problems are not fixed: after `Ready`, a descriptor that fails to reload
-gains an `UnloadableContent` line, and loses it when it loads again. Its entry stays.
+for the alias index. Its `UnloadableContent` lines follow the load state:
+
+| Descriptor | Line |
+| --- | --- |
+| Failed at startup | Left out of the catalog until a restart. Its line never goes: while it fails, the failure; once a reload succeeds, that it loads now and joins the catalog after a restart. |
+| In the catalog, a reload fails | Gains a line; the entry stays. |
+| In the catalog, loads again | The line goes. |
 
 ## Unknown fields
 
@@ -124,10 +130,10 @@ fn declared_content_kinds_match_the_registered_ones() {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default()));
     // Add the game's plugins that register content kinds here.
-    let manifest: toml::Table = include_str!("../../Cargo.toml").parse().unwrap();
+    let manifest = include_str!("../../Cargo.toml");
     assert_eq!(
         app.registered_content_kinds(),
-        ContentKinds::from_workspace_manifest(&manifest).unwrap()
+        ContentKinds::from_workspace_manifest(manifest).unwrap()
     );
 }
 ```

@@ -101,15 +101,14 @@ fn finish(mut app: App) -> App {
     app
 }
 
-/// Notes through the RON content loader and memos through a loader of their own. `states` adds
-/// `StatesPlugin`.
+/// Notes through the RON content loader, which makes `Note` an asset type itself, and memos
+/// through a loader of their own. `states` adds `StatesPlugin`.
 fn app_over(asset_root: &str, states: bool) -> App {
     let mut app = base_app(asset_root);
     if states {
         app.add_plugins(StatesPlugin);
     }
-    app.init_asset::<Note>()
-        .init_asset::<Memo>()
+    app.init_asset::<Memo>()
         .init_asset_loader::<MemoLoader>()
         .register_ron_content_kind::<Note>("note", "note.ron")
         .register_content_kind::<Memo>("memo", "memo.ron");
@@ -206,13 +205,11 @@ fn unknown_fields_land_in_the_report() {
 #[test]
 fn registered_kinds_compare_with_the_declared_table() {
     let app = app_over(FIXTURE_ROOT, false);
-    let manifest: toml::Table =
-        "[workspace.metadata.ename.content_kinds]\nmemo = \"memo.ron\"\nnote = \"note.ron\""
-            .parse()
-            .unwrap();
+    let manifest =
+        "[workspace.metadata.ename.content_kinds]\nmemo = \"memo.ron\"\nnote = \"note.ron\"";
     assert_eq!(
         app.registered_content_kinds(),
-        ContentKinds::from_workspace_manifest(&manifest).unwrap()
+        ContentKinds::from_workspace_manifest(manifest).unwrap()
     );
 }
 
@@ -230,7 +227,8 @@ fn without_states_the_catalog_resource_still_appears() {
     );
 }
 
-/// A kind no package has a file of is ready at once, with no entries.
+/// A kind no package has a file of is ready at once, with no entries. `init_asset` before
+/// `register_ron_content_kind` is harmless.
 #[test]
 fn a_kind_with_no_descriptors_is_ready() {
     let mut app = base_app(FIXTURE_ROOT);
@@ -248,23 +246,49 @@ fn a_kind_with_no_descriptors_is_ready() {
     );
 }
 
+/// Never made an asset type of the app.
+#[derive(Asset, TypePath)]
+struct Unregistered;
+
+/// A kind whose asset type the app does not know fails at startup, even with no files of it yet.
+#[test]
+#[should_panic(expected = "content kind `ghost` loads as")]
+fn a_kind_whose_asset_type_is_missing_fails_at_startup() {
+    let mut app = base_app(FIXTURE_ROOT);
+    app.register_content_kind::<Unregistered>("ghost", "ghost.ron");
+    let _ = finish(app);
+}
+
+/// A package `notes` under `catalog/` in a temporary asset root, with `files` in it.
+fn temp_tree(files: &[(&str, &str)]) -> tempfile::TempDir {
+    let root = tempfile::tempdir().unwrap();
+    write(
+        &root,
+        "package-info.toml",
+        "[package]\nid = \"notes\"\nversion = \"1.0.0\"\nauthors = []\ntitle = \"\"\ndescription = \"\"\n",
+    );
+    for (name, text) in files {
+        write(&root, name, text);
+    }
+    root
+}
+
+fn write(root: &tempfile::TempDir, name: &str, text: &str) {
+    let path = root.path().join("catalog/notes").join(name);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, text).unwrap();
+}
+
+fn temp_app(root: &tempfile::TempDir) -> App {
+    app_over(root.path().to_str().unwrap(), true)
+}
+
 /// After `Ready`, a descriptor that fails to reload is reported and its unknown fields are cleared;
 /// a fixed file clears the report line again. The catalog does not change.
 #[test]
 fn a_reload_failure_after_ready_is_reported_and_cleared() {
-    let root = tempfile::tempdir().unwrap();
-    let write = |path: &str, text: &str| {
-        let path = root.path().join(path);
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(path, text).unwrap();
-    };
-    write(
-        "catalog/notes/package-info.toml",
-        "[package]\nid = \"notes\"\nversion = \"1.0.0\"\nauthors = []\ntitle = \"\"\ndescription = \"\"\n",
-    );
-    write("catalog/notes/good.note.ron", "(name: \"good\", colour: 1)");
-    let asset_root = root.path().to_str().unwrap().to_owned();
-    let mut app = app_over(&asset_root, true);
+    let root = temp_tree(&[("good.note.ron", "(name: \"good\", colour: 1)")]);
+    let mut app = temp_app(&root);
     run_until(&mut app, "the ready state", ready);
     run_until(&mut app, "the unknown field", |app| {
         !unknown_fields(app).is_empty()
@@ -272,7 +296,7 @@ fn a_reload_failure_after_ready_is_reported_and_cleared() {
     assert!(unloadable(&app).is_empty());
 
     let server = app.world().resource::<AssetServer>().clone();
-    write("catalog/notes/good.note.ron", "(name: ");
+    write(&root, "good.note.ron", "(name: ");
     server.reload("alias://notes::good");
     run_until(&mut app, "the reload failure", |app| {
         !unloadable(app).is_empty()
@@ -285,9 +309,46 @@ fn a_reload_failure_after_ready_is_reported_and_cleared() {
             .is_some()
     );
 
-    write("catalog/notes/good.note.ron", "(name: \"good\")");
+    write(&root, "good.note.ron", "(name: \"good\")");
     server.reload("alias://notes::good");
     run_until(&mut app, "the report line to clear", |app| {
         unloadable(app).is_empty()
     });
+}
+
+/// A descriptor that failed at startup stays out of the catalog until a restart, so its line
+/// stays too: fixed, it says the entry joins after a restart; broken again, it is the failure.
+#[test]
+fn a_startup_failure_keeps_its_line_after_the_file_is_fixed() {
+    let root = temp_tree(&[("late.note.ron", "(name: ")]);
+    let mut app = temp_app(&root);
+    run_until(&mut app, "the ready state", ready);
+    let lines = unloadable(&app);
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert!(lines[0].contains("left out of the catalog until a restart"));
+
+    let server = app.world().resource::<AssetServer>().clone();
+    write(&root, "late.note.ron", "(name: \"late\")");
+    server.reload("alias://notes::late");
+    run_until(&mut app, "the joins-after-restart line", |app| {
+        unloadable(app)
+            .iter()
+            .any(|line| line.contains("joins the catalog after a restart"))
+    });
+    assert_eq!(unloadable(&app).len(), 1);
+    assert!(
+        app.world()
+            .resource::<ContentCatalog>()
+            .get("note", "notes::late")
+            .is_none()
+    );
+
+    write(&root, "late.note.ron", "(name: ");
+    server.reload("alias://notes::late");
+    run_until(&mut app, "the failure line again", |app| {
+        unloadable(app)
+            .iter()
+            .any(|line| line.contains("left out of the catalog until a restart"))
+    });
+    assert_eq!(unloadable(&app).len(), 1);
 }

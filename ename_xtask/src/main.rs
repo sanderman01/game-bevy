@@ -220,10 +220,7 @@ fn workspace_content_kinds() -> Result<ename_asset_package::ContentKinds, String
         }
         Err(err) => return Err(format!("{}: {err}", path.display())),
     };
-    let manifest: toml::Table = text
-        .parse()
-        .map_err(|err| format!("{}: {err}", path.display()))?;
-    ename_asset_package::ContentKinds::from_workspace_manifest(&manifest)
+    ename_asset_package::ContentKinds::from_workspace_manifest(&text)
         .map_err(|err| format!("{}: {err}", path.display()))
 }
 

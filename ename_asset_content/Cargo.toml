@@ -29,8 +29,6 @@ ename_asset_vfs = { workspace = true, features = ["bevy", "zip"] }
 # Loader settings in `archive_load.rs`, which a fixture `.meta` sets, and the lenient reader's tests.
 serde = { workspace = true, features = ["derive"] }
 tempfile.workspace = true
-# The declared kinds table in `catalog_ready.rs`.
-toml.workspace = true
 
 [[test]]
 name = "archive_load"
