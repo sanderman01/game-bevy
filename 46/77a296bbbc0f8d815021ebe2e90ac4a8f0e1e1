@@ -1,0 +1,44 @@
+ename_asset_content/src/lenient.rs
+  s_0a3f8eb77a8294::t_49fd33a20868ed 7-9
+  s_0a3f8eb77a8294::t_37c0b395c192a7 130-131
+docs/assets-catalog.md
+  s_0a3f8eb77a8294::t_d0b21c93d007e9 105-117
+  s_0a3f8eb77a8294::t_c972bb2bfb0436 98
+  s_0a3f8eb77a8294::t_db2d4642a16813 102
+ename_asset_content/src/catalog.rs
+  s_0a3f8eb77a8294::t_44d5fc57033a0f 196-200
+  s_0a3f8eb77a8294::t_4039c5288e1a59 105-109
+  s_0a3f8eb77a8294::t_ab2ff780fc342b 187-190
+  s_0a3f8eb77a8294::t_e7829a0d7204bf 89-90
+  s_0a3f8eb77a8294::t_b22e31e1dbebd5 160-167
+  s_6809b3423bcb54::t_d020dc9abf7a50 50-51,102-104,110-115,130-135,152-159,168-172,174,185-186,191-195,201-209
+ename_asset_content/tests/catalog_ready.rs
+  s_0a3f8eb77a8294::t_854a84adea3a2d 10-11
+  s_0a3f8eb77a8294::t_62f238f9ea01b9 4-5
+  s_0a3f8eb77a8294::t_f6124e59b39908 357-430
+  s_0a3f8eb77a8294::t_2238ea691ac724 431-435
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4677a296bbbc0f8d815021ebe2e90ac4a8f0e1e1",
+  "prompts": {},
+  "sessions": {
+    "s_0a3f8eb77a8294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "800cc546-8045-488b-88c8-b2833b144bf5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_6809b3423bcb54": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c54368f8-0d08-44b9-b1d5-6886b4bee71f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
