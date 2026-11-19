@@ -200,8 +200,9 @@ cannot become a crate that ships by accident.
 | `input_state` | The pointer, held keys and buttons, egui's interest and what picking hovers. |
 | `perf_sample` | Measure frame, CPU and GPU time per camera and per render pass over a few windows, with run-to-run noise and machine load. See "Measuring performance". |
 | `perf_compare` | Sample two settings interleaved (A B B A) and report each metric's difference against the noise. |
-| `content_report` | The package scan as the game sees it: asset root, search paths, load order file, packages, problems. |
+| `content_report` | The package scan as the game sees it: asset root, search paths, load order file, packages, problems, catalog entries per kind, unknown fields. |
 | `content_resolve` | Alias to path, path to aliases, or a substring search, each with its package. |
+| `content_list` | The content catalog entries of one kind, each with its package and file. |
 | `asset_list` | Indexed assets by load state, with each failure's error and failures outside the index. |
 | `asset_inspect` | One asset's handles, states, errors, and a summary of the loaded `Image`, `Mesh` or material. |
 
@@ -363,7 +364,8 @@ picks up a longer wait.
 
 **`wait_settled` asks "is the world quiet?".** Crates report work that is still pending through
 settle probes: `assets` (`meshes_loading`, `materials_loading`, `world_roots_loading`),
-`pipelines` (`pipelines_waiting`) and `stage` (`stages_loading`) in every build, plus whatever a
+`content_catalog` (`catalog_loading`), `pipelines` (`pipelines_waiting`) and `stage`
+(`stages_loading`) in every build, plus whatever a
 game adds. The wait succeeds once every probe has been idle for `stable_frames` consecutive frames
 (default 5), because work often starts a frame after its cause. `probes` limits it to some; `[]`
 makes it a plain count of `stable_frames` frames. Progress shows the busy counters draining:
@@ -970,7 +972,7 @@ member, and `PerfPlugin` inserts the dark theme only when `UiTheme` is empty; it
 
 ## Assets and content
 
-Four read-only commands answer what the running game scanned and loaded. For what is inside a
+Five read-only commands answer what the running game scanned and loaded. For what is inside a
 file, with no game running, use `cargo xtask ename_gltf_info` and `ename_image_info`
 ([assets-packages.md](assets-packages.md#tooling)): the file says what was authored,
 `asset_inspect` what Bevy made of it.
@@ -978,8 +980,14 @@ file, with no game running, use `cargo xtask ename_gltf_info` and `ename_image_i
 - `content_report`: `scan` (`running` until the package scan is done), the absolute
   `asset_root` and `BEVY_ASSET_ROOT` if set, each search path with `exists` and its package
   count, the load order file, then packages, disabled packages, contests and problems. A game
-  started from the wrong directory shows `exists: false` on every search path here.
+  started from the wrong directory shows `exists: false` on every search path here. Then
+  `catalog` (`loading` until every content descriptor has loaded or failed, then `ready`), each
+  registered kind with its entries, and `unknown_fields` per asset
+  ([assets-catalog.md](assets-catalog.md)).
 - `content_resolve`: exactly one of `alias`, `path` or `contains`; each entry names its package.
+- `content_list`: `kind` (such as `map`); the entries of that kind with package and file.
+  `content_catalog_loading` before the catalog is ready, `unknown_kind` for a kind nobody
+  registered.
 - `asset_list`: every alias in the index, sorted by alias, with its state: the worst of
   `failed`, `loading`, `loaded` over its handles, its labels and what they depend on, or
   `not_requested`. A loaded asset whose dependency failed counts as `failed` and carries

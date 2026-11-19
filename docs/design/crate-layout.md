@@ -29,7 +29,8 @@ ename_editor                  -> ename_engine
 ename_engine                  -> ename_application, ename_asset_content, bevy, avian3d, big_space,
                                  serde, schemars
 ename_application             -> dirs, thiserror   (no first-party deps, no bevy)
-ename_asset_content           -> ename_asset_alias, ename_asset_package, ename_asset_vfs, async-lock, bevy
+ename_asset_content           -> ename_asset_alias, ename_asset_package, ename_asset_vfs, async-lock, bevy,
+                                 ron, serde, serde_ignored
 ename_asset_package           -> ename_asset_alias, ename_asset_vfs, semver, serde, toml, thiserror, tracing
                                  + bevy, behind the default `bevy` feature
 ename_asset_alias             -> ename_asset_vfs, async-lock, serde, toml, glob, uuid, thiserror

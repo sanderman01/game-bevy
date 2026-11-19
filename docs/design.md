@@ -13,6 +13,8 @@ acting on it.
 - [Asset aliases](assets-aliases.md). How an asset gets a name, and how the alias source resolves
   it.
 - [Asset packages](assets-packages.md). Search paths, manifests, and load order.
+- [Content catalog](assets-catalog.md). Content kinds by file extension, the catalog of their
+  descriptors, readiness, and unknown-field warnings.
 - [Asset archives](assets-archives.md). Reading `.zip` and `.tar` files as directories of the
   asset tree.
 - [Commands and jobs](design/commands.md). How a crate registers functionality once for the
@@ -103,7 +105,8 @@ Content assets should be referred to through aliases. An alias is a unique human
 and  pointer to an asset. Multiple packages can define the same alias. This allows content packages
 to override and replace assets originally defined elsewhere.
 
-See [asset aliases](assets-aliases.md) and [asset packages](assets-packages.md).
+See [asset aliases](assets-aliases.md), [asset packages](assets-packages.md) and the
+[content catalog](assets-catalog.md).
 
 Depending on local development environment, `assets/` may be a dir or symlink outside the repository.
 This is where all content assets live. Only test fixtures assets live in crates.

@@ -93,7 +93,8 @@ with, because an `AssetReader` can't reach a resource.
 with [archives](assets-archives.md) mounted), so what it reports matches what the game would load. Run it via the `xtask` cargo alias:
 
 - `cargo xtask ename_check` -- exits non-zero if the content tree has a problem or a contested
-  alias; the thing to run in CI.
+  alias; the thing to run in CI. Also lists the [content catalog](assets-catalog.md#tooling) of
+  the kinds in `[workspace.metadata.ename.content_kinds]`.
 - `cargo xtask ename_fix` -- writes missing `.alias` files and assigns missing guids. Assets inside
   an archive are skipped and counted.
 - `cargo xtask ename_content_list` -- dumps the resolved alias index.
