@@ -95,11 +95,25 @@ version still loads and a typo is visible. `T` must not use `deny_unknown_fields
 | Way in | For |
 | --- | --- |
 | `register_ron_content_kind::<T>` | A kind whose descriptor is plain RON. Nothing else to do. |
+| `register_ron_asset::<T>(extension)` | A plain RON asset that is not a kind: loaded by alias or path, never enumerated. The same loader and reporting, without a catalog entry. |
 | `read_ron_lenient(reader, load_context, &sink, &options)` | A loader of its own. Reads, parses and records in one call. The loader takes a clone of the `UnknownFieldSink` resource in its `FromWorld`. |
 | `ron_from_bytes_lenient(bytes, &options)` | Code outside a loader, such as part parameters read at spawn. Returns the value and the skipped field paths; the caller reports them. |
 
-The first two record on every load, an empty list when the read or parse fails, so a warning never
+The first three record on every load, an empty list when the read or parse fails, so a warning never
 outlives the file that caused it. The fields land in `ContentReport::unknown_fields()`, per asset.
+
+A plain RON asset, such as a planet a map names by alias:
+
+```rust
+app.register_ron_asset::<Planet>("planet.ron");
+let planet: Handle<Planet> = server.load("alias://core::earth");
+```
+
+`register_ron_asset` makes `Planet` an asset type if it is not one yet. An extension registered
+twice, as a plain asset or as a kind, panics at registration. A plain asset is not in the catalog,
+so a file that fails to load has no `UnloadableContent` line: its handle's load state is `Failed`,
+Bevy logs the error, and its unknown fields are cleared. The code that loaded it reports the
+failure where it matters, for example as a problem of the map that names it.
 
 `serde_ignored` does not see unknown fields inside a `#[serde(flatten)]` struct or an untagged
 enum: serde buffers those and drops what it does not use.

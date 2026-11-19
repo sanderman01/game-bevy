@@ -1,12 +1,14 @@
 //! The content catalog in an `App`: kinds registered, descriptors loaded, the state reached.
 //!
 //! The fixture package holds a good note with an unknown field, a note that does not parse, a memo
-//! (a kind with a loader of its own) with an unknown field, and a file of no kind.
+//! (a kind with a loader of its own) with an unknown field, and a file of no kind. Plain RON
+//! assets, registered with `register_ron_asset` and in no catalog, are tested here too.
 
 use bevy::{
     app::{App, TaskPoolPlugin},
     asset::{
-        Asset, AssetApp, AssetLoader, AssetPlugin, AssetServer, Assets, LoadContext, io::Reader,
+        Asset, AssetApp, AssetLoader, AssetPlugin, AssetServer, Assets, Handle, LoadContext,
+        LoadState, io::Reader,
     },
     ecs::world::{FromWorld, World},
     reflect::TypePath,
@@ -351,4 +353,83 @@ fn a_startup_failure_keeps_its_line_after_the_file_is_fixed() {
             .any(|line| line.contains("left out of the catalog until a restart"))
     });
     assert_eq!(unloadable(&app).len(), 1);
+}
+
+/// A plain RON asset: loaded by alias, in no catalog.
+#[derive(Asset, TypePath, Debug, Deserialize)]
+struct Planet {
+    radius: f32,
+}
+
+fn planet_app(root: &tempfile::TempDir) -> App {
+    let mut app = base_app(root.path().to_str().unwrap());
+    app.add_plugins(StatesPlugin)
+        .register_ron_asset::<Planet>("planet.ron");
+    finish(app)
+}
+
+fn load_state(app: &App, handle: &Handle<Planet>) -> Option<LoadState> {
+    app.world()
+        .resource::<AssetServer>()
+        .get_load_state(handle.id())
+}
+
+/// A plain RON asset loads and reports its unknown fields like a kind. A broken reload fails the
+/// handle and clears them, and adds no `UnloadableContent` line, since it is in no catalog.
+#[test]
+fn a_plain_ron_asset_loads_reports_unknown_fields_and_fails_without_a_catalog_line() {
+    let root = temp_tree(&[("earth.planet.ron", "(radius: 6.5, colour: 1)")]);
+    let mut app = planet_app(&root);
+    run_until(&mut app, "the ready state", ready);
+    assert!(app.registered_content_kinds().is_empty(), "it is no kind");
+
+    let server = app.world().resource::<AssetServer>().clone();
+    let handle: Handle<Planet> = server.load("alias://notes::earth");
+    run_until(&mut app, "the planet and its unknown field", |app| {
+        app.world().resource::<Assets<Planet>>().contains(&handle)
+            && !unknown_fields(app).is_empty()
+    });
+    let radius = app
+        .world()
+        .resource::<Assets<Planet>>()
+        .get(&handle)
+        .unwrap()
+        .radius;
+    assert_eq!(radius, 6.5);
+    assert_eq!(
+        unknown_fields(&app),
+        [("alias://notes::earth".to_owned(), vec!["colour".to_owned()])]
+    );
+
+    write(&root, "earth.planet.ron", "(radius: ");
+    server.reload("alias://notes::earth");
+    run_until(&mut app, "the failure, with the warning cleared", |app| {
+        matches!(load_state(app, &handle), Some(LoadState::Failed(_)))
+            && unknown_fields(app).is_empty()
+    });
+    assert!(unloadable(&app).is_empty());
+}
+
+#[test]
+#[should_panic(expected = "extension `planet.ron` already has a RON loader")]
+fn a_ron_asset_extension_registered_twice_fails() {
+    let mut app = base_app(FIXTURE_ROOT);
+    app.register_ron_asset::<Planet>("planet.ron")
+        .register_ron_asset::<Note>("planet.ron");
+}
+
+#[test]
+#[should_panic(expected = "content kind `note` already uses that extension")]
+fn a_ron_asset_on_a_kind_extension_fails() {
+    let mut app = base_app(FIXTURE_ROOT);
+    app.register_ron_content_kind::<Note>("note", "note.ron")
+        .register_ron_asset::<Planet>("note.ron");
+}
+
+#[test]
+#[should_panic(expected = "is already registered as RON asset")]
+fn a_kind_on_a_ron_asset_extension_fails() {
+    let mut app = base_app(FIXTURE_ROOT);
+    app.register_ron_asset::<Planet>("planet.ron")
+        .register_content_kind::<Memo>("memo", "planet.ron");
 }

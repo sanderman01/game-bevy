@@ -47,6 +47,8 @@ type LoadDescriptor = fn(&AssetServer, String) -> UntypedHandle;
 pub(crate) struct ContentKindRegistry {
     pub(crate) kinds: ContentKinds,
     loaders: BTreeMap<String, KindLoader>,
+    /// Extensions with a `RonContentLoader`, kind or not, and the asset type each loads.
+    ron_loaders: BTreeMap<String, &'static str>,
 }
 
 /// How one kind's descriptors load, and the check that they can.
@@ -84,7 +86,8 @@ pub trait ContentAppExt {
     /// [`read_ron_lenient`](crate::read_ron_lenient) so unknown fields are reported.
     ///
     /// Register before `Startup`, when the scan reads the kinds. Panics on a kind or an extension
-    /// registered twice, and at startup when `A` is not an asset type of the app (`init_asset`).
+    /// registered twice, on an extension of a [`register_ron_asset`](Self::register_ron_asset)
+    /// type, and at startup when `A` is not an asset type of the app (`init_asset`).
     fn register_content_kind<A: Asset>(&mut self, kind: &str, extension: &str) -> &mut Self;
 
     /// [`register_content_kind`](Self::register_content_kind) with a
@@ -93,6 +96,20 @@ pub trait ContentAppExt {
     fn register_ron_content_kind<A: Asset + DeserializeOwned>(
         &mut self,
         kind: &str,
+        extension: &'static str,
+    ) -> &mut Self;
+
+    /// Registers a [`RonContentLoader`](crate::RonContentLoader) for files ending in
+    /// `.{extension}` without making them a content kind: nothing enumerates them, they load by
+    /// alias or path, and unknown fields are reported as for a kind. Makes `A` an asset type of
+    /// the app if it is not one yet: `register_ron_asset::<Planet>("planet.ron")`.
+    ///
+    /// Not being in the catalog, a file that fails to load has no `UnloadableContent` line: the
+    /// handle's load state is `Failed`, Bevy logs the error, and its unknown fields are cleared.
+    ///
+    /// Panics on an extension registered twice, or one a content kind already uses.
+    fn register_ron_asset<A: Asset + DeserializeOwned>(
+        &mut self,
         extension: &'static str,
     ) -> &mut Self;
 
@@ -110,6 +127,12 @@ impl ContentAppExt for App {
         if let Err(err) = registry.kinds.insert(kind, extension) {
             panic!("cannot register content kind `{kind}`: {err}");
         }
+        if let Some(type_name) = registry.ron_loaders.get(extension) {
+            panic!(
+                "cannot register content kind `{kind}`: extension `{extension}` is already \
+                 registered as RON asset `{type_name}`"
+            );
+        }
         registry.loaders.insert(
             kind.to_owned(),
             KindLoader {
@@ -126,13 +149,29 @@ impl ContentAppExt for App {
         kind: &str,
         extension: &'static str,
     ) -> &mut Self {
-        // Guarded, so a game that already called `init_asset` is not registered twice.
-        if !self.world().contains_resource::<Assets<A>>() {
-            self.init_asset::<A>();
+        self.register_content_kind::<A>(kind, extension);
+        add_ron_loader::<A>(self, extension)
+    }
+
+    fn register_ron_asset<A: Asset + DeserializeOwned>(
+        &mut self,
+        extension: &'static str,
+    ) -> &mut Self {
+        let kind = self
+            .world()
+            .get_resource::<ContentKindRegistry>()
+            .and_then(|registry| {
+                let (kind, _) = registry.kinds.iter().find(|(_, ext)| *ext == extension)?;
+                Some(kind.to_owned())
+            });
+        if let Some(kind) = kind {
+            panic!(
+                "cannot register RON asset `{}` for `{extension}`: content kind `{kind}` \
+                 already uses that extension",
+                std::any::type_name::<A>()
+            );
         }
-        let loader = RonContentLoader::<A>::new(extension, self.world_mut());
-        self.register_asset_loader(loader)
-            .register_content_kind::<A>(kind, extension)
+        add_ron_loader::<A>(self, extension)
     }
 
     fn registered_content_kinds(&self) -> ContentKinds {
@@ -141,6 +180,31 @@ impl ContentAppExt for App {
             .map(|registry| registry.kinds.clone())
             .unwrap_or_default()
     }
+}
+
+/// Makes `A` an asset type if it is not one yet and registers its `RonContentLoader`. Panics on an
+/// extension that already has one, since Bevy would silently let the later loader win.
+fn add_ron_loader<'a, A: Asset + DeserializeOwned>(
+    app: &'a mut App,
+    extension: &'static str,
+) -> &'a mut App {
+    let type_name = std::any::type_name::<A>();
+    assert!(
+        !extension.is_empty() && !extension.starts_with('.') && !extension.ends_with('.'),
+        "RON asset `{type_name}` needs an extension without a leading dot, not `{extension}`"
+    );
+    let mut registry = app
+        .world_mut()
+        .get_resource_or_init::<ContentKindRegistry>();
+    if let Some(existing) = registry.ron_loaders.insert(extension.to_owned(), type_name) {
+        panic!("extension `{extension}` already has a RON loader, for `{existing}`");
+    }
+    // Guarded, so a game that already called `init_asset` is not registered twice.
+    if !app.world().contains_resource::<Assets<A>>() {
+        app.init_asset::<A>();
+    }
+    let loader = RonContentLoader::<A>::new(extension, app.world_mut());
+    app.register_asset_loader(loader)
 }
 
 fn load_descriptor<A: Asset>(server: &AssetServer, path: String) -> UntypedHandle {

@@ -4,7 +4,9 @@
 //! be visible. Three ways in, from most to least done for you:
 //!
 //! - [`ContentAppExt::register_ron_content_kind`](crate::ContentAppExt::register_ron_content_kind)
-//!   registers a kind with [`RonContentLoader`], which does everything below.
+//!   registers a kind with [`RonContentLoader`], which does everything below, and
+//!   [`ContentAppExt::register_ron_asset`](crate::ContentAppExt::register_ron_asset) registers
+//!   the same loader for a plain asset type that is not a kind.
 //! - A loader of its own calls [`read_ron_lenient`], which reads, parses and records in one call.
 //! - Code outside a loader (part parameters read at spawn) calls [`ron_from_bytes_lenient`] and
 //!   reports the list itself.
@@ -125,7 +127,8 @@ pub(crate) fn collect_unknown_fields(
 }
 
 /// Loads `T` from RON with [`read_ron_lenient`] and default [`ron::Options`]. Registered by
-/// [`ContentAppExt::register_ron_content_kind`](crate::ContentAppExt::register_ron_content_kind).
+/// [`ContentAppExt::register_ron_content_kind`](crate::ContentAppExt::register_ron_content_kind)
+/// and [`ContentAppExt::register_ron_asset`](crate::ContentAppExt::register_ron_asset).
 #[derive(TypePath)]
 pub struct RonContentLoader<T> {
     extensions: [&'static str; 1],
