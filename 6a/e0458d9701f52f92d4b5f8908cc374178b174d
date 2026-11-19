@@ -1,0 +1,89 @@
+ename_engine/src/asset_info/content.rs
+  s_0a3f8eb77a8294::t_2907bf016f8c18 1-2,7
+  s_0a3f8eb77a8294::t_ab064910f306fe 138
+  s_0a3f8eb77a8294::t_b552c976683af3 184-289
+  s_0a3f8eb77a8294::t_fcce978343ece1 42-70
+ename_engine/src/wait/mod.rs
+  s_0a3f8eb77a8294::t_c46d27b2b9dac9 11
+  s_0a3f8eb77a8294::t_2af07c1d01b844 37-38
+  s_0a3f8eb77a8294::t_28cebc2a548322 61-62
+ename_engine/src/wait/settled.rs
+  s_0a3f8eb77a8294::t_31e4e514e3fb0c 587
+  s_0a3f8eb77a8294::t_3403b6070c6e81 512-513
+Cargo.toml
+  s_0a3f8eb77a8294::t_c6d5e19299085b 103-104
+ename_engine/tests/asset_info.rs
+  s_0a3f8eb77a8294::t_9b0ecf47c435bc 535-566
+  s_0a3f8eb77a8294::t_1481d4a9bfde0c 13
+  s_0a3f8eb77a8294::t_bb213001c54efe 534
+  s_0a3f8eb77a8294::t_cc076238391886 567-568
+ename_engine/src/asset_info/mod.rs
+  s_0a3f8eb77a8294::t_9bf5fe0e6401c5 2-3
+  s_0a3f8eb77a8294::t_4a72bc3339be34 48-49,55-63
+  s_0a3f8eb77a8294::t_31db4d0bf0d4e0 64
+ename_asset_content/src/catalog.rs
+  s_0a3f8eb77a8294::t_2cd799ab94fec6 1-15,17-63,65-66,71-82,86-149,151-156
+  s_0a3f8eb77a8294::t_9249e2d2859d66 16
+  s_0a3f8eb77a8294::t_9eb40a9198358f 64,67-70
+  s_0a3f8eb77a8294::t_1aed0c8d116110 150
+  s_0a3f8eb77a8294::t_ea6c5b566c6ce4 83-85
+ename_asset_content/src/lib.rs
+  s_0a3f8eb77a8294::t_5956797a70ccf6 10-13
+  s_0a3f8eb77a8294::t_47c7bb40c56fde 324,331,340-341,346,351
+  s_0a3f8eb77a8294::t_d5ca1619b94aed 220-221,229-245
+  s_0a3f8eb77a8294::t_119673a43f98d4 22-25,28-29,34-37,44,52
+  s_0a3f8eb77a8294::t_b92dce79ebc0b6 48
+  s_0a3f8eb77a8294::t_0b7c371cc277d9 300
+  s_0a3f8eb77a8294::t_81aa3369506cac 185-186,191
+  s_0a3f8eb77a8294::t_36643421e592c7 259,267
+ename_engine/src/wait/content.rs
+  s_0a3f8eb77a8294::t_1c62b77da0e78e 1-15
+ename_asset_content/Cargo.toml
+  s_0a3f8eb77a8294::t_60f6c7b801730b 20-23,28
+ename_asset_content/src/lenient.rs
+  s_0a3f8eb77a8294::t_9375960d578ad4 9-12
+  s_0a3f8eb77a8294::t_a4a0a755e5c1ef 60-63
+  s_0a3f8eb77a8294::t_8a597b49711ef8 1-8,13-59,64-107,113-114
+  s_0a3f8eb77a8294::t_a57962ec4e7c0e 108-112
+  s_0a3f8eb77a8294::t_b9b0d5c54b4efb 115-117
+  s_05d54639e804e6::t_0275447f284dcb 118-121
+ename_asset_content/tests/catalog_ready.rs
+  s_0a3f8eb77a8294::t_70a1512246be77 117-123
+  s_0a3f8eb77a8294::t_e19c9e4e04560e 85-88
+  s_0a3f8eb77a8294::t_711c14ccf7469f 1-7,9-84,89-116,124-150
+  s_0a3f8eb77a8294::t_91437d34b7bc88 8
+ename_asset_content/tests/fixtures/catalog/notes/broken.note.ron
+  s_05d54639e804e6::t_58ee41db69bdb5 1
+ename_asset_content/tests/fixtures/catalog/notes/good.note.ron
+  s_05d54639e804e6::t_ae7a65b10e2129 1
+ename_asset_content/tests/fixtures/catalog/notes/package-info.toml
+  s_05d54639e804e6::t_ed79fb6a9a866b 1-6
+ename_asset_content/tests/fixtures/catalog/notes/plain.txt
+  s_05d54639e804e6::t_d180308dc7fdec 1
+Cargo.lock
+  s_0a3f8eb77a8294::t_f5527a320bdf81 3156,3158,6819-6828
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6ae0458d9701f52f92d4b5f8908cc374178b174d",
+  "prompts": {},
+  "sessions": {
+    "s_05d54639e804e6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a075ea78604a8c2cc",
+        "model": "unknown"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    },
+    "s_0a3f8eb77a8294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "800cc546-8045-488b-88c8-b2833b144bf5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
