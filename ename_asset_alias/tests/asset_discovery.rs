@@ -224,6 +224,12 @@ fn a_duplicate_alias_keeps_the_first_and_reports_the_second() {
     let assets = &scan.assets;
     assert_eq!(aliases(assets), ["core::airship"]);
     assert_eq!(assets[0].path.to_str(), Some("base/core/airship.glb"));
+
+    let problem = &scan.problems[0];
+    assert_eq!(problem.path.to_str(), Some("base/core/airship.png"));
+    let (alias, winner) = problem.duplicated_alias().unwrap();
+    assert_eq!(alias, "core::airship");
+    assert_eq!(winner.to_str(), Some("base/core/airship.glb"));
 }
 
 #[test]

@@ -1,6 +1,7 @@
 //! The tooling over archived packages: `ename_check` fails on a broken archive, `ename_fix` leaves
 //! archived assets alone, and `ename_mv` refuses to move into or out of one.
 
+use ename_asset_package::ContentKinds;
 use ename_xtask::{
     check::check,
     fix::fix,
@@ -48,12 +49,22 @@ fn clean_zip() -> Vec<u8> {
 #[test]
 fn check_passes_a_clean_archive_and_fails_a_corrupt_one() {
     let clean = root_with(&[("basegame/core.zip", &clean_zip())]);
-    assert!(check(clean.path(), &["basegame".to_owned()], None));
+    assert!(check(
+        clean.path(),
+        &["basegame".to_owned()],
+        None,
+        &ContentKinds::default()
+    ));
     let corrupt = root_with(&[
         ("basegame/core.zip", &clean_zip()),
         ("basegame/bad.zip", &archive("bad/truncated.zip")),
     ]);
-    assert!(!check(corrupt.path(), &["basegame".to_owned()], None));
+    assert!(!check(
+        corrupt.path(),
+        &["basegame".to_owned()],
+        None,
+        &ContentKinds::default()
+    ));
 }
 
 #[test]

@@ -6,9 +6,13 @@
 //! calls that walk once per package root and adds the only thing it has that the walk does not --
 //! an order. See `docs/design/crate-layout.md`.
 //!
+//! The fold that orders the results also builds the content catalog, given the content kinds as
+//! plain data. See `docs/assets-catalog.md`.
+//!
 //! Its one first-party dependency is `ename_asset_alias`, taken with `default-features = false`,
 //! so a command line tool can link both without a renderer.
 
+mod catalog;
 mod contest;
 mod index;
 mod load_order;
@@ -16,8 +20,11 @@ mod manifest;
 mod resolve;
 mod scan;
 
+pub use crate::catalog::{CatalogEntry, ContentCatalog, ContentKindError, ContentKinds};
 pub use crate::contest::{ContestReason, ContestedAlias, PackageRef, Tiebreak};
-pub use crate::index::{ContentReport, PackageSummary, build_index};
+pub use crate::index::{
+    ContentReport, PackageSummary, UnknownFields, build_index, build_index_with_catalog,
+};
 pub use crate::load_order::{LOAD_ORDER_FILE, LoadOrder, LoadOrderError, UserConstraint};
 pub use crate::manifest::{
     PackageIdError, PackageInfo, PackageManifest, Requirement, RequirementError, Version,

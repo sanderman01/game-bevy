@@ -8,6 +8,7 @@
 //! layout itself is shared through `ename_application`, so only the names are copied.
 
 use ename_application::{NameError, OrganisationName, Paths, ProjectName};
+use ename_asset_package::ContentKinds;
 use std::{fmt, path::PathBuf};
 
 /// Relative to the directory `cargo xtask` is run from, which is the workspace root for every
@@ -31,6 +32,34 @@ const PROJECT_NAME: ProjectName = ProjectName::from_static("example-game");
 /// [`SEARCH_PATHS`], owned: `scan_packages` takes `&[String]`.
 pub fn search_paths() -> Vec<String> {
     SEARCH_PATHS.iter().map(|s| (*s).to_owned()).collect()
+}
+
+/// The content kinds of the workspace whose root `Cargo.toml` is `manifest`, from
+/// `[workspace.metadata.ename.content_kinds]`, one `kind = "extension"` per line. They mirror the
+/// game's `register_content_kind` calls, which this tool cannot run: `example_game_lib` links
+/// Bevy. No table means no kinds.
+pub fn content_kinds(manifest: &toml::Table) -> Result<ContentKinds, String> {
+    let mut kinds = ContentKinds::default();
+    let Some(table) = manifest
+        .get("workspace")
+        .and_then(|v| v.get("metadata"))
+        .and_then(|v| v.get("ename"))
+        .and_then(|v| v.get("content_kinds"))
+    else {
+        return Ok(kinds);
+    };
+    let table = table
+        .as_table()
+        .ok_or("`[workspace.metadata.ename.content_kinds]` must be a table")?;
+    for (kind, extension) in table {
+        let extension = extension.as_str().ok_or_else(|| {
+            format!("content kind `{kind}` needs its extension as a string, such as \"map.ron\"")
+        })?;
+        kinds
+            .insert(kind.as_str(), extension)
+            .map_err(|err| err.to_string())?;
+    }
+    Ok(kinds)
 }
 
 /// Why the name override could not be used.
@@ -90,7 +119,30 @@ pub fn load_order_path(organisation: &OrganisationName, project: &ProjectName) -
 
 #[cfg(test)]
 mod tests {
-    use super::{NamesError, ORGANISATION_NAME_ENV, PROJECT_NAME_ENV, project_names};
+    use super::{
+        NamesError, ORGANISATION_NAME_ENV, PROJECT_NAME_ENV, content_kinds, project_names,
+    };
+    use std::path::Path;
+
+    #[test]
+    fn content_kinds_come_from_workspace_metadata() {
+        let manifest: toml::Table =
+            "[workspace.metadata.ename.content_kinds]\nmap = \"map.ron\"\nlandscape = \"landscape.ron\""
+                .parse()
+                .unwrap();
+        let kinds = content_kinds(&manifest).unwrap();
+        assert_eq!(kinds.kind_of(Path::new("a/fujix.map.ron")), Some("map"));
+        assert_eq!(
+            kinds.kind_of(Path::new("a/fujix_land.landscape.ron")),
+            Some("landscape")
+        );
+        assert!(content_kinds(&toml::Table::new()).unwrap().is_empty());
+
+        let bad: toml::Table = "[workspace.metadata.ename.content_kinds]\nmap = 1"
+            .parse()
+            .unwrap();
+        assert!(content_kinds(&bad).is_err());
+    }
 
     #[test]
     fn no_override_keeps_the_example_names() {

@@ -28,7 +28,19 @@ fn main() -> ExitCode {
             let Some(load_order_path) = load_order_path() else {
                 return ExitCode::FAILURE;
             };
-            if check::check(asset_root, &search_paths, load_order_path.as_deref()) {
+            let kinds = match workspace_content_kinds() {
+                Ok(kinds) => kinds,
+                Err(err) => {
+                    eprintln!("ename_check: {err}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            if check::check(
+                asset_root,
+                &search_paths,
+                load_order_path.as_deref(),
+                &kinds,
+            ) {
                 ExitCode::SUCCESS
             } else {
                 ExitCode::FAILURE
@@ -195,6 +207,23 @@ fn load_order_path() -> Option<Option<PathBuf>> {
             None
         }
     }
+}
+
+/// The content kinds in the `Cargo.toml` of the directory this runs in, the workspace root: none
+/// when there is no such file.
+fn workspace_content_kinds() -> Result<ename_asset_package::ContentKinds, String> {
+    let path = Path::new("Cargo.toml");
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(ename_asset_package::ContentKinds::default());
+        }
+        Err(err) => return Err(format!("{}: {err}", path.display())),
+    };
+    let manifest: toml::Table = text
+        .parse()
+        .map_err(|err| format!("{}: {err}", path.display()))?;
+    policy::content_kinds(&manifest)
 }
 
 /// [`load_order_path`], read only when one of `assets` is an alias: a plain path needs no scan,

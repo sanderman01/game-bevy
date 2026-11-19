@@ -72,6 +72,16 @@ pub enum ProblemKind {
     MissingGuid,
     /// Two files in one walk claim one alias.
     DuplicateAlias,
+    /// A [`ProblemKind::DuplicateAlias`] where either file is a content descriptor, so a catalog
+    /// entry is hidden or replaced. Produced by `ename_asset_package`, which knows the content
+    /// kinds.
+    DuplicateContentAlias,
+    /// A package overrode an alias with a file of another content kind, or of none, so the entry
+    /// of the old kind is gone. Produced by `ename_asset_package`.
+    ContentKindChanged,
+    /// A content descriptor that failed to load, so it is left out of the catalog. Produced by
+    /// `ename_asset_content`.
+    UnloadableContent,
     /// An alias [`validate_alias`] rejected.
     InvalidAlias,
     /// The walk hit [`MAX_DEPTH`] and stopped descending. In practice this means a symlink cycle,
@@ -124,6 +134,9 @@ impl Display for ProblemKind {
             Self::OrphanAliasFile => "orphan .alias",
             Self::MissingGuid => "missing guid",
             Self::DuplicateAlias => "duplicate alias",
+            Self::DuplicateContentAlias => "duplicate alias of a content file",
+            Self::ContentKindChanged => "content kind changed by an override",
+            Self::UnloadableContent => "unloadable content",
             Self::InvalidAlias => "invalid alias",
             Self::DirectoryTooDeep => "directory nested too deep",
             Self::UnparseableManifest => "unparseable manifest",
@@ -148,6 +161,30 @@ pub struct Problem {
     pub path: PathBuf,
     pub kind: ProblemKind,
     pub detail: String,
+}
+
+/// Separates the alias from the winning path in a duplicate alias problem's detail.
+const CLAIMED_BY: &str = "` is already claimed by ";
+
+impl Problem {
+    /// `loser` lost `alias` to `winner`, an earlier file in the same walk.
+    fn duplicate_alias(alias: &str, loser: &Path, winner: &Path) -> Self {
+        Self {
+            path: loser.to_path_buf(),
+            kind: ProblemKind::DuplicateAlias,
+            detail: format!("`{alias}{CLAIMED_BY}{}", winner.display()),
+        }
+    }
+
+    /// The alias and the winning file of a [`ProblemKind::DuplicateAlias`]; `path` is the losing
+    /// file. Read back from the detail, which a baked discovery carries as text.
+    pub fn duplicated_alias(&self) -> Option<(&str, &Path)> {
+        if self.kind != ProblemKind::DuplicateAlias {
+            return None;
+        }
+        let (alias, winner) = self.detail.strip_prefix('`')?.rsplit_once(CLAIMED_BY)?;
+        Some((alias, Path::new(winner)))
+    }
 }
 
 /// Everything one alias walk found.
@@ -411,11 +448,8 @@ impl<'a> Walk<'a> {
         }
 
         if let Some(winner) = self.claimed.get(&alias) {
-            self.problems.push(Problem {
-                path: path.to_path_buf(),
-                kind: ProblemKind::DuplicateAlias,
-                detail: format!("`{alias}` is already claimed by {}", winner.display()),
-            });
+            self.problems
+                .push(Problem::duplicate_alias(&alias, path, winner));
             return;
         }
 

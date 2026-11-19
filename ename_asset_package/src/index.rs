@@ -8,12 +8,13 @@
 //! contests with no Bevy in its dependency graph.
 
 use crate::{
-    ConstraintSource, ContestReason, ContestedAlias, Disabled, PackageRef, Scan, Tiebreak, Version,
+    CatalogEntry, ConstraintSource, ContentCatalog, ContentKinds, ContestReason, ContestedAlias,
+    Disabled, PackageRef, Scan, Tiebreak, Version,
 };
 use ename_asset_alias::{ContentIndex, Problem, ProblemKind};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 use tracing::{info, warn};
 
@@ -43,23 +44,77 @@ pub struct ContentReport {
     /// Every alias more than one package claimed, and why the winner won.
     pub contests: Vec<ContestedAlias>,
     pub problems: Vec<Problem>,
+    /// Fields a loader did not know, per asset, sorted by asset. Loaders that read leniently
+    /// record them while the game runs; the scan itself adds none.
+    pub unknown_fields: Vec<UnknownFields>,
 }
 
-/// Folds a resolved scan into one index, and reports what happened.
+/// The fields one asset's file holds that its loader does not know, such as `parts.0.colour`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownFields {
+    /// The asset path the loader read, `alias://core::island` for an alias.
+    pub asset: String,
+    pub fields: Vec<String>,
+}
+
+impl ContentReport {
+    /// Replaces what was recorded for `asset`. No fields clears it, so a fixed file that reloads
+    /// drops its warning.
+    pub fn record_unknown_fields(&mut self, asset: String, fields: Vec<String>) {
+        let at = self
+            .unknown_fields
+            .binary_search_by(|entry| entry.asset.as_str().cmp(&asset));
+        match (at, fields.is_empty()) {
+            (Ok(i), true) => {
+                self.unknown_fields.remove(i);
+            }
+            (Ok(i), false) => self.unknown_fields[i].fields = fields,
+            (Err(_), true) => {}
+            (Err(i), false) => self
+                .unknown_fields
+                .insert(i, UnknownFields { asset, fields }),
+        }
+    }
+}
+
+/// Folds a resolved scan into one index, and reports what happened. [`build_index_with_catalog`]
+/// with no content kinds, for a caller that only wants the index.
+pub fn build_index(scan: &Scan) -> (ContentIndex, ContentReport) {
+    let (index, _, report) = build_index_with_catalog(scan, &ContentKinds::default());
+    (index, report)
+}
+
+/// Folds a resolved scan into one index and the content catalog of `kinds`, and reports what
+/// happened.
 ///
 /// The packages arrive in load order, so a later claim on an alias replaces an earlier one -- that
 /// replacement is what an override *is*, and every one of them becomes a [`ContestedAlias`].
 ///
 /// A rejected alias is reported and skipped. One malformed entry must not cost the rest of the
 /// package, and one malformed package must not cost the game.
-pub fn build_index(scan: &Scan) -> (ContentIndex, ContentReport) {
+///
+/// The catalog is every alias whose winning file has a kind's extension. A `removes` drops an
+/// entry silently; an override whose file has another kind, or none, replaces it and is reported
+/// as [`ProblemKind::ContentKindChanged`]. A duplicate alias inside one package that involves a
+/// content file is reported as [`ProblemKind::DuplicateContentAlias`] instead of
+/// [`ProblemKind::DuplicateAlias`].
+pub fn build_index_with_catalog(
+    scan: &Scan,
+    kinds: &ContentKinds,
+) -> (ContentIndex, ContentCatalog, ContentReport) {
     let mut index = ContentIndex::default();
     let mut report = ContentReport {
         packages: Vec::new(),
         disabled: scan.disabled.clone(),
         contests: Vec::new(),
         problems: scan.problems.clone(),
+        unknown_fields: Vec::new(),
     };
+    if !kinds.is_empty() {
+        for problem in &mut report.problems {
+            mark_content_duplicate(problem, kinds);
+        }
+    }
 
     // Who currently holds each alias, by index into `scan.packages`, so a later claim knows who
     // it beat. `ContentIndex` remembers the path but not the package, and the package is the half
@@ -104,8 +159,15 @@ pub fn build_index(scan: &Scan) -> (ContentIndex, ContentReport) {
         let mut undeclared: BTreeSet<String> = BTreeSet::new();
         for asset in &package.assets {
             match index.insert(&asset.alias, &asset.path) {
-                Ok(_) => {
+                Ok(displaced) => {
                     aliases += 1;
+                    if let Some(displaced) = displaced
+                        && let Some(problem) =
+                            kind_change(kinds, &asset.alias, &info.id, &displaced, &asset.path)
+                    {
+                        warn!("  !! {}", problem.detail);
+                        report.problems.push(problem);
+                    }
                     if let Some(&holder) = holders.get(&asset.alias)
                         && holder != i
                     {
@@ -190,7 +252,87 @@ pub fn build_index(scan: &Scan) -> (ContentIndex, ContentReport) {
     // The contests themselves are not listed here. They are in the returned report, and the
     // caller lists them once it has the whole of it -- the fold is not the last thing that can
     // add to a report, so a listing from inside it is a listing of something not yet finished.
-    (index, report)
+    let catalog = build_catalog(scan, kinds, &index, &holders);
+    (index, catalog, report)
+}
+
+/// The catalog of the finished fold: `holders` names the package of every live alias, so an alias
+/// a `removes` took out is simply not there.
+fn build_catalog(
+    scan: &Scan,
+    kinds: &ContentKinds,
+    index: &ContentIndex,
+    holders: &BTreeMap<String, usize>,
+) -> ContentCatalog {
+    let mut catalog = ContentCatalog::new(kinds.clone());
+    if kinds.is_empty() {
+        return catalog;
+    }
+    for (alias, &holder) in holders {
+        let Some(kind) = index.resolve(alias).and_then(|path| kinds.kind_of(path)) else {
+            continue;
+        };
+        catalog.insert(CatalogEntry {
+            kind: kind.to_owned(),
+            id: alias.clone(),
+            package: scan.packages[holder].manifest.package.id.clone(),
+        });
+    }
+    if !catalog.is_empty() {
+        info!("Catalogued {} content descriptors", catalog.len());
+    }
+    catalog
+}
+
+/// The report line for `package` replacing `displaced` with `path` under `alias`, when the two
+/// files are of different kinds and at least one is content.
+fn kind_change(
+    kinds: &ContentKinds,
+    alias: &str,
+    package: &str,
+    displaced: &Path,
+    path: &Path,
+) -> Option<Problem> {
+    let (old, new) = (kinds.kind_of(displaced), kinds.kind_of(path));
+    if old == new {
+        return None;
+    }
+    Some(Problem {
+        path: path.to_path_buf(),
+        kind: ProblemKind::ContentKindChanged,
+        detail: format!(
+            "{package} replaces `{alias}`, {} at {}, with {}",
+            kind_name(old),
+            displaced.display(),
+            kind_name(new)
+        ),
+    })
+}
+
+fn kind_name(kind: Option<&str>) -> String {
+    kind.map_or_else(
+        || "a non-content file".to_owned(),
+        |kind| format!("a `{kind}`"),
+    )
+}
+
+/// Turns a duplicate alias that involves a content file into a
+/// [`ProblemKind::DuplicateContentAlias`], naming the kinds.
+fn mark_content_duplicate(problem: &mut Problem, kinds: &ContentKinds) {
+    let Some((_, winner)) = problem.duplicated_alias() else {
+        return;
+    };
+    let (lost, won) = (kinds.kind_of(&problem.path), kinds.kind_of(winner));
+    if lost.is_none() && won.is_none() {
+        return;
+    }
+    problem.detail = format!(
+        "{}; {} hides {}",
+        problem.detail,
+        kind_name(won),
+        kind_name(lost)
+    );
+    problem.kind = ProblemKind::DuplicateContentAlias;
 }
 
 /// Works out why `winner` beat `loser` for `alias`.
