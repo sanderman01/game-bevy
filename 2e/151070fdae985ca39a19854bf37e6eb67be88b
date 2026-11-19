@@ -1,0 +1,41 @@
+ename_editor/src/camera.rs
+  s_0a3f8eb77a8294::t_0c4e83d948530c 14
+  s_0a3f8eb77a8294::t_34fdaa0a0cdb37 21
+  s_0a3f8eb77a8294::t_1d632b15fc5bae 241
+  s_0a3f8eb77a8294::t_add13280e5c565 315-318,321-325,332-338,345
+  s_0a3f8eb77a8294::t_59130fa6327f2a 326-331
+  s_0a3f8eb77a8294::t_b0e2e63e084b69 388,394-420,424
+docs/design/floating-origin.md
+  s_0a3f8eb77a8294::t_8bac43bcf53567 124-127,135
+  s_0a3f8eb77a8294::t_611e9bb2c0e926 128-134
+ename_editor/src/camera/stage_open_tests.rs
+  s_0a3f8eb77a8294::t_b8e1d4af709833 494-521,525
+  s_0a3f8eb77a8294::t_5488cc69cafe17 17,19
+  s_0a3f8eb77a8294::t_017063e5ffb2e1 29-30
+  s_0a3f8eb77a8294::t_ea590c7e1d48f4 468-493,522-524,526-587
+  s_0a3f8eb77a8294::t_35813bedde9a6a 588-648
+  s_0a3f8eb77a8294::t_84330088a7886a 3
+  s_0a3f8eb77a8294::t_319b5de2a853cf 5-12,16,18,20
+  s_0a3f8eb77a8294::t_64712ff2d41f92 649
+ename_editor/src/panels.rs
+  s_0a3f8eb77a8294::t_e8b71f4027147a 522-532
+  s_0a3f8eb77a8294::t_4d62e6bb96c492 99-101
+  s_0a3f8eb77a8294::t_d5a48f54a6118f 521
+  s_0a3f8eb77a8294::t_e6cac2351564b0 533-534
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2e151070fdae985ca39a19854bf37e6eb67be88b",
+  "prompts": {},
+  "sessions": {
+    "s_0a3f8eb77a8294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "800cc546-8045-488b-88c8-b2833b144bf5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
