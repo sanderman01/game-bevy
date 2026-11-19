@@ -1,0 +1,19 @@
+ename_engine/src/stage/world.rs
+  s_0a3f8eb77a8294::t_ba3d1463175fbe 43-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b5bd37e9abe02c525f901a2fbd600a3481aef1f0",
+  "prompts": {},
+  "sessions": {
+    "s_0a3f8eb77a8294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "800cc546-8045-488b-88c8-b2833b144bf5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
