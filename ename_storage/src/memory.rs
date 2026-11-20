@@ -14,7 +14,8 @@ use std::{
 type Records = BTreeMap<Key, BTreeMap<BlobName, Vec<u8>>>;
 
 /// Records in a map behind one lock, so every read and listing sees whole commits. Each operation
-/// completes before its future is returned.
+/// completes before its future is returned, so commits apply in call order and `idle` has nothing
+/// to wait for.
 ///
 /// Implements [`FaultPoint::Staged`], the only point its commit has.
 #[derive(Clone, Default)]
@@ -120,5 +121,9 @@ impl StorageBackend for MemoryStorage {
 
     fn commit(&self, changes: Changes) -> BoxedFuture<Result<(), StorageError>> {
         Box::pin(future::ready(self.commit_now(&changes)))
+    }
+
+    fn idle(&self) -> BoxedFuture<()> {
+        Box::pin(future::ready(()))
     }
 }

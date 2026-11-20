@@ -66,3 +66,25 @@ fn local_with_a_persistent_directory_is_the_filesystem() {
             .exists()
     );
 }
+
+#[test]
+fn exiting_waits_for_commits_nobody_awaited() {
+    let root = tempfile::tempdir().unwrap();
+    let mut app = app(StoragePlugin::local(Some(root.path())));
+    let storage = app.world().resource::<UserStorage>().clone();
+    let key = Key::new("saves/s/quit").unwrap();
+    for n in 0..10u8 {
+        let mut txn = storage.begin();
+        txn.write(&key, &META, vec![n]);
+        drop(txn.commit());
+    }
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    let blob = root
+        .path()
+        .join(ename_storage::STORAGE_DIR)
+        .join("records")
+        .join("saves.s.quit")
+        .join("meta");
+    assert_eq!(std::fs::read(blob).unwrap(), [9]);
+}

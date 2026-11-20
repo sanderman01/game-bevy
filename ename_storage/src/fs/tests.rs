@@ -39,16 +39,94 @@ fn records_are_flat_directories_of_blob_files() {
 fn a_second_handle_is_locked_out_until_the_first_is_dropped() {
     let root = tempfile::tempdir().unwrap();
     let first = open(root.path());
-    let second = UserStorage::new(FsStorage::open(root.path()));
-    assert!(matches!(
-        block_on(second.ready()),
-        Err(StorageError::Locked(_))
-    ));
+    write(&first, "a", b"1");
+    // The same directory by another spelling is the same store.
+    let second = UserStorage::new(FsStorage::open(root.path().join(".")));
+    let locked = block_on(second.ready()).unwrap_err();
+    assert!(matches!(locked, StorageError::Locked(_)), "{locked}");
+    assert!(locked.to_string().contains("this process"), "{locked}");
     assert_eq!(second.status(), SyncStatus::Unavailable);
     assert!(block_on(second.list(&KeyPrefix::all(), None)).is_err());
+
+    // Once the first is gone, the second opens on its next call.
     drop(first);
-    let third = open(root.path());
-    assert_eq!(third.status(), SyncStatus::Synced);
+    assert_eq!(
+        block_on(second.read(&key("a"), &META)).unwrap(),
+        Some(b"1".to_vec())
+    );
+    assert_eq!(second.status(), SyncStatus::Synced);
+}
+
+#[test]
+fn a_directory_without_blobs_is_not_a_record() {
+    let root = tempfile::tempdir().unwrap();
+    let storage = open(root.path());
+    fs::create_dir(root.path().join("records").join("empty")).unwrap();
+    assert!(
+        block_on(storage.list(&KeyPrefix::all(), Some(&META)))
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        block_on(storage.list(&KeyPrefix::all(), None))
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        block_on(storage.read_record(&key("empty"), &[META])).unwrap(),
+        None
+    );
+}
+
+#[test]
+fn a_dropped_commit_future_still_commits_before_the_store_closes() {
+    let root = tempfile::tempdir().unwrap();
+    {
+        let storage = open(root.path());
+        for n in 0..5u8 {
+            let mut txn = storage.begin();
+            txn.write(&key("a"), &META, vec![n]);
+            drop(txn.commit());
+        }
+        // Dropping the last handle waits for the queued commits.
+    }
+    let storage = open(root.path());
+    assert_eq!(
+        block_on(storage.read(&key("a"), &META)).unwrap(),
+        Some(vec![4])
+    );
+}
+
+/// A commit whose journal flush or renames failed is committed but pending: it is applied again
+/// before the next read, and the next commit lands after it.
+#[test]
+fn a_commit_that_could_not_be_applied_is_applied_before_the_next_read() {
+    let root = tempfile::tempdir().unwrap();
+    let faults = FaultSwitch::default();
+    let storage = UserStorage::new(FsStorage::open_with_faults(root.path(), faults.clone()));
+    block_on(storage.ready()).unwrap();
+    write(&storage, "a", b"1");
+
+    faults.arm_io_error(FaultPoint::Committed, 0);
+    write(&storage, "a", b"2");
+    assert!(!faults.is_armed());
+    assert_eq!(storage.status(), SyncStatus::Syncing);
+    assert!(root.path().join("journal").exists(), "not applied yet");
+    assert_eq!(
+        block_on(storage.read(&key("a"), &META)).unwrap(),
+        Some(b"2".to_vec())
+    );
+    assert_eq!(storage.status(), SyncStatus::Synced);
+    assert!(!root.path().join("journal").exists());
+
+    // Failing half way through the renames: the next commit applies the rest first.
+    faults.arm_io_error(FaultPoint::NewMovedIn, 0);
+    write(&storage, "a", b"3");
+    write(&storage, "a", b"4");
+    assert_eq!(
+        block_on(storage.read(&key("a"), &META)).unwrap(),
+        Some(b"4".to_vec())
+    );
 }
 
 #[test]

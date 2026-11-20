@@ -50,6 +50,35 @@ impl Plugin for StoragePlugin {
         };
         app.insert_resource(storage)
             .add_systems(Startup, report_when_ready);
+        // In the browser nothing can block, and the in-memory backend has nothing outstanding;
+        // a browser backend flushes on its own (on `pagehide`).
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_systems(Last, finish_commits_on_exit);
+    }
+}
+
+/// How long an exiting app waits for outstanding commits.
+#[cfg(not(target_arch = "wasm32"))]
+const EXIT_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Holds the exiting frame until every commit called so far has finished, so "save and quit"
+/// saves. Bounded: a storage that hangs logs an error rather than hanging the exit.
+#[cfg(not(target_arch = "wasm32"))]
+fn finish_commits_on_exit(mut exits: MessageReader<AppExit>, storage: Res<UserStorage>) {
+    if exits.read().next().is_none() {
+        return;
+    }
+    let idle = storage.idle();
+    let (done, finished) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        bevy::tasks::block_on(idle);
+        let _ = done.send(());
+    });
+    if finished.recv_timeout(EXIT_WAIT).is_err() {
+        error!(
+            "user storage: commits still running after {}s at exit; they may be lost",
+            EXIT_WAIT.as_secs()
+        );
     }
 }
 

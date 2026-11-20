@@ -91,8 +91,24 @@ pub const CHECKS: &[Check] = &[
         run: readers_see_whole_commits,
     },
     Check {
+        name: "commits apply in call order",
+        run: commits_apply_in_call_order,
+    },
+    Check {
+        name: "a commit runs whatever happens to its future",
+        run: dropped_commit_still_lands,
+    },
+    Check {
         name: "an interrupted commit recovers to all or nothing",
         run: interrupted_commits,
+    },
+    Check {
+        name: "an interrupted recovery recovers to the new state",
+        run: interrupted_recoveries,
+    },
+    Check {
+        name: "an io error in a commit leaves all or nothing, and the store working",
+        run: io_errors_in_commits,
     },
 ];
 
@@ -423,15 +439,8 @@ fn readers_see_whole_commits(harness: &mut dyn Harness) {
 /// occurrence of every fault point, and checks that recovery gives the whole old or the whole new
 /// state.
 fn interrupted_commits(harness: &mut dyn Harness) {
-    let old = expected(&[
-        ("a", &[(&META, "a1"), (&STATE, "s1")]),
-        ("b", &[(&META, "b1")]),
-        ("c", &[(&META, "c1")]),
-    ]);
-    let new = expected(&[
-        ("a", &[(&META, "a2"), (&STATE, "s1")]),
-        ("d", &[(&META, "d2")]),
-    ]);
+    let old = old_state();
+    let new = new_state();
     for point in harness.fault_points() {
         assert!(
             harness.persistent() || !point.is_committed(),
@@ -443,20 +452,10 @@ fn interrupted_commits(harness: &mut dyn Harness) {
             let faults = FaultSwitch::default();
             let storage = harness.open(faults.clone());
             block_on(storage.ready()).expect("ready");
-            commit(&storage, |txn| {
-                txn.write(&key("a"), &META, b"a1".as_slice())
-                    .write(&key("a"), &STATE, b"s1".as_slice())
-                    .write(&key("b"), &META, b"b1".as_slice())
-                    .write(&key("c"), &META, b"c1".as_slice());
-            });
+            seed(&storage);
 
             faults.arm(point, occurrence);
-            let mut txn = storage.begin();
-            txn.write(&key("a"), &META, b"a2".as_slice())
-                .delete(&key("b"))
-                .delete_blob(&key("c"), &META)
-                .write(&key("d"), &META, b"d2".as_slice());
-            let result = block_on(txn.commit());
+            let result = block_on(the_commit(&storage).commit());
             faults.disarm();
             match result {
                 Ok(()) => {
@@ -501,6 +500,224 @@ fn interrupted_commits(harness: &mut dyn Harness) {
                     "stable across another restart after {point} #{occurrence}"
                 );
             }
+        }
+    }
+}
+
+type Contents = BTreeMap<String, BTreeMap<String, Vec<u8>>>;
+
+/// The records the fault checks start from.
+fn seed(storage: &UserStorage) {
+    commit(storage, |txn| {
+        txn.write(&key("a"), &META, b"a1".as_slice())
+            .write(&key("a"), &STATE, b"s1".as_slice())
+            .write(&key("b"), &META, b"b1".as_slice())
+            .write(&key("c"), &META, b"c1".as_slice());
+    });
+}
+
+fn old_state() -> Contents {
+    expected(&[
+        ("a", &[(&META, "a1"), (&STATE, "s1")]),
+        ("b", &[(&META, "b1")]),
+        ("c", &[(&META, "c1")]),
+    ])
+}
+
+fn new_state() -> Contents {
+    expected(&[
+        ("a", &[(&META, "a2"), (&STATE, "s1")]),
+        ("d", &[(&META, "d2")]),
+    ])
+}
+
+/// The commit the fault checks stop: replaces `a` keeping a blob, removes `b`, removes `c` by
+/// deleting its only blob, adds `d`.
+fn the_commit(storage: &UserStorage) -> crate::Transaction {
+    let mut txn = storage.begin();
+    txn.write(&key("a"), &META, b"a2".as_slice())
+        .delete(&key("b"))
+        .delete_blob(&key("c"), &META)
+        .write(&key("d"), &META, b"d2".as_slice());
+    txn
+}
+
+/// Fires commits without awaiting them, then awaits them in reverse: the order of the calls
+/// decides, not the order of the awaits.
+fn commits_apply_in_call_order(harness: &mut dyn Harness) {
+    let storage = open_ready(harness);
+    let commits: Vec<_> = (0..20u32)
+        .map(|n| {
+            let mut txn = storage.begin();
+            txn.write(&key("order"), &META, n.to_le_bytes().to_vec())
+                .write(&key(&format!("seq/{n}")), &META, n.to_le_bytes().to_vec());
+            txn.commit()
+        })
+        .collect();
+    for commit in commits.into_iter().rev() {
+        block_on(commit).expect("commit");
+    }
+    assert_eq!(
+        block_on(storage.read(&key("order"), &META)).unwrap(),
+        Some(19u32.to_le_bytes().to_vec()),
+        "the last call applies last"
+    );
+    let seq = block_on(storage.list(&KeyPrefix::new("seq").unwrap(), None)).unwrap();
+    assert_eq!(seq.len(), 20);
+}
+
+/// "Save and quit": commits whose futures are dropped at once still land, and `idle` waits for
+/// them.
+fn dropped_commit_still_lands(harness: &mut dyn Harness) {
+    let storage = open_ready(harness);
+    for n in 0..5u8 {
+        let mut txn = storage.begin();
+        txn.write(&key("quit"), &META, vec![n]);
+        drop(txn.commit());
+    }
+    block_on(storage.idle());
+    assert_eq!(
+        block_on(storage.read(&key("quit"), &META)).unwrap(),
+        Some(vec![4])
+    );
+    if harness.persistent() {
+        let mut txn = storage.begin();
+        txn.write(&key("quit"), &META, vec![5]);
+        drop(txn.commit());
+        drop(storage);
+        let storage = open_ready(harness);
+        assert_eq!(
+            block_on(storage.read(&key("quit"), &META)).unwrap(),
+            Some(vec![5]),
+            "dropping the last handle finishes the commits it was given"
+        );
+    }
+}
+
+/// Resets, seeds, and stops [`the_commit`] at `point` #`occurrence` as a crash. False when the
+/// commit never got there, and so completed.
+fn crash_commit(harness: &mut dyn Harness, point: FaultPoint, occurrence: u32) -> bool {
+    harness.reset();
+    let faults = FaultSwitch::default();
+    let storage = harness.open(faults.clone());
+    block_on(storage.ready()).expect("ready");
+    seed(&storage);
+    faults.arm(point, occurrence);
+    let result = block_on(the_commit(&storage).commit());
+    faults.disarm();
+    match result {
+        Ok(()) => false,
+        Err(StorageError::Fault(stopped)) => {
+            assert_eq!(stopped, point);
+            true
+        }
+        Err(other) => panic!("{point} #{occurrence}: unexpected error {other}"),
+    }
+}
+
+/// Stops a commit past its commit point, then stops the recovery that finishes it at each of its
+/// own points, then recovers fully: always the whole new state.
+fn interrupted_recoveries(harness: &mut dyn Harness) {
+    if !harness.persistent() {
+        return;
+    }
+    let points = harness.fault_points();
+    // A stop after the journal is removed leaves recovery nothing to apply.
+    let commit_points: Vec<_> = points
+        .iter()
+        .copied()
+        .filter(|point| point.is_committed() && *point != FaultPoint::JournalRemoved)
+        .collect();
+    let recovery_points: Vec<_> = points
+        .iter()
+        .copied()
+        .filter(|point| {
+            matches!(
+                point,
+                FaultPoint::OldMovedAside
+                    | FaultPoint::NewMovedIn
+                    | FaultPoint::Applied
+                    | FaultPoint::JournalRemoved
+            )
+        })
+        .collect();
+    let new = new_state();
+    for &first in &commit_points {
+        for first_occurrence in 0..4 {
+            if !crash_commit(harness, first, first_occurrence) {
+                break;
+            }
+            for &second in &recovery_points {
+                for second_occurrence in 0..4 {
+                    assert!(crash_commit(harness, first, first_occurrence));
+                    let faults = FaultSwitch::default();
+                    faults.arm(second, second_occurrence);
+                    let storage = harness.open(faults.clone());
+                    // Fails when recovery stopped, as a crashed process would.
+                    let _ = block_on(storage.ready());
+                    let reached = !faults.is_armed();
+                    faults.disarm();
+                    drop(storage);
+                    let storage = open_ready(harness);
+                    assert_eq!(
+                        contents(&storage),
+                        new,
+                        "after {first} #{first_occurrence}, then {second} #{second_occurrence} \
+                         in recovery"
+                    );
+                    if !reached {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// An io error at each point: before the commit point the commit fails and changes nothing; after
+/// it the commit is committed, reports `Ok`, and is visible to the next read. Either way the store
+/// keeps working, and the next commit lands after it.
+fn io_errors_in_commits(harness: &mut dyn Harness) {
+    let old = old_state();
+    let new = new_state();
+    for point in harness.fault_points() {
+        harness.reset();
+        let faults = FaultSwitch::default();
+        let storage = harness.open(faults.clone());
+        block_on(storage.ready()).expect("ready");
+        seed(&storage);
+        faults.arm_io_error(point, 0);
+        let result = block_on(the_commit(&storage).commit());
+        let reached = !faults.is_armed();
+        faults.disarm();
+        let want = if !reached || point.is_committed() {
+            assert!(result.is_ok(), "an io error at {point}: {result:?}");
+            &new
+        } else {
+            assert!(
+                matches!(result, Err(StorageError::Io { .. })),
+                "an io error at {point}: {result:?}"
+            );
+            &old
+        };
+        assert_eq!(&contents(&storage), want, "after an io error at {point}");
+
+        commit(&storage, |txn| {
+            txn.write(&key("a"), &META, b"a3".as_slice());
+        });
+        let mut want = want.clone();
+        want.get_mut("a")
+            .expect("both states have a")
+            .insert("meta".to_owned(), b"a3".to_vec());
+        assert_eq!(contents(&storage), want, "the next commit after {point}");
+        if harness.persistent() {
+            drop(storage);
+            let storage = open_ready(harness);
+            assert_eq!(
+                contents(&storage),
+                want,
+                "after a restart, io error at {point}"
+            );
         }
     }
 }

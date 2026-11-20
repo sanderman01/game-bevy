@@ -8,7 +8,8 @@ use std::{
 
 /// A point in a commit. A backend implements the points that exist in its commit and lists them
 /// for the conformance suite; the names follow the filesystem backend's sequence, the one that
-/// implements them all.
+/// implements them all. Recovery passes the points from [`FaultPoint::OldMovedAside`] on again
+/// as it applies a journal.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FaultPoint {
     /// The new records are prepared and durable; nothing is committed.
@@ -73,26 +74,36 @@ struct Armed {
     point: FaultPoint,
     /// Passes of `point` still to let through.
     skip: u32,
+    io_error: bool,
 }
 
 impl FaultSwitch {
-    /// Stops the commit the `occurrence`-th time (from 0) it passes `point`. Replaces an earlier
-    /// arming.
+    /// Stops the commit, or the recovery, the `occurrence`-th time (from 0) it passes `point`, as
+    /// a crash would. Replaces an earlier arming.
     pub fn arm(&self, point: FaultPoint, occurrence: u32) {
-        *self.lock() = Some(Armed {
-            point,
-            skip: occurrence,
-        });
+        self.set(point, occurrence, false);
+    }
+
+    /// Fails the `occurrence`-th pass of `point` with an io error instead, which the backend
+    /// handles as it would a real one: the process lives on.
+    pub fn arm_io_error(&self, point: FaultPoint, occurrence: u32) {
+        self.set(point, occurrence, true);
     }
 
     pub fn disarm(&self) {
         *self.lock() = None;
     }
 
-    /// Called by a backend as its commit passes `point`. Returns [`StorageError::Fault`] when the
-    /// switch is armed for this pass, and disarms; the backend then stops at once, leaving
-    /// everything as it is, and behaves as a dead process: every later call fails until the store
-    /// is opened again.
+    /// Whether the armed pass has not been reached yet.
+    pub fn is_armed(&self) -> bool {
+        self.lock().is_some()
+    }
+
+    /// Called by a backend as it passes `point`, in a commit or in recovery. When the switch is
+    /// armed for this pass it disarms and returns:
+    /// - [`StorageError::Fault`]: the backend stops at once, leaving everything as it is, and
+    ///   behaves as a dead process: every later call fails until the store is opened again;
+    /// - [`StorageError::Io`] (`arm_io_error`): the backend handles it as any io error.
     pub fn check(&self, point: FaultPoint) -> Result<(), StorageError> {
         let mut armed = self.lock();
         let Some(current) = armed.as_mut() else {
@@ -105,8 +116,24 @@ impl FaultSwitch {
             current.skip -= 1;
             return Ok(());
         }
+        let io_error = current.io_error;
         *armed = None;
-        Err(StorageError::Fault(point))
+        if io_error {
+            Err(StorageError::io(
+                format!("injected at {point}"),
+                std::io::Error::other("injected io error"),
+            ))
+        } else {
+            Err(StorageError::Fault(point))
+        }
+    }
+
+    fn set(&self, point: FaultPoint, occurrence: u32, io_error: bool) {
+        *self.lock() = Some(Armed {
+            point,
+            skip: occurrence,
+            io_error,
+        });
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Option<Armed>> {
@@ -130,6 +157,19 @@ mod tests {
             Err(StorageError::Fault(FaultPoint::NewMovedIn))
         ));
         assert!(faults.check(FaultPoint::NewMovedIn).is_ok());
+        assert!(!faults.is_armed());
+    }
+
+    #[test]
+    fn io_error_mode_returns_an_io_error() {
+        let faults = FaultSwitch::default();
+        faults.arm_io_error(FaultPoint::Applied, 0);
+        assert!(faults.is_armed());
+        assert!(matches!(
+            faults.check(FaultPoint::Applied),
+            Err(StorageError::Io { .. })
+        ));
+        assert!(!faults.is_armed());
     }
 
     #[test]

@@ -38,6 +38,12 @@ impl UserStorage {
         self.0.ready()
     }
 
+    /// Resolves once every commit called before it has finished. [`crate::StoragePlugin`] waits
+    /// for it when the app exits.
+    pub fn idle(&self) -> BoxedFuture<()> {
+        self.0.idle()
+    }
+
     /// Every record under `prefix`, ordered by key, each with `blob` when given and present, so a
     /// save list is one call: `list(&saves, Some(&meta))`.
     pub fn list(
@@ -124,6 +130,9 @@ impl Transaction {
         self.changes.is_empty()
     }
 
+    /// Commits after every transaction committed before it. The commit starts now and runs even if
+    /// the returned future is dropped; the future only reports the outcome.
+    ///
     /// `Ok` once every change is committed. On an error none is, except for a
     /// [`StorageError::Fault`] past the commit point, which stands for a crash: the store then
     /// recovers to the new state when it is opened again.

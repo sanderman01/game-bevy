@@ -7,10 +7,13 @@ authors.workspace = true
 license.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-# For the filesystem backend, which the browser does not have. Locks a thread can wait on: the
-# store's reader/commit lock. Already in `Cargo.lock` via Bevy.
+# For the filesystem backend, which the browser does not have. A commit's result, sent from the
+# storage thread to the caller's future. Already in `Cargo.lock` via Bevy.
+async-channel.workspace = true
+# The store's reader lock, taken by the storage thread before anything else can read. Already in
+# `Cargo.lock` via Bevy.
 async-lock.workspace = true
-# Runs the backend's blocking file io off the caller's thread. Already in `Cargo.lock` via Bevy.
+# Runs reads' blocking file io off the caller's thread. Already in `Cargo.lock` via Bevy.
 blocking.workspace = true
 
 [features]

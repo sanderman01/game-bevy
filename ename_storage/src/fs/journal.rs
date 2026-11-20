@@ -7,8 +7,10 @@ use super::io::{
 };
 use crate::{BlobName, Changes, FaultPoint, FaultSwitch, Key, StorageError};
 use std::{
+    collections::BTreeSet,
     fs::{self, File},
     path::{Path, PathBuf},
+    sync::{Mutex, PoisonError},
 };
 
 const RECORDS: &str = "records";
@@ -168,14 +170,53 @@ impl Journal {
     }
 }
 
-/// Opens a store: takes the lock, finishes a committed transaction, discards anything
-/// uncommitted. Returns the lock file, which holds the lock while it is open.
+/// Roots open in this process. The OS lock alone does not keep a second handle in the same
+/// process off a store everywhere: where `flock` is emulated with locks a process shares (NFS),
+/// the second would succeed, and dropping it would release the first one's lock.
+static OPEN_ROOTS: Mutex<BTreeSet<PathBuf>> = Mutex::new(BTreeSet::new());
+
+/// A root claimed in [`OPEN_ROOTS`] until dropped.
+struct RootClaim(PathBuf);
+
+impl RootClaim {
+    fn take(root: &Path) -> Result<Self, StorageError> {
+        let canonical = fs::canonicalize(root).map_err(err("resolve", root))?;
+        let mut roots = OPEN_ROOTS.lock().unwrap_or_else(PoisonError::into_inner);
+        if !roots.insert(canonical.clone()) {
+            return Err(StorageError::Locked(format!(
+                "{} is already open in this process",
+                root.display()
+            )));
+        }
+        Ok(Self(canonical))
+    }
+}
+
+impl Drop for RootClaim {
+    fn drop(&mut self) {
+        OPEN_ROOTS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&self.0);
+    }
+}
+
+/// An open store's hold on its root: the OS lock, then the claim in this process. Dropping it
+/// releases both.
+pub(super) struct Opened {
+    _lock: File,
+    _claim: RootClaim,
+}
+
+/// Opens a store: claims it, takes the lock, finishes a committed transaction, discards anything
+/// uncommitted.
 ///
 /// The lock is the OS's (`flock` on Unix, `LockFileEx` on Windows), held by the open file, so it
 /// goes away with the process however it ends; a lock file left behind by a crash is not stale.
-pub(super) fn open(layout: &Layout) -> Result<File, StorageError> {
+pub(super) fn open(layout: &Layout, faults: &FaultSwitch) -> Result<Opened, StorageError> {
     let root = layout.root();
     fs::create_dir_all(root).map_err(err("create", root))?;
+    let claim = RootClaim::take(root)?;
     let lock_path = root.join(LOCK);
     let lock = File::options()
         .read(true)
@@ -187,7 +228,10 @@ pub(super) fn open(layout: &Layout) -> Result<File, StorageError> {
     match lock.try_lock() {
         Ok(()) => {}
         Err(fs::TryLockError::WouldBlock) => {
-            return Err(StorageError::Locked(root.display().to_string()));
+            return Err(StorageError::Locked(format!(
+                "{} is open in another process",
+                root.display()
+            )));
         }
         Err(fs::TryLockError::Error(error)) => return Err(err("lock", &lock_path)(error)),
     }
@@ -195,13 +239,19 @@ pub(super) fn open(layout: &Layout) -> Result<File, StorageError> {
         fs::create_dir_all(&dir).map_err(err("create", &dir))?;
     }
     sync_dir(root)?;
-    recover(layout)?;
-    Ok(lock)
+    recover(layout, faults)?;
+    Ok(Opened {
+        _lock: lock,
+        _claim: claim,
+    })
 }
 
 /// Applies a journal found on disk, then clears out staging and trash. Every step is safe to
 /// repeat, so a crash during recovery is recovered the same way.
-pub(super) fn recover(layout: &Layout) -> Result<(), StorageError> {
+///
+/// No record is renamed until the root has been flushed, so the journal is durable before any
+/// of its changes: a commit whose journal flush failed must not be applied until one succeeds.
+pub(super) fn recover(layout: &Layout, faults: &FaultSwitch) -> Result<(), StorageError> {
     // Never renamed into place, so never committed.
     remove_file(&layout.journal_tmp())?;
     let path = layout.journal();
@@ -214,10 +264,12 @@ pub(super) fn recover(layout: &Layout) -> Result<(), StorageError> {
                 ))
             })?;
             tracing::info!(
-                "user storage: finishing a transaction an earlier run committed ({} records)",
+                "user storage: finishing a committed transaction ({} records)",
                 journal.entries.len()
             );
-            apply(layout, &journal, &FaultSwitch::default())?;
+            sync_dir(layout.root())?;
+            apply_renames(layout, &journal, faults)?;
+            finish(layout, &journal, faults)?;
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(err("read", &path)(error)),
@@ -247,18 +299,26 @@ fn clear(dir: &Path) {
     }
 }
 
+/// A transaction past its commit point.
+pub(super) struct Committed {
+    pub(super) journal: Journal,
+    /// Whether the journal is known to be durable. Until it is, no record may be renamed: a power
+    /// cut could keep the renames and lose the journal.
+    pub(super) durable: Result<(), StorageError>,
+}
+
 /// Stages the new version of every changed record under `staging/<txn>`, makes it durable, and
 /// writes the journal: the rename of `journal.tmp` to `journal` is the commit point. `None` when
 /// the changes change nothing on disk.
 ///
-/// On an error before the commit point the staging is removed and nothing is committed. A fault
-/// leaves everything as it is, as a crash would.
+/// An error is from before the commit point: the staging is removed and nothing is committed. A
+/// fault leaves everything as it is, as a crash would.
 pub(super) fn stage(
     layout: &Layout,
     txn: u64,
     changes: &Changes,
     faults: &FaultSwitch,
-) -> Result<Option<Journal>, StorageError> {
+) -> Result<Option<Committed>, StorageError> {
     let dir = layout.staged_txn(txn);
     let staged = stage_records(layout, txn, changes).and_then(|journal| {
         if journal.is_some() {
@@ -293,13 +353,8 @@ pub(super) fn stage(
             return Err(error);
         }
     }
-    // Committed. A failed flush here can only cost durability across a power cut, not atomicity:
-    // the journal is either there whole or not at all.
-    if let Err(error) = sync_dir(layout.root()) {
-        tracing::error!("user storage: committed, but flushing the journal failed: {error}");
-    }
-    faults.check(FaultPoint::Committed)?;
-    Ok(Some(journal))
+    let durable = sync_dir(layout.root()).and_then(|()| faults.check(FaultPoint::Committed));
+    Ok(Some(Committed { journal, durable }))
 }
 
 fn stage_records(
@@ -364,16 +419,16 @@ fn discard(path: &Path) {
     }
 }
 
-/// Swaps in the staged records and moves the removed ones aside, makes that durable, then removes
-/// the journal and cleans up.
+/// Swaps in the staged records and moves the removed ones aside. Only renames: the caller holds
+/// the write lock for this part alone, and [`finish`] makes it durable afterwards.
 ///
 /// Safe to repeat from the top after a stop anywhere. A staged directory that still exists has
 /// not been moved in, so the record directory beside it, if any, is the old version and goes to
 /// the trash first; one that is gone was moved in already. A record directory is never renamed
 /// onto an existing one, which Windows refuses, so between the two renames the record is briefly
-/// absent on disk; the reader lock hides that in this process, and the journal finishes it after a
+/// absent on disk; the write lock hides that in this process, and the journal finishes it after a
 /// crash.
-pub(super) fn apply(
+pub(super) fn apply_renames(
     layout: &Layout,
     journal: &Journal,
     faults: &FaultSwitch,
@@ -405,6 +460,17 @@ pub(super) fn apply(
             }
         }
     }
+    Ok(())
+}
+
+/// Makes the renames durable, removes the journal, and cleans up. Until the journal is removed, a
+/// stop here is recovered by applying the journal again.
+pub(super) fn finish(
+    layout: &Layout,
+    journal: &Journal,
+    faults: &FaultSwitch,
+) -> Result<(), StorageError> {
+    let txn = journal.txn;
     sync_dir(&layout.records())?;
     sync_dir(&layout.trash())?;
     if is_dir(&layout.staged_txn(txn)) {

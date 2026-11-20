@@ -23,15 +23,23 @@ pub type BoxedFuture<T> = Pin<Box<dyn Future<Output = T> + 'static>>;
 ///
 /// What a backend guarantees:
 /// - A read sees one committed version of the record: every blob it returns comes from the same
-///   commit.
+///   commit. A listing sees one committed version of the store.
 /// - [`StorageBackend::commit`] applies all of its [`Changes`] or none of them, across records,
 ///   also when the process dies part way. `Ok` means the changes are committed and every read that
 ///   starts afterwards sees them.
+/// - Commits apply in the order `commit` was called.
+/// - A commit runs once `commit` is called, whether or not its future is polled or kept;
+///   [`StorageBackend::idle`] waits for it.
 /// - A record exists while it has at least one blob.
 /// - [`StorageBackend::ready`] resolves once the backend has done what it can to be in sync;
 ///   [`StorageBackend::status`] then says how that went. Operations called earlier wait for it.
 ///
 /// `ename_storage::conformance` checks these for any backend.
+///
+/// The trait is `Send + Sync` on wasm too, because the handle is a Bevy resource. A browser
+/// backend whose JS handles are `!Send` keeps them in a `thread_local!` on the one thread wasm
+/// has, and is itself a `Send + Sync` shell that reaches them from its futures, which need not be
+/// `Send` there (see [`BoxedFuture`]).
 pub trait StorageBackend: Send + Sync + 'static {
     fn status(&self) -> SyncStatus;
 
@@ -53,8 +61,12 @@ pub trait StorageBackend: Send + Sync + 'static {
         blobs: Vec<BlobName>,
     ) -> BoxedFuture<Result<Option<Record>, StorageError>>;
 
-    /// Applies all of `changes` or none of them.
+    /// Applies all of `changes` or none of them, after every commit called before it. Starts at
+    /// once; the future only reports the outcome.
     fn commit(&self, changes: Changes) -> BoxedFuture<Result<(), StorageError>>;
+
+    /// Resolves once every commit called before it has finished, for an app about to exit.
+    fn idle(&self) -> BoxedFuture<()>;
 }
 
 /// Where a backend stands with the place it keeps records.
@@ -91,8 +103,9 @@ impl fmt::Display for SyncStatus {
 /// Why a storage operation failed.
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum StorageError {
-    /// Another process, or another open handle in this one, is using the store.
-    #[error("the store {0} is in use by another process")]
+    /// Another process, or another open handle in this one, is using the store. The message says
+    /// which.
+    #[error("the store is in use: {0}")]
     Locked(String),
     #[error("{context}: {source}")]
     Io {
@@ -116,6 +129,19 @@ impl StorageError {
             context: context.into(),
             source: Arc::new(source),
         }
+    }
+
+    /// The disk, or the user's quota, is full: something the player can fix by freeing space. A
+    /// backend reports a full store as an [`StorageError::Io`] of kind `StorageFull` or
+    /// `QuotaExceeded`.
+    pub fn is_storage_full(&self) -> bool {
+        let Self::Io { source, .. } = self else {
+            return false;
+        };
+        matches!(
+            source.kind(),
+            io::ErrorKind::StorageFull | io::ErrorKind::QuotaExceeded
+        )
     }
 }
 
@@ -245,5 +271,21 @@ impl RecordChange {
             };
         }
         blobs
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_full_disk_is_storage_full() {
+        let full = StorageError::io("write", io::Error::from(io::ErrorKind::StorageFull));
+        assert!(full.is_storage_full());
+        let quota = StorageError::io("write", io::Error::from(io::ErrorKind::QuotaExceeded));
+        assert!(quota.is_storage_full());
+        let other = StorageError::io("write", io::Error::from(io::ErrorKind::NotFound));
+        assert!(!other.is_storage_full());
+        assert!(!StorageError::Corrupt("x".into()).is_storage_full());
     }
 }
