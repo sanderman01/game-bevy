@@ -251,10 +251,11 @@ fn tag_recursive(
     nested: &Query<(), NestedContent>,
     commands: &mut Commands,
 ) {
-    commands.entity(entity).insert(StageMember(id));
+    // Another ready observer may despawn it first, such as a `COL_` node's mesh.
+    commands.entity(entity).try_insert(StageMember(id));
     // Nested content spawns later; the stage is not open until it has (see `opening`).
     if nested.contains(entity) {
-        commands.entity(entity).insert(StageLoading);
+        commands.entity(entity).try_insert(StageLoading);
     }
     let children = children_of
         .get(entity)
