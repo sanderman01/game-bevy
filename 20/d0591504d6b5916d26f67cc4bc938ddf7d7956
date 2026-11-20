@@ -1,0 +1,39 @@
+docs/save-sections.md
+  s_0a3f8eb77a8294::t_ffc3c6061c591d 1-81
+ename_engine/src/save.rs
+  s_0a3f8eb77a8294::t_8442a9c591f886 18
+  s_0a3f8eb77a8294::t_a0468608e7e786 68-71,77-78
+  s_0a3f8eb77a8294::t_c758faa39ac967 1-17,19-66,79-429
+  s_0a3f8eb77a8294::t_642c471f2f9286 72-76
+  s_0a3f8eb77a8294::t_8d9012355a9ddf 67
+ename_engine/src/clock.rs
+  s_0a3f8eb77a8294::t_189a27c6057c22 1-21
+ename_engine/src/save/tests.rs
+  s_0a3f8eb77a8294::t_9e8fa9af70cc70 1-253
+docs/design.md
+  s_0a3f8eb77a8294::t_b893b88f7b27f9 22-23
+ename_engine/Cargo.toml
+  s_0a3f8eb77a8294::t_900fecadbbf6b7 30
+ename_engine/src/lib.rs
+  s_0a3f8eb77a8294::t_a621f64c6532cc 28
+  s_0a3f8eb77a8294::t_e815da3350ab61 3
+  s_0a3f8eb77a8294::t_e0e4b07c522a11 16
+Cargo.lock
+  s_0a3f8eb77a8294::t_f6226172b52463 3234
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "20d0591504d6b5916d26f67cc4bc938ddf7d7956",
+  "prompts": {},
+  "sessions": {
+    "s_0a3f8eb77a8294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "800cc546-8045-488b-88c8-b2833b144bf5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
