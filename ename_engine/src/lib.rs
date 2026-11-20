@@ -1,6 +1,6 @@
 //! `ename_engine` -- the runtime layer: camera rig, big_space integration, physics glue, input,
 //! time control, log capture, the command registry, waiting for the world to settle, screenshots,
-//! video capture.
+//! video capture. It installs user storage (`ename_storage`) in the persistent data directory.
 //!
 //! Sits directly above the asset crates. It must never depend on `ename_editor` or `example_game_lib`:
 //! if engine code needs something from a higher layer, move the shared type down or invert the
@@ -43,6 +43,9 @@ use ename_asset_content::AssetContentPlugin;
 use std::path::PathBuf;
 
 pub use ename_asset_content::DEFAULT_ASSET_ROOT;
+/// User storage, so a game reaches `storage::UserStorage` without depending on the crate itself.
+/// A third-party backend depends on `ename_storage` directly.
+pub use ename_storage as storage;
 
 /// The directory `AssetPlugin::file_path` is relative to. Empty in the browser, where assets are
 /// fetched relative to the page and there is no filesystem path.
@@ -156,6 +159,7 @@ impl PluginGroup for EnginePlugins {
     fn build(self) -> PluginGroupBuilder {
         let application_paths = self.application_paths();
         let load_order_file = self.load_order_file(&application_paths);
+        let storage = ename_storage::StoragePlugin::local(application_paths.persistent_data_path());
         // In the browser the page decides the size: the canvas fills its parent.
         let window = Window {
             fit_canvas_to_parent: cfg!(target_arch = "wasm32") || self.window.fit_canvas_to_parent,
@@ -197,6 +201,9 @@ impl PluginGroup for EnginePlugins {
             .add_after::<LogPlugin>(ApplicationPlugin {
                 paths: application_paths,
             })
+            // A member, so a target installs another backend with
+            // `.set(StoragePlugin::with_backend(..))`.
+            .add_after::<ApplicationPlugin>(storage)
             .disable::<TransformPlugin>()
             .add_group(BigSpaceDefaultPlugins)
             // No longer bundled with BigSpaceDefaultPlugins as of big_space 0.13.

@@ -48,6 +48,9 @@ check ename_remote 'ename_editor|example_game_lib'
 check ename_mcp 'ename_.*'
 # Per-user directories, shared by the engine and `ename_xtask`: a leaf with no first-party deps.
 check ename_application 'ename_.*|example_.*|bevy|bevy_.*'
+# User storage: a leaf with no first-party deps, so a crate below the engine (the content scan,
+# for the load order file) can use it too.
+check ename_storage 'ename_.*|example_.*'
 # The tooling binary. It reads the asset crates with StdVfs and must never link the renderer,
 # the editor, the game, or `ename_asset_content` (which always links Bevy) -- if it did,
 # `cargo xtask ename_check` would rebuild half the engine.

@@ -22,6 +22,7 @@ big_space.workspace = true
 ename_application.workspace = true
 ename_asset_alias.workspace = true
 ename_asset_content.workspace = true
+ename_storage.workspace = true
 image.workspace = true
 ron.workspace = true
 schemars.workspace = true

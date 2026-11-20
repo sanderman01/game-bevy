@@ -3225,6 +3225,7 @@ dependencies = [
  "ename_asset_alias",
  "ename_asset_content",
  "ename_asset_vfs",
+ "ename_storage",
  "image",
  "libc",
  "ron",

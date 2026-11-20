@@ -67,6 +67,10 @@ jobs:
       - name: Check the package scanner without Bevy
         run: cargo check -p ename_asset_package --no-default-features --all-targets
 
+      # A backend crate takes the trait and the conformance suite without Bevy.
+      - name: Check user storage without Bevy
+        run: cargo check -p ename_storage --no-default-features --all-targets
+
       - name: Layer graph
         run: ./scripts/check-layers.sh
 
