@@ -1,0 +1,46 @@
+ename_engine/src/save/tests.rs
+  s_0a3f8eb77a8294::t_96b3747b824d7d 310-313
+  s_0a3f8eb77a8294::t_6484b37640cf30 43
+  s_0a3f8eb77a8294::t_29ad1258d7db63 3-17,24-42,44-45,51-59
+  s_0a3f8eb77a8294::t_077176a024647f 152-155
+  s_0a3f8eb77a8294::t_bb1738e903c495 103-104,108
+  s_0a3f8eb77a8294::t_410bf23ebba7a3 71-72
+  s_0a3f8eb77a8294::t_bdc2ecc6740028 210-221
+  s_0a3f8eb77a8294::t_90aa9b92b2f136 169-172,176-190,201
+  s_0a3f8eb77a8294::t_d3bebc8f3b917b 225
+  s_0a3f8eb77a8294::t_552e3632daf0a4 96
+  s_0a3f8eb77a8294::t_2ca253cb043378 126-127,131
+  s_0a3f8eb77a8294::t_d24a514b0f8384 93-95,97-99,102,106-107,109-112
+  s_0a3f8eb77a8294::t_3d2162a84b9f56 209
+ename_engine/src/save.rs
+  s_0a3f8eb77a8294::t_5f5202bb5e7a4c 19
+  s_0a3f8eb77a8294::t_49fecd8d39303c 288
+  s_0a3f8eb77a8294::t_75aab961c0d1f0 9-11
+  s_0a3f8eb77a8294::t_8458f4fec1cf61 125-126
+  s_0a3f8eb77a8294::t_cfc5e049f6ef4f 142-145,148-150,154,156,163,175-186,193-203,327
+  s_0a3f8eb77a8294::t_321c0be1312c82 136
+  s_0a3f8eb77a8294::t_414b834c41531e 335
+  s_0a3f8eb77a8294::t_f02a5d39d991b5 379-381,384-387
+  s_0a3f8eb77a8294::t_72cd52dd1b4015 204-208,210,220,263,293-297,305,326,336-337,339-342,388-394
+docs/save-sections.md
+  s_0a3f8eb77a8294::t_faf2ed06a664aa 16,22,24,29-35
+  s_0a3f8eb77a8294::t_a73378d6a0e0dc 76
+  s_0a3f8eb77a8294::t_9b19edcc23ca7e 59-61
+  s_0a3f8eb77a8294::t_72a2f5f2318564 84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d778ad976cb92ea80e2ea78a1895d67d6e171858",
+  "prompts": {},
+  "sessions": {
+    "s_0a3f8eb77a8294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "800cc546-8045-488b-88c8-b2833b144bf5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
