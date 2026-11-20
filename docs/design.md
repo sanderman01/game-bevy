@@ -17,6 +17,8 @@ acting on it.
   descriptors, readiness, and unknown-field warnings.
 - [Asset archives](assets-archives.md). Reading `.zip` and `.tar` files as directories of the
   asset tree.
+- [User storage](user-storage.md). Records, keys and transactions for saves and other player
+  data, pluggable backends, the filesystem backend's journal, and the backend conformance suite.
 - [Commands and jobs](design/commands.md). How a crate registers functionality once for the
   agent tools and a future console, and how slow work is tracked.
 - [Waiting](design/waiting.md). How an agent waits for the game to settle or for a condition,

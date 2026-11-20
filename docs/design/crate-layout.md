@@ -8,7 +8,7 @@ The long-form analysis behind this is in `scratch/crate-structure-review.md`.
 
 Project codename is `ename`. Every engine-side crate is prefixed with it: `ename_engine`,
 `ename_application`, `ename_asset_vfs`, `ename_asset_alias`, `ename_asset_package`,
-`ename_asset_content`, `ename_editor`, `ename_remote`, `ename_mcp`, `ename_xtask`. Bare names like `engine` and `editor` collide with anything and
+`ename_asset_content`, `ename_storage`, `ename_editor`, `ename_remote`, `ename_mcp`, `ename_xtask`. Bare names like `engine` and `editor` collide with anything and
 resolve independently once there is more than one workspace.
 
 `example_` crates are the exception: these are demo crates showing how a game project consumes
@@ -26,9 +26,12 @@ example_game_editor_bin (bin) -> ename_engine, example_game_lib, ename_editor, e
 ename_remote                  -> ename_engine
 example_game_lib              -> ename_engine, ename_asset_alias
 ename_editor                  -> ename_engine
-ename_engine                  -> ename_application, ename_asset_content, bevy, avian3d, big_space,
-                                 serde, schemars
+ename_engine                  -> ename_application, ename_asset_content, ename_storage, bevy, avian3d,
+                                 big_space, serde, schemars
 ename_application             -> dirs, thiserror   (no first-party deps, no bevy)
+ename_storage                 -> futures-lite, thiserror, tracing   (no first-party deps)
+                                 + async-lock, blocking, off wasm
+                                 + bevy, behind the default `bevy` feature
 ename_asset_content           -> ename_asset_alias, ename_asset_package, ename_asset_vfs, async-lock, bevy,
                                  ron, serde, serde_ignored, thiserror
 ename_asset_package           -> ename_asset_alias, ename_asset_vfs, semver, serde, toml, thiserror, tracing
@@ -51,6 +54,13 @@ ename_xtask (bin)             -> ename_application, ename_asset_alias, ename_ass
 `ename_application` resolves the project's per-user directories (persistent data and cache) from
 an organisation and project name. It is its own crate, re-exported as `ename_engine::application`,
 because `ename_xtask` computes the same load order path and must not link the engine.
+
+`ename_storage` is user storage: saves, custom presets, anything a player creates
+([user-storage.md](../user-storage.md)). It is a crate rather than an engine module because
+backends live in other crates (a cloud or console backend implements its trait), and because the
+load order file is to move onto it, which `ename_asset_content` reads below the engine. So it
+names no first-party crate and takes the persistent data path as a plain path; `EnginePlugins`
+adds its plugin with that path and re-exports it as `ename_engine::storage`.
 
 `ename_mcp` and `ename_xtask` hang off the bottom with no arrow to anything because they are not
 layers. `ename_mcp` is a separate process that talks to the game over a socket. See

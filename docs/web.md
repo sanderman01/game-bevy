@@ -68,6 +68,8 @@ Compiled out with `cfg(not(target_arch = "wasm32"))`:
 - Video recording (it runs ffmpeg) and screenshots to disk.
 - Archive mounts.
 - The process id in `RunId`.
+- The filesystem backend of [user storage](user-storage.md). User storage works but is in memory
+  and reports itself `Volatile`: nothing a player saves outlives the page.
 
 These still compile but fail if used, because the browser has no filesystem:
 
