@@ -13,20 +13,26 @@ game's.
 ```rust
 app.register_save_section(
     SaveSection::new("weather", 2, capture_weather, apply_weather)
-        .migration(1, weather_1_to_2),
+        .migration(1, weather_1_to_2), // fn(WeatherV1) -> Result<Weather, String>
 );
 ```
 
 | Part | Type | Does |
 | --- | --- | --- |
-| `capture` | `fn(&mut World) -> Option<T>` | Reads the world into the section's save struct. `None` saves no section |
+| `capture` | `fn(&mut World) -> Result<Option<T>, String>` | Reads the world into the section's save struct. `Ok(None)` saves no section; `Err` fails the whole save |
 | `apply` | `fn(&mut World, T, &mut Vec<String>)` | Puts a section back; may add lines to a report for the player |
-| `migration(from, f)` | `fn(ron::Value) -> Result<ron::Value, String>` | Turns version `from` into `from + 1` |
+| `migration::<Old, Next>(from, f)` | `fn(Old) -> Result<Next, String>` | Turns the struct of version `from` into that of `from + 1` |
 
 - `T` is a hand-written save struct with `Serialize` and `Deserialize`, not a live component: a
   save outlives field renames, and transient state, entity ids and grid cells never reach it.
 - Versions start at 1. A name registers once; a duplicate panics.
-- Sections apply in registration order.
+- Sections apply in registration order, so register them in the order they depend on each other.
+- Apply cannot fail, and nothing rolls back. Whatever can refuse a save is checked by
+  `check_sections` before anything changes.
+- Migrations are typed: each reads the old version's own struct leniently from the saved RON and
+  writes the next. They do not go through `ron::Value`, which keeps no enum variant names. A test
+  takes a unit variant and a newtype variant (`Some(catalog("core::hard"))`) through two
+  migrations.
 
 ## Container
 
@@ -50,7 +56,9 @@ app.register_save_section(
 ## Saving
 
 1. `capture_sections(world)` runs every capture in one go, in one frame, so the sections agree.
-   It only clones state into save structs.
+   It only clones state into save structs. A capture that fails fails the whole (`Capture`), so
+   no save is written without a section it needs. Captures share no context: two sections that
+   must agree on something work it out with the same function.
 2. `CapturedSections::serialize()` turns them into RON. It holds no world, so it runs on a task.
 3. `SavedSections::keep(&unknown)` adds back sections an earlier load did not know.
 
@@ -65,7 +73,7 @@ app.register_save_section(
 | Case | Result |
 | --- | --- |
 | Version as registered | Read leniently: unknown fields are skipped and listed in `skipped` as `name: path`; missing ones take the struct's defaults |
-| Older version | Its migrations run in order on the raw value, then it is read leniently |
+| Older version | Its migrations run in order, each reading the old struct leniently; the fields each read skips are listed in `skipped` |
 | Older version with a migration missing | `NoMigration` |
 | A migration fails | `Migration` |
 | Newer version, or a newer container format | `NewerVersion`, `NewerFormat` |
@@ -73,7 +81,7 @@ app.register_save_section(
 | A section no system registers | Kept in `unknown`, verbatim, for a later `keep` |
 
 `SectionError::kind()` gives a stable name for each: `newer_version`, `migration_failed`,
-`unreadable`, `serialize_failed`.
+`unreadable`, `serialize_failed`, `capture_failed`.
 
 ## Wall clock
 

@@ -3231,7 +3231,6 @@ dependencies = [
  "ron",
  "schemars",
  "serde",
- "serde_ignored",
  "serde_json",
  "sysinfo",
  "tempfile",

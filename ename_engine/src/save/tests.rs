@@ -1,6 +1,19 @@
-use ron::Map;
-
 use super::*;
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+enum Mode {
+    #[default]
+    Full,
+    Stopped,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum Source {
+    Catalog(String),
+    User(String),
+}
 
 #[derive(Resource, Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 #[serde(default)]
@@ -8,13 +21,42 @@ struct Ship {
     name: String,
     gas_kg: f64,
     seed: u64,
+    mode: Mode,
+    source: Option<Source>,
+}
+
+/// Version 1 of `ship`: the gas was `gas`, in grams.
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct ShipV1 {
+    name: String,
+    gas: f64,
+    mode: Mode,
+    source: Option<Source>,
+}
+
+/// Version 2 of `ship`: the gas was `gas_g`.
+#[derive(Serialize, Deserialize, Default)]
+#[serde(default)]
+struct ShipV2 {
+    name: String,
+    gas_g: f64,
+    mode: Mode,
+    source: Option<Source>,
 }
 
 #[derive(Resource, Default)]
 struct Applied(Vec<&'static str>);
 
-fn capture_ship(world: &mut World) -> Option<Ship> {
-    world.get_resource::<Ship>().cloned()
+/// Fails when the world holds `FailCapture`.
+#[derive(Resource)]
+struct FailCapture;
+
+fn capture_ship(world: &mut World) -> Result<Option<Ship>, String> {
+    if world.contains_resource::<FailCapture>() {
+        return Err("the ship is gone".into());
+    }
+    Ok(world.get_resource::<Ship>().cloned())
 }
 
 fn apply_ship(world: &mut World, ship: Ship, report: &mut Vec<String>) {
@@ -26,8 +68,8 @@ fn apply_ship(world: &mut World, ship: Ship, report: &mut Vec<String>) {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 struct Clock(f64);
 
-fn capture_clock(world: &mut World) -> Option<Clock> {
-    world.get_resource::<Time>().map(|_| Clock(12.5))
+fn capture_clock(world: &mut World) -> Result<Option<Clock>, String> {
+    Ok(world.get_resource::<Time>().map(|_| Clock(12.5)))
 }
 
 fn apply_clock(world: &mut World, _: Clock, _: &mut Vec<String>) {
@@ -48,34 +90,26 @@ fn app() -> App {
     app
 }
 
-fn fields(value: Value) -> Result<Map, String> {
-    match value {
-        Value::Map(map) => Ok(map),
-        other => Err(format!("not a struct: {other:?}")),
-    }
+fn rename_gas(old: ShipV1) -> Result<ShipV2, String> {
+    Ok(ShipV2 {
+        name: old.name,
+        gas_g: old.gas,
+        mode: old.mode,
+        source: old.source,
+    })
 }
 
-fn rename_gas(value: Value) -> Result<Value, String> {
-    let mut map = fields(value)?;
-    if let Some(gas) = map.remove(&Value::String("gas".into())) {
-        map.insert(Value::String("gas_g".into()), gas);
+fn grams_to_kg(old: ShipV2) -> Result<Ship, String> {
+    if old.gas_g < 0.0 {
+        return Err("negative gas".into());
     }
-    Ok(Value::Map(map))
-}
-
-fn grams_to_kg(value: Value) -> Result<Value, String> {
-    let mut map = fields(value)?;
-    let grams = map
-        .remove(&Value::String("gas_g".into()))
-        .ok_or("no gas_g")?;
-    let Value::Number(grams) = grams else {
-        return Err("gas_g is no number".into());
-    };
-    map.insert(
-        Value::String("gas_kg".into()),
-        Value::from(grams.into_f64() / 1000.0),
-    );
-    Ok(Value::Map(map))
+    Ok(Ship {
+        name: old.name,
+        gas_kg: old.gas_g / 1000.0,
+        seed: 0,
+        mode: old.mode,
+        source: old.source,
+    })
 }
 
 fn saved(text: &str) -> SavedSections {
@@ -89,9 +123,12 @@ fn sections_round_trip_through_ron() {
         name: "Skiff".into(),
         gas_kg: 812.25,
         seed: u64::MAX - 3,
+        mode: Mode::Stopped,
+        source: Some(Source::User("mine".into())),
     };
     app.world_mut().insert_resource(ship.clone());
     let text = capture_sections(app.world_mut())
+        .unwrap()
         .serialize()
         .unwrap()
         .to_ron()
@@ -112,7 +149,10 @@ fn sections_round_trip_through_ron() {
 fn sections_apply_in_registration_order() {
     let mut app = app();
     app.world_mut().insert_resource(Ship::default());
-    let sections = capture_sections(app.world_mut()).serialize().unwrap();
+    let sections = capture_sections(app.world_mut())
+        .unwrap()
+        .serialize()
+        .unwrap();
     // Stored by name, so `clock` comes first in the file.
     assert_eq!(
         sections.sections.keys().collect::<Vec<_>>(),
@@ -126,8 +166,26 @@ fn sections_apply_in_registration_order() {
 #[test]
 fn a_capture_without_a_value_saves_no_section() {
     let mut app = app();
-    let sections = capture_sections(app.world_mut()).serialize().unwrap();
+    let sections = capture_sections(app.world_mut())
+        .unwrap()
+        .serialize()
+        .unwrap();
     assert_eq!(sections.sections.keys().collect::<Vec<_>>(), ["clock"]);
+}
+
+#[test]
+fn a_failed_capture_fails_the_whole() {
+    let mut app = app();
+    app.world_mut().insert_resource(FailCapture);
+    let error = capture_sections(app.world_mut()).unwrap_err();
+    assert_eq!(
+        error,
+        SectionError::Capture {
+            section: "ship".into(),
+            message: "the ship is gone".into()
+        }
+    );
+    assert_eq!(error.kind(), "capture_failed");
 }
 
 #[test]
@@ -140,7 +198,7 @@ fn older_versions_migrate_in_order() {
         Some(&Ship {
             name: "Old".into(),
             gas_kg: 1.5,
-            seed: 0
+            ..default()
         })
     );
     let v2 = r#"(format: 1, sections: {"ship": (version: 2, value: (name: "Mid", gas_g: 250.0))})"#;
@@ -149,9 +207,22 @@ fn older_versions_migrate_in_order() {
 }
 
 #[test]
+fn enum_variants_survive_a_migration() {
+    let app = app();
+    let v1 = r#"(format: 1, sections: {"ship": (version: 1, value: (
+        name: "Old", gas: 2000.0, mode: stopped, source: Some(catalog("core::hard")),
+    ))})"#;
+    let checked = check_sections(app.world(), &saved(v1)).unwrap();
+    let ship = checked.get::<Ship>("ship").unwrap();
+    assert_eq!(ship.mode, Mode::Stopped);
+    assert_eq!(ship.source, Some(Source::Catalog("core::hard".into())));
+    assert_eq!(ship.gas_kg, 2.0);
+}
+
+#[test]
 fn a_failed_migration_refuses_the_save() {
     let app = app();
-    let text = r#"(format: 1, sections: {"ship": (version: 2, value: (name: "Mid"))})"#;
+    let text = r#"(format: 1, sections: {"ship": (version: 2, value: (gas_g: -1.0))})"#;
     let error = check_sections(app.world(), &saved(text)).unwrap_err();
     assert!(
         matches!(&error, SectionError::Migration { section, from: 2, .. } if section == "ship"),
@@ -236,7 +307,10 @@ fn unknown_sections_are_kept_and_written_back() {
         ["cargo"],
         "{checked:?}"
     );
-    let mut next = capture_sections(app.world_mut()).serialize().unwrap();
+    let mut next = capture_sections(app.world_mut())
+        .unwrap()
+        .serialize()
+        .unwrap();
     next.keep(&checked.unknown);
     let text = next.to_ron().unwrap();
     let again = saved(&text);

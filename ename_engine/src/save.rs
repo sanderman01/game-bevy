@@ -6,8 +6,9 @@
 //! captures every section in one frame; [`CapturedSections::serialize`] turns them into
 //! [`SavedSections`] (RON, one raw value per section), off the main thread if the caller likes.
 //! [`check_sections`] reads saved sections into their structs, running migrations, before
-//! anything changes; [`apply_sections`] then applies them in registration order. A section no
-//! registered system knows is kept, so a game can write it back.
+//! anything changes; [`apply_sections`] then applies them in registration order, so a game
+//! registers sections in the order they depend on each other. Apply cannot fail and nothing rolls
+//! back. A section no registered system knows is kept, so a game can write it back.
 //!
 //! Where the bytes go is the game's: a record in user storage, say.
 
@@ -15,7 +16,7 @@ use std::{any::Any, collections::BTreeMap, fmt};
 
 use bevy::prelude::*;
 use ename_asset_content::ron_from_bytes_lenient;
-use ron::{Value, ser::PrettyConfig, value::RawValue};
+use ron::{ser::PrettyConfig, value::RawValue};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// The format of [`SavedSections`] this engine writes, and the newest it reads.
@@ -121,6 +122,8 @@ pub enum SectionError {
     Invalid { section: String, message: String },
     #[error("the sections do not serialize: {0}")]
     Serialize(String),
+    #[error("the section `{section}` cannot be captured: {message}")]
+    Capture { section: String, message: String },
 }
 
 impl SectionError {
@@ -130,29 +133,34 @@ impl SectionError {
             Self::NewerFormat { .. } | Self::NewerVersion { .. } => "newer_version",
             Self::NoMigration { .. } | Self::Migration { .. } => "migration_failed",
             Self::Serialize(_) => "serialize_failed",
+            Self::Capture { .. } => "capture_failed",
             Self::NoFormat | Self::Unreadable(_) | Self::Invalid { .. } => "unreadable",
         }
     }
 }
 
-/// Turns a value of version `from` into one of version `from + 1`.
-pub type Migration = fn(Value) -> Result<Value, String>;
+/// Turns the RON of a section at one version into the RON of the next, with the fields the read
+/// of the old version skipped.
+type MigrateFn =
+    Box<dyn Fn(&str, &str) -> Result<(String, Vec<String>), SectionError> + Send + Sync>;
 
 /// A section to register: its `name`, its current `version` (1 or more), how to `capture` it
-/// (`None` saves no section) and how to `apply` it, adding lines to a report for the player.
+/// (`Ok(None)` saves no section, `Err` fails the save) and how to `apply` it, adding lines to a
+/// report for the player. Apply cannot fail and nothing rolls back: whatever can refuse a save is
+/// checked by [`check_sections`] before anything changes.
 pub struct SaveSection<T> {
     name: &'static str,
     version: u32,
-    capture: fn(&mut World) -> Option<T>,
+    capture: fn(&mut World) -> Result<Option<T>, String>,
     apply: fn(&mut World, T, &mut Vec<String>),
-    migrations: BTreeMap<u32, Migration>,
+    migrations: BTreeMap<u32, MigrateFn>,
 }
 
 impl<T> SaveSection<T> {
     pub fn new(
         name: &'static str,
         version: u32,
-        capture: fn(&mut World) -> Option<T>,
+        capture: fn(&mut World) -> Result<Option<T>, String>,
         apply: fn(&mut World, T, &mut Vec<String>),
     ) -> Self {
         Self {
@@ -164,16 +172,42 @@ impl<T> SaveSection<T> {
         }
     }
 
-    /// Adds the migration from version `from` to `from + 1`.
-    pub fn migration(mut self, from: u32, migrate: Migration) -> Self {
+    /// Adds the migration from version `from` to `from + 1`: `Old` is the section's struct at
+    /// `from`, read leniently from the saved RON, and `Next` the one at `from + 1`. Typed, not a
+    /// `ron::Value`, which loses enum variant names.
+    pub fn migration<Old, Next>(
+        mut self,
+        from: u32,
+        migrate: fn(Old) -> Result<Next, String>,
+    ) -> Self
+    where
+        Old: DeserializeOwned + 'static,
+        Next: Serialize + 'static,
+    {
         assert!(
             from >= 1 && from < self.version,
             "section `{}`: a migration from version {from} to a section at version {}",
             self.name,
             self.version
         );
+        let step: MigrateFn = Box::new(move |name, text| {
+            let (old, skipped) =
+                ron_from_bytes_lenient::<Old>(text.as_bytes(), &ron::Options::default()).map_err(
+                    |err| SectionError::Invalid {
+                        section: name.to_owned(),
+                        message: format!("as version {from}: {err}"),
+                    },
+                )?;
+            let failed = |message| SectionError::Migration {
+                section: name.to_owned(),
+                from,
+                message,
+            };
+            let next = migrate(old).map_err(failed)?;
+            Ok((to_line(&next).map_err(failed)?, skipped))
+        });
         assert!(
-            self.migrations.insert(from, migrate).is_none(),
+            self.migrations.insert(from, step).is_none(),
             "section `{}`: two migrations from version {from}",
             self.name
         );
@@ -183,7 +217,7 @@ impl<T> SaveSection<T> {
 
 type Serializer = Box<dyn FnOnce() -> Result<Box<RawValue>, String> + Send>;
 type Checked = Box<dyn Any + Send + Sync>;
-type CaptureFn = Box<dyn Fn(&mut World) -> Option<Serializer> + Send + Sync>;
+type CaptureFn = Box<dyn Fn(&mut World) -> Result<Option<Serializer>, String> + Send + Sync>;
 type CheckFn =
     Box<dyn Fn(&SavedSection) -> Result<(Checked, Vec<String>), SectionError> + Send + Sync>;
 type ApplyFn = Box<dyn Fn(&mut World, Checked, &mut Vec<String>) + Send + Sync>;
@@ -226,8 +260,7 @@ impl SaveSectionsAppExt for App {
             name,
             version,
             capture: Box::new(move |world| {
-                let value = capture(world)?;
-                Some(Box::new(move || to_raw(&value)) as Serializer)
+                Ok(capture(world)?.map(|value| Box::new(move || to_raw(&value)) as Serializer))
             }),
             check: Box::new(move |saved| {
                 let (value, unknown) = read_section::<T>(name, version, &migrations, saved)?;
@@ -252,13 +285,16 @@ impl SaveSectionsAppExt for App {
 }
 
 /// One line per section: `(location: (1.0, 2.0), name: "a")`.
-fn to_raw<T: Serialize>(value: &T) -> Result<Box<RawValue>, String> {
+fn to_line<T: Serialize>(value: &T) -> Result<String, String> {
     let config = PrettyConfig::new()
         .compact_structs(true)
         .compact_maps(true)
         .compact_arrays(true);
-    let text = ron::ser::to_string_pretty(value, config).map_err(|err| err.to_string())?;
-    RawValue::from_boxed_ron(text.into_boxed_str()).map_err(|err| err.to_string())
+    ron::ser::to_string_pretty(value, config).map_err(|err| err.to_string())
+}
+
+fn to_raw<T: Serialize>(value: &T) -> Result<Box<RawValue>, String> {
+    RawValue::from_boxed_ron(to_line(value)?.into_boxed_str()).map_err(|err| err.to_string())
 }
 
 /// Reads `saved` into the current version of `T`, migrating an older one, leniently: the fields
@@ -266,7 +302,7 @@ fn to_raw<T: Serialize>(value: &T) -> Result<Box<RawValue>, String> {
 fn read_section<T: DeserializeOwned>(
     name: &str,
     version: u32,
-    migrations: &BTreeMap<u32, Migration>,
+    migrations: &BTreeMap<u32, MigrateFn>,
     saved: &SavedSection,
 ) -> Result<(T, Vec<String>), SectionError> {
     let invalid = |message: String| SectionError::Invalid {
@@ -287,10 +323,8 @@ fn read_section<T: DeserializeOwned>(
                 .map_err(|err| invalid(err.to_string()))?
         }
         found => {
-            let mut value: Value = saved
-                .value
-                .into_rust()
-                .map_err(|err| invalid(err.to_string()))?;
+            let mut text = saved.value.get_ron().to_owned();
+            let mut unknown = Vec::new();
             for from in found..version {
                 let migrate = migrations
                     .get(&from)
@@ -298,15 +332,14 @@ fn read_section<T: DeserializeOwned>(
                         section: name.to_owned(),
                         from,
                     })?;
-                value = migrate(value).map_err(|message| SectionError::Migration {
-                    section: name.to_owned(),
-                    from,
-                    message,
-                })?;
+                let (next, skipped) = migrate(name, &text)?;
+                text = next;
+                unknown.extend(skipped);
             }
-            let mut unknown = Vec::new();
-            let value = serde_ignored::deserialize(value, |path| unknown.push(path.to_string()))
-                .map_err(|err: ron::Error| invalid(err.to_string()))?;
+            let (value, skipped) =
+                ron_from_bytes_lenient(text.as_bytes(), &ron::Options::default())
+                    .map_err(|err| invalid(err.to_string()))?;
+            unknown.extend(skipped);
             (value, unknown)
         }
     };
@@ -343,17 +376,22 @@ impl CapturedSections {
     }
 }
 
-/// Captures every registered section, in one go. A capture that gives `None` saves no section.
-pub fn capture_sections(world: &mut World) -> CapturedSections {
+/// Captures every registered section, in one go. A capture that gives `None` saves no section;
+/// one that fails fails the whole, so a save is never written without a section it needs.
+pub fn capture_sections(world: &mut World) -> Result<CapturedSections, SectionError> {
     world.init_resource::<SaveSections>();
     world.resource_scope(|world, sections: Mut<SaveSections>| {
-        CapturedSections(
-            sections
-                .0
-                .iter()
-                .filter_map(|entry| Some((entry.name, entry.version, (entry.capture)(world)?)))
-                .collect(),
-        )
+        let mut captured = Vec::new();
+        for entry in &sections.0 {
+            let serializer = (entry.capture)(world).map_err(|message| SectionError::Capture {
+                section: entry.name.to_owned(),
+                message,
+            })?;
+            if let Some(serializer) = serializer {
+                captured.push((entry.name, entry.version, serializer));
+            }
+        }
+        Ok(CapturedSections(captured))
     })
 }
 
