@@ -1,0 +1,24 @@
+docs/user-storage.md
+  s_0a3f8eb77a8294::t_eb8a98ce034ec2 43
+  s_0a3f8eb77a8294::t_b412d082680436 35
+  s_0a3f8eb77a8294::t_c0c2cf86e224c2 41-42
+  s_0a3f8eb77a8294::t_ca41b60d74a9f4 28,49-54,57,78-82,95-101,110-117,121-125,129-140,144-150,159-164,166-172,176-178,183-186,189-199
+docs/design/crate-layout.md
+  s_0a3f8eb77a8294::t_18b665af028502 33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d9eaf9e8d9329b75dfbc1585e3c7a5fd4a5ef340",
+  "prompts": {},
+  "sessions": {
+    "s_0a3f8eb77a8294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "800cc546-8045-488b-88c8-b2833b144bf5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
