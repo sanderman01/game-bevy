@@ -3273,6 +3273,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ename_storage"
+version = "0.0.0"
+dependencies = [
+ "async-lock",
+ "bevy",
+ "blocking",
+ "futures-lite",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
 name = "ename_xtask"
 version = "0.0.0"
 dependencies = [

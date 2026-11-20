@@ -1,0 +1,37 @@
+[package]
+name = "ename_storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# For the filesystem backend, which the browser does not have. Locks a thread can wait on: the
+# store's reader/commit lock. Already in `Cargo.lock` via Bevy.
+async-lock.workspace = true
+# Runs the backend's blocking file io off the caller's thread. Already in `Cargo.lock` via Bevy.
+blocking.workspace = true
+
+[features]
+default = ["bevy"]
+# `StoragePlugin`, the `UserStorage` resource and `StorageTask`. Off for a tool or a backend crate
+# that only implements the trait.
+bevy = ["dep:bevy"]
+
+[dependencies]
+bevy = { workspace = true, optional = true }
+# `block_on` for the conformance suite. Already in `Cargo.lock` via Bevy.
+futures-lite.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[[test]]
+name = "plugin"
+required-features = ["bevy"]
+
+[lints]
+workspace = true
