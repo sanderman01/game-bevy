@@ -30,7 +30,7 @@ ename_engine                  -> ename_application, ename_asset_content, ename_s
                                  big_space, serde, schemars
 ename_application             -> dirs, thiserror   (no first-party deps, no bevy)
 ename_storage                 -> futures-lite, thiserror, tracing   (no first-party deps)
-                                 + async-lock, blocking, off wasm
+                                 + async-channel, async-lock, blocking, off wasm
                                  + bevy, behind the default `bevy` feature
 ename_asset_content           -> ename_asset_alias, ename_asset_package, ename_asset_vfs, async-lock, bevy,
                                  ron, serde, serde_ignored, thiserror
