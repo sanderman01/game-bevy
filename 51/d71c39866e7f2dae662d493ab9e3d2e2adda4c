@@ -1,0 +1,60 @@
+ename_storage/src/fs/mod.rs
+  s_0a3f8eb77a8294::t_a57b6559766ec6 13-14,16-17,22,24,30-35,40-47,50-51,53-54,59-60,64,67-69,72,76-85,94-95,98,100,106,108-122,126-147,151-186,191-228,232-234,240,245-263,268-282,297-299,305,307,310-312,331-333,337,346-347,352-364,366,370-377,379-384,386,399-402,406-407,414,416,425,427,436-437,441-459
+  s_0a3f8eb77a8294::t_f2708db9b27da0 378
+ename_storage/Cargo.toml
+  s_0a3f8eb77a8294::t_1983cfec2917d0 10-14
+  s_0a3f8eb77a8294::t_86c2b04901d88d 16
+ename_storage/src/plugin.rs
+  s_0a3f8eb77a8294::t_27c8791cab1a74 53-81
+ename_storage/src/memory.rs
+  s_0a3f8eb77a8294::t_2f353e341935bb 125-128
+  s_0a3f8eb77a8294::t_23dc890c547c9d 17-18
+ename_storage/tests/plugin.rs
+  s_0a3f8eb77a8294::t_f242d62ceb2aca 69-90
+ename_storage/src/fs/journal.rs
+  s_0a3f8eb77a8294::t_f8c8074ef60005 10,13
+  s_0a3f8eb77a8294::t_c9f2755dccc671 173-212,216,219,231-234,242-246,251-254,267,270-272,302-309,314-315,321,356-357,422-423,429,431,463-473
+ename_storage/src/fault.rs
+  s_0a3f8eb77a8294::t_07087684ed2de6 160-172
+  s_0a3f8eb77a8294::t_bc25cbb3a3de6d 11-12
+  s_0a3f8eb77a8294::t_5cde495271c116 77,81-82,84-90,97-106,119,121-136
+ename_storage/src/backend.rs
+  s_0a3f8eb77a8294::t_6b39dbb7a5f49c 26,30-32,38-42
+  s_0a3f8eb77a8294::t_ba1ec3ecbcd949 106-108
+  s_0a3f8eb77a8294::t_b90377bd372656 276-291
+  s_0a3f8eb77a8294::t_d242c3497405b6 64-65,67-69
+  s_0a3f8eb77a8294::t_e5ecdd5d20a8dd 133-137,141,144-145
+  s_0a3f8eb77a8294::t_1c83c537d14bbc 138-140,142-143
+ename_storage/src/storage.rs
+  s_0a3f8eb77a8294::t_38f27de181c85a 41-46
+  s_0a3f8eb77a8294::t_449e75d97063fe 133-135
+ename_storage/src/conformance.rs
+  s_0a3f8eb77a8294::t_bf874844f7815e 455,458
+  s_0a3f8eb77a8294::t_32895428424c72 506-719
+  s_0a3f8eb77a8294::t_1c6d3384229aff 442-443
+  s_0a3f8eb77a8294::t_5ee40ee4aac546 93-100,105-112
+  s_0a3f8eb77a8294::t_b964acfc125a43 720-723
+ename_storage/src/fs/tests.rs
+  s_0a3f8eb77a8294::t_0ee1ae2ad83c27 42-47,50-51,53-95,98-117,119-126,128
+  s_0a3f8eb77a8294::t_832cedb40ca56f 118
+  s_0a3f8eb77a8294::t_75fa9ac6c5a5cd 96-97
+  s_0a3f8eb77a8294::t_484310b8772453 127,129
+Cargo.lock
+  s_0a3f8eb77a8294::t_909b6084558990 3280
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "51d71c39866e7f2dae662d493ab9e3d2e2adda4c",
+  "prompts": {},
+  "sessions": {
+    "s_0a3f8eb77a8294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "800cc546-8045-488b-88c8-b2833b144bf5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
