@@ -10,8 +10,8 @@ use std::process::Command;
 fn moves_the_asset_and_both_sidecars_without_git() {
     let dir = support::copy_fixture("mv_source");
     let root = dir.path();
-    let from = root.join("basegame/core/ships/airship.glb");
-    let to = root.join("basegame/core/ships/warship.glb");
+    let from = root.join("game/core/ships/airship.glb");
+    let to = root.join("game/core/ships/warship.glb");
 
     let moved = mv(root, &from, &to).expect("the asset exists");
     assert_eq!(moved.len(), 3, "the asset plus its .meta and .alias");
@@ -19,20 +19,20 @@ fn moves_the_asset_and_both_sidecars_without_git() {
 
     assert!(!from.exists());
     assert!(to.exists());
-    assert!(root.join("basegame/core/ships/warship.glb.meta").exists());
-    assert!(root.join("basegame/core/ships/warship.glb.alias").exists());
-    assert!(!root.join("basegame/core/ships/airship.glb.meta").exists());
-    assert!(!root.join("basegame/core/ships/airship.glb.alias").exists());
+    assert!(root.join("game/core/ships/warship.glb.meta").exists());
+    assert!(root.join("game/core/ships/warship.glb.alias").exists());
+    assert!(!root.join("game/core/ships/airship.glb.meta").exists());
+    assert!(!root.join("game/core/ships/airship.glb.alias").exists());
 }
 
 #[test]
 fn a_missing_sidecar_is_skipped_without_error() {
     let dir = support::copy_fixture("mv_source");
     let root = dir.path();
-    std::fs::remove_file(root.join("basegame/core/ships/airship.glb.meta")).unwrap();
+    std::fs::remove_file(root.join("game/core/ships/airship.glb.meta")).unwrap();
 
-    let from = root.join("basegame/core/ships/airship.glb");
-    let to = root.join("basegame/core/ships/warship.glb");
+    let from = root.join("game/core/ships/airship.glb");
+    let to = root.join("game/core/ships/warship.glb");
     let moved = mv(root, &from, &to).expect("the asset exists");
 
     assert_eq!(
@@ -40,17 +40,17 @@ fn a_missing_sidecar_is_skipped_without_error() {
         2,
         "only the asset and the .alias, the .meta never existed"
     );
-    assert!(!root.join("basegame/core/ships/warship.glb.meta").exists());
+    assert!(!root.join("game/core/ships/warship.glb.meta").exists());
 }
 
 #[test]
 fn a_license_sidecar_moves_with_the_asset() {
     let dir = support::copy_fixture("mv_source");
     let root = dir.path();
-    std::fs::write(root.join("basegame/core/ships/airship.glb.license"), "").unwrap();
+    std::fs::write(root.join("game/core/ships/airship.glb.license"), "").unwrap();
 
-    let from = root.join("basegame/core/ships/airship.glb");
-    let to = root.join("basegame/core/ships/warship.glb");
+    let from = root.join("game/core/ships/airship.glb");
+    let to = root.join("game/core/ships/warship.glb");
     let moved = mv(root, &from, &to).expect("the asset exists");
 
     assert_eq!(
@@ -58,23 +58,16 @@ fn a_license_sidecar_moves_with_the_asset() {
         4,
         "the asset plus its .meta, .alias and .license"
     );
-    assert!(
-        root.join("basegame/core/ships/warship.glb.license")
-            .exists()
-    );
-    assert!(
-        !root
-            .join("basegame/core/ships/airship.glb.license")
-            .exists()
-    );
+    assert!(root.join("game/core/ships/warship.glb.license").exists());
+    assert!(!root.join("game/core/ships/airship.glb.license").exists());
 }
 
 #[test]
 fn a_missing_source_asset_is_an_error() {
     let dir = support::copy_fixture("mv_source");
     let root = dir.path();
-    let from = root.join("basegame/core/ships/does_not_exist.glb");
-    let to = root.join("basegame/core/ships/warship.glb");
+    let from = root.join("game/core/ships/does_not_exist.glb");
+    let to = root.join("game/core/ships/warship.glb");
     assert!(mv(root, &from, &to).is_err());
 }
 
@@ -85,8 +78,8 @@ fn a_missing_source_asset_is_an_error() {
 fn a_failed_rename_is_an_error_and_leaves_the_source_in_place() {
     let dir = support::copy_fixture("mv_source");
     let root = dir.path();
-    let from = root.join("basegame/core/ships/airship.glb");
-    let to = root.join("basegame/core/ships/no/such/dir/warship.glb");
+    let from = root.join("game/core/ships/airship.glb");
+    let to = root.join("game/core/ships/no/such/dir/warship.glb");
 
     assert!(mv(root, &from, &to).is_err());
     assert!(from.exists(), "nothing should be silently half-moved");
@@ -109,8 +102,8 @@ fn a_tracked_file_uses_git_mv_and_an_untracked_one_falls_back() {
             "-c",
             "user.name=Test",
             "add",
-            "basegame/core/ships/airship.glb",
-            "basegame/core/ships/airship.glb.meta",
+            "game/core/ships/airship.glb",
+            "game/core/ships/airship.glb.meta",
         ],
     );
     git(
@@ -128,8 +121,8 @@ fn a_tracked_file_uses_git_mv_and_an_untracked_one_falls_back() {
     );
     // The `.alias` is left untracked on purpose.
 
-    let from = root.join("basegame/core/ships/airship.glb");
-    let to = root.join("basegame/core/ships/warship.glb");
+    let from = root.join("game/core/ships/airship.glb");
+    let to = root.join("game/core/ships/warship.glb");
     let moved = mv(root, &from, &to).expect("the asset exists");
 
     let via_git: Vec<bool> = moved.iter().map(|m| m.via_git).collect();
@@ -145,7 +138,7 @@ fn a_tracked_file_uses_git_mv_and_an_untracked_one_falls_back() {
         "the tracked files must show as a staged rename:\n{status}"
     );
     assert!(to.exists());
-    assert!(root.join("basegame/core/ships/warship.glb.alias").exists());
+    assert!(root.join("game/core/ships/warship.glb.alias").exists());
 }
 
 /// Regression test for a bug where `ename_mv` handed `git mv` a *relative* `from`/`to` while also
@@ -176,8 +169,8 @@ fn a_relative_path_argument_from_the_repo_root_still_uses_git_mv() {
             "-c",
             "user.name=Test",
             "add",
-            "basegame/core/ships/airship.glb",
-            "basegame/core/ships/airship.glb.meta",
+            "game/core/ships/airship.glb",
+            "game/core/ships/airship.glb.meta",
         ],
     );
     git(
@@ -196,8 +189,8 @@ fn a_relative_path_argument_from_the_repo_root_still_uses_git_mv() {
 
     let _cwd_guard = CwdGuard::change_to(root);
 
-    let from = Path::new("basegame/core/ships/airship.glb");
-    let to = Path::new("basegame/core/ships/warship.glb");
+    let from = Path::new("game/core/ships/airship.glb");
+    let to = Path::new("game/core/ships/warship.glb");
     let moved = mv(Path::new("."), from, to).expect("the asset exists");
 
     let via_git: Vec<bool> = moved.iter().map(|m| m.via_git).collect();

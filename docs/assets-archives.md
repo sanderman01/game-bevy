@@ -6,8 +6,8 @@ Part of the [design record](design.md). See also [asset aliases](assets-aliases.
 ## What a mount is
 
 A `.zip` or `.tar` file in the asset tree reads as a directory named without its extension.
-`assets/basegame/core.zip` serves `basegame/core/abc.txt` exactly as a loose
-`assets/basegame/core/abc.txt` would. Aliases, packages, folder rules, sidecars and `.meta` are
+`assets/game/core.zip` serves `game/core/abc.txt` exactly as a loose
+`assets/game/core/abc.txt` would. Aliases, packages, folder rules, sidecars and `.meta` are
 unaware of the difference.
 
 - Formats: `.zip` (Stored and Deflate members) and plain `.tar`, each behind its own cargo
@@ -15,8 +15,8 @@ unaware of the difference.
 - Only a regular file whose name ends exactly in `.zip` or `.tar` mounts. `core.ZIP` is an
   ordinary file on every platform, and so is a directory named `x.zip`.
 - A mount may sit at any depth. A `.zip` or `.tar` inside an archive is an ordinary file.
-- Only the logical path is valid. `basegame/core.zip/abc.txt` is not a second spelling of
-  `basegame/core/abc.txt`; two spellings would give two handles.
+- Only the logical path is valid. `game/core.zip/abc.txt` is not a second spelling of
+  `game/core/abc.txt`; two spellings would give two handles.
 - Member paths map directly under the mount. A zip whose single top-level folder is `core/`
   yields `core/core/...`; that gets a hint in the log, not a problem.
 - Archives are read-only and immutable while the game runs. Changing one needs a restart.

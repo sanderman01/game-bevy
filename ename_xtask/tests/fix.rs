@@ -9,14 +9,14 @@ fn it_creates_a_sidecar_for_a_bulk_asset_and_assigns_the_missing_guid() {
     let dir = support::copy_fixture("basic");
     let root = dir.path();
 
-    let summary = fix(root, &["basegame".to_owned()], None);
+    let summary = fix(root, &["game".to_owned()], None);
     assert_eq!(summary.created, 1, "barrel.png had no sidecar at all");
     assert_eq!(
         summary.guids_assigned, 1,
         "crate.png.alias existed but had no guid"
     );
 
-    let barrel_alias = root.join("basegame/core/props/barrel.png.alias");
+    let barrel_alias = root.join("game/core/props/barrel.png.alias");
     assert!(barrel_alias.exists());
     let text = std::fs::read_to_string(&barrel_alias).unwrap();
     let file: ename_asset_alias::AliasFile = toml::from_str(&text).unwrap();
@@ -24,7 +24,7 @@ fn it_creates_a_sidecar_for_a_bulk_asset_and_assigns_the_missing_guid() {
     assert_eq!(file.alias_origin, ename_asset_alias::AliasOrigin::Derived);
     assert!(file.guid.is_some());
 
-    let crate_alias = root.join("basegame/core/props/crate.png.alias");
+    let crate_alias = root.join("game/core/props/crate.png.alias");
     let text = std::fs::read_to_string(&crate_alias).unwrap();
     let file: ename_asset_alias::AliasFile = toml::from_str(&text).unwrap();
     assert_eq!(
@@ -39,10 +39,10 @@ fn it_creates_a_sidecar_for_a_bulk_asset_and_assigns_the_missing_guid() {
 fn it_never_rewrites_a_sidecar_that_already_has_a_guid() {
     let dir = support::copy_fixture("basic");
     let root = dir.path();
-    let ship_alias = root.join("basegame/core/ships/airship.glb.alias");
+    let ship_alias = root.join("game/core/ships/airship.glb.alias");
     let before = std::fs::read_to_string(&ship_alias).unwrap();
 
-    fix(root, &["basegame".to_owned()], None);
+    fix(root, &["game".to_owned()], None);
 
     let after = std::fs::read_to_string(&ship_alias).unwrap();
     assert_eq!(
@@ -61,7 +61,7 @@ fn a_write_failure_is_counted_and_does_not_claim_success() {
 
     let dir = support::copy_fixture("basic");
     let root = dir.path();
-    let crate_alias = root.join("basegame/core/props/crate.png.alias");
+    let crate_alias = root.join("game/core/props/crate.png.alias");
 
     // `crate.png.alias` already exists and is missing only its guid, so `fix` takes the
     // rewrite-in-place path for it; stripping the owner's write bit makes that specific write
@@ -70,7 +70,7 @@ fn a_write_failure_is_counted_and_does_not_claim_success() {
     perms.set_mode(0o444);
     std::fs::set_permissions(&crate_alias, perms.clone()).unwrap();
 
-    let summary = fix(root, &["basegame".to_owned()], None);
+    let summary = fix(root, &["game".to_owned()], None);
 
     // Restore write permission so the `TempDir` can clean itself up without complaint.
     perms.set_mode(0o644);
@@ -101,10 +101,10 @@ fn running_fix_twice_is_a_no_op_the_second_time() {
     let dir = support::copy_fixture("basic");
     let root = dir.path();
 
-    let first = fix(root, &["basegame".to_owned()], None);
+    let first = fix(root, &["game".to_owned()], None);
     assert_eq!(first.created + first.guids_assigned, 2);
 
-    let second = fix(root, &["basegame".to_owned()], None);
+    let second = fix(root, &["game".to_owned()], None);
     assert_eq!(
         second,
         ename_xtask::fix::FixSummary::default(),
@@ -120,20 +120,20 @@ fn it_creates_sidecars_under_the_package_id_when_no_rules_file_covers_the_packag
     let dir = support::copy_fixture("no_rules");
     let root = dir.path();
 
-    let summary = fix(root, &["basegame".to_owned()], None);
+    let summary = fix(root, &["game".to_owned()], None);
     assert_eq!(
         summary.created, 2,
         "both airship.glb and map.glb had no sidecar and no rule at all"
     );
 
-    let airship = root.join("basegame/core/airship.glb.alias");
+    let airship = root.join("game/core/airship.glb.alias");
     let text = std::fs::read_to_string(&airship).unwrap();
     let file: ename_asset_alias::AliasFile = toml::from_str(&text).unwrap();
     assert_eq!(file.alias.as_deref(), Some("core::airship"));
     assert_eq!(file.alias_origin, ename_asset_alias::AliasOrigin::Derived);
     assert!(file.guid.is_some());
 
-    let map = root.join("basegame/core/map.glb.alias");
+    let map = root.join("game/core/map.glb.alias");
     let text = std::fs::read_to_string(&map).unwrap();
     let file: ename_asset_alias::AliasFile = toml::from_str(&text).unwrap();
     assert_eq!(file.alias.as_deref(), Some("core::map"));

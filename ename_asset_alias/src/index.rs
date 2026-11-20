@@ -286,11 +286,11 @@ mod tests {
     fn resolves_an_inserted_alias() {
         let mut index = ContentIndex::default();
         index
-            .insert("core::airship", "basegame/core/airship.glb")
+            .insert("core::airship", "game/core/airship.glb")
             .unwrap();
         assert_eq!(
             index.resolve("core::airship"),
-            Some(Path::new("basegame/core/airship.glb"))
+            Some(Path::new("game/core/airship.glb"))
         );
         assert_eq!(index.resolve("core::missing"), None);
         assert_eq!(index.len(), 1);
@@ -302,14 +302,14 @@ mod tests {
     fn insert_replaces_and_returns_the_previous_path() {
         let mut index = ContentIndex::default();
         index
-            .insert("core::airship", "basegame/core/airship.glb")
+            .insert("core::airship", "game/core/airship.glb")
             .unwrap();
         let previous = index
             .insert("core::airship", "mods/bigships/airship.glb")
             .unwrap();
         assert_eq!(
             previous.as_deref(),
-            Some(Path::new("basegame/core/airship.glb"))
+            Some(Path::new("game/core/airship.glb"))
         );
         assert_eq!(
             index.resolve("core::airship"),
@@ -332,15 +332,15 @@ mod tests {
         let entries = [
             (
                 "islandmap::height_L8_0_0",
-                "basegame/islandmap/height/L8/height_L8_0_0.png",
+                "game/islandmap/height/L8/height_L8_0_0.png",
             ),
             (
                 "islandmap::height_L8_1_0",
-                "basegame/islandmap/height/L8/height_L8_1_0.png",
+                "game/islandmap/height/L8/height_L8_1_0.png",
             ),
-            ("core::props/barrel", "basegame/core/props/barrel.glb"),
-            ("core::sky", "basegame/core/backdrop.sky.ron"),
-            ("noprefix", "basegame/core/other.png"),
+            ("core::props/barrel", "game/core/props/barrel.glb"),
+            ("core::sky", "game/core/backdrop.sky.ron"),
+            ("noprefix", "game/core/other.png"),
         ];
         for (alias, path) in entries {
             assert_eq!(index.insert(alias, path).unwrap(), None);
@@ -362,7 +362,7 @@ mod tests {
             [
                 (
                     "core::props/barrel".to_owned(),
-                    Path::new("basegame/core/props/barrel.glb")
+                    Path::new("game/core/props/barrel.glb")
                 ),
                 (
                     "core::sky".to_owned(),
@@ -370,9 +370,9 @@ mod tests {
                 ),
                 (
                     "islandmap::height_L8_0_0".to_owned(),
-                    Path::new("basegame/islandmap/height/L8/height_L8_0_0.png")
+                    Path::new("game/islandmap/height/L8/height_L8_0_0.png")
                 ),
-                ("noprefix".to_owned(), Path::new("basegame/core/other.png")),
+                ("noprefix".to_owned(), Path::new("game/core/other.png")),
             ]
         );
         assert_eq!(index.len(), 4);
@@ -382,9 +382,9 @@ mod tests {
     #[test]
     fn a_clone_is_independent() {
         let mut index = ContentIndex::default();
-        index.insert("core::a", "basegame/core/a.png").unwrap();
+        index.insert("core::a", "game/core/a.png").unwrap();
         let copy = index.clone();
-        index.insert("core::b", "basegame/core/b.png").unwrap();
+        index.insert("core::b", "game/core/b.png").unwrap();
         assert_eq!(copy.len(), 1);
         assert_eq!(index.len(), 2);
     }
@@ -393,7 +393,7 @@ mod tests {
     fn remove_reports_whether_anything_was_there() {
         let mut index = ContentIndex::default();
         index
-            .insert("core::banana", "basegame/core/banana.glb")
+            .insert("core::banana", "game/core/banana.glb")
             .unwrap();
         assert!(index.remove("core::banana").is_some());
         assert!(index.remove("core::banana").is_none());

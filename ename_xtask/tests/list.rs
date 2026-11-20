@@ -15,7 +15,7 @@ fn fixture(name: &str) -> PathBuf {
 #[test]
 fn listing_a_clean_tree_resolves_correct_aliases() {
     let root = fixture("clean");
-    let search_paths = vec!["basegame".to_owned()];
+    let search_paths = vec!["game".to_owned()];
 
     // Scan using the public API, same as the internal scan::scan does.
     let vfs = StdVfs::new(&root);
@@ -37,7 +37,7 @@ fn listing_a_clean_tree_resolves_correct_aliases() {
         index
             .resolve("core::airship")
             .map(|p| p.to_string_lossy().to_string()),
-        Some("basegame/core/ships/airship.glb".to_string()),
+        Some("game/core/ships/airship.glb".to_string()),
         "core::airship should resolve to the airship asset"
     );
 
@@ -51,7 +51,7 @@ fn listing_a_tree_with_problems_includes_those_assets_in_the_index() {
     // `ename_check` fails it, `ename_content_list` still shows it, and that difference is the whole reason
     // the two are separate commands.
     let root = fixture("basic");
-    let search_paths = vec!["basegame".to_owned()];
+    let search_paths = vec!["game".to_owned()];
 
     // Scan using the public API, same as the internal scan::scan does.
     let vfs = StdVfs::new(&root);
@@ -73,7 +73,7 @@ fn listing_a_tree_with_problems_includes_those_assets_in_the_index() {
         index
             .resolve("core::airship")
             .map(|p| p.to_string_lossy().to_string()),
-        Some("basegame/core/ships/airship.glb".to_string()),
+        Some("game/core/ships/airship.glb".to_string()),
         "core::airship should resolve correctly"
     );
 
@@ -85,7 +85,7 @@ fn listing_a_tree_with_problems_includes_those_assets_in_the_index() {
         index
             .resolve("core::props/barrel")
             .map(|p| p.to_string_lossy().to_string()),
-        Some("basegame/core/props/barrel.png".to_string()),
+        Some("game/core/props/barrel.png".to_string()),
         "core::props/barrel should resolve to barrel.png"
     );
 
@@ -97,7 +97,7 @@ fn listing_a_tree_with_problems_includes_those_assets_in_the_index() {
         index
             .resolve("core::props/crate")
             .map(|p| p.to_string_lossy().to_string()),
-        Some("basegame/core/props/crate.png".to_string()),
+        Some("game/core/props/crate.png".to_string()),
         "core::props/crate should resolve to crate.png despite the MissingGuid problem"
     );
 

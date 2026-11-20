@@ -104,7 +104,7 @@ apart.
 
 Wherever Bevy watches the default source (the `file_watcher` feature, which `bevy/dev` turns on),
 the `alias://` source watches too. Bevy reloads by path and source, and the default source's
-watcher reports `basegame/core/sky.ron` while every handle was loaded as `alias://core::sky`, so
+watcher reports `game/core/sky.ron` while every handle was loaded as `alias://core::sky`, so
 the alias source runs a second watcher over the asset root and forwards its events renamed to
 the aliases that resolve to each file. A consumer sees the usual `AssetEvent::Modified`.
 

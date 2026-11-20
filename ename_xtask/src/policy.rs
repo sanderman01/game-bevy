@@ -15,9 +15,9 @@ use std::{fmt, path::PathBuf};
 /// own asset root.
 pub const ASSET_ROOT: &str = "assets";
 
-/// Mirrors both example binaries' `with_content_search_paths(["basegame", "mods", "examples"])`. A
+/// Mirrors both example binaries' `with_content_search_paths(["game", "mods", "examples"])`. A
 /// missing search path is only a warning, so a game without `assets/examples/` is unaffected.
-pub const SEARCH_PATHS: [&str; 3] = ["basegame", "mods", "examples"];
+pub const SEARCH_PATHS: [&str; 3] = ["game", "mods", "examples"];
 
 /// Override the example's names, for a game on this engine with its own persistent data
 /// directory. Both or neither.

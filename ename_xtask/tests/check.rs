@@ -31,17 +31,17 @@ fn content_tree() -> tempfile::TempDir {
     let root = tempfile::tempdir().unwrap();
     write(
         root.path(),
-        "basegame/core/package-info.toml",
+        "game/core/package-info.toml",
         "[package]\nid = \"core\"\nversion = \"1.0.0\"\nauthors = []\ntitle = \"Core\"\ndescription = \"\"\n",
     );
-    write(root.path(), "basegame/core/island.map.ron", "()");
+    write(root.path(), "game/core/island.map.ron", "()");
     root
 }
 
 #[test]
 fn a_missing_guid_fails_the_check() {
     let root = fixture("basic");
-    assert!(!check(&root, &["basegame".to_owned()], None, &no_kinds()));
+    assert!(!check(&root, &["game".to_owned()], None, &no_kinds()));
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn a_contested_alias_fails_the_check_even_when_declared() {
     let root = fixture("contest");
     assert!(!check(
         &root,
-        &["basegame".to_owned(), "mods".to_owned()],
+        &["game".to_owned(), "mods".to_owned()],
         None,
         &no_kinds()
     ));
@@ -58,26 +58,21 @@ fn a_contested_alias_fails_the_check_even_when_declared() {
 #[test]
 fn a_clean_tree_passes() {
     let root = fixture("clean");
-    assert!(check(&root, &["basegame".to_owned()], None, &no_kinds()));
+    assert!(check(&root, &["game".to_owned()], None, &no_kinds()));
 }
 
 #[test]
 fn a_clean_tree_with_content_passes() {
     let root = content_tree();
-    assert!(check(
-        root.path(),
-        &["basegame".to_owned()],
-        None,
-        &map_kind()
-    ));
+    assert!(check(root.path(), &["game".to_owned()], None, &map_kind()));
 }
 
 /// The alias rule cuts the stem at the first dot, so `island.png` claims `core::island` as well.
 #[test]
 fn a_duplicate_alias_of_a_content_file_fails_the_check() {
     let root = content_tree();
-    write(root.path(), "basegame/core/island.png", "");
-    let search_paths = ["basegame".to_owned()];
+    write(root.path(), "game/core/island.png", "");
+    let search_paths = ["game".to_owned()];
     assert!(!check(root.path(), &search_paths, None, &map_kind()));
 
     let (catalog, report) = scan_catalog(root.path(), &search_paths, None, &map_kind());

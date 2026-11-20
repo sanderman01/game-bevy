@@ -78,10 +78,10 @@ description = ""
     #[test]
     fn a_baked_discovery_resolves_like_a_live_scan() {
         let root = tempfile::tempdir().unwrap();
-        write(root.path(), "basegame/core/package-info.toml", MANIFEST);
-        write(root.path(), "basegame/core/props/crate.glb", "");
-        write(root.path(), "basegame/core/stage.scn.ron", "");
-        let search_paths = vec!["basegame".to_owned()];
+        write(root.path(), "game/core/package-info.toml", MANIFEST);
+        write(root.path(), "game/core/props/crate.glb", "");
+        write(root.path(), "game/core/stage.scn.ron", "");
+        let search_paths = vec!["game".to_owned()];
 
         let out = root.path().join("out/discovery.ron");
         assert_eq!(bake(root.path(), &search_paths, &out).unwrap(), 1);

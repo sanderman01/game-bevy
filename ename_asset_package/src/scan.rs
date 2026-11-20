@@ -142,7 +142,7 @@ fn portable_path(path: &mut PathBuf) {
 /// each: [`discover_packages`] then [`resolve_discovery`].
 ///
 /// A search path holds one directory per package. Package discovery does not recurse:
-/// `basegame/core` is a package, `basegame/core/props` is not. *Asset* discovery inside a package
+/// `game/core` is a package, `game/core/props` is not. *Asset* discovery inside a package
 /// does recurse, all the way down.
 ///
 /// The packages come back in the order the resolver settled on. Search path order and directory
@@ -311,15 +311,15 @@ mod tests {
         .unwrap();
         let asset = |alias: &str, origin| DiscoveredAsset {
             alias: alias.to_owned(),
-            path: PathBuf::from(format!("basegame\\core\\{alias}.png")),
+            path: PathBuf::from(format!("game\\core\\{alias}.png")),
             guid: None,
             origin,
         };
         Discovery {
             packages: vec![Package {
                 manifest,
-                root: "basegame/core".into(),
-                search_path: "basegame".into(),
+                root: "game/core".into(),
+                search_path: "game".into(),
                 assets: vec![
                     asset("core::a", AliasOrigin::Derived),
                     asset("core::b", AliasOrigin::Authored),
@@ -334,7 +334,7 @@ mod tests {
         let bytes = discovery().encode().unwrap();
         let decoded = Discovery::decode(&bytes).unwrap();
         let assets = &decoded.packages[0].assets;
-        assert_eq!(assets[0].path, Path::new("basegame/core/core::a.png"));
+        assert_eq!(assets[0].path, Path::new("game/core/core::a.png"));
         assert_eq!(assets[0].origin, AliasOrigin::Derived);
         assert_eq!(assets[1].origin, AliasOrigin::Authored);
 
@@ -353,15 +353,15 @@ mod tests {
     fn a_bake_makes_a_problems_second_path_portable() {
         let mut discovery = discovery();
         discovery.problems.push(Problem {
-            path: "basegame\\core\\a.png".into(),
+            path: "game\\core\\a.png".into(),
             kind: ProblemKind::DuplicateAlias,
             detail: String::new(),
-            other: Some("basegame\\core\\a.map.ron".into()),
+            other: Some("game\\core\\a.map.ron".into()),
         });
         let decoded = Discovery::decode(&discovery.encode().unwrap()).unwrap();
         assert_eq!(
             decoded.problems[0].other.as_deref(),
-            Some(Path::new("basegame/core/a.map.ron"))
+            Some(Path::new("game/core/a.map.ron"))
         );
     }
 

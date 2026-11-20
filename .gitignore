@@ -6,7 +6,7 @@ target/
 
 # Track the content search path directories; ignore anything else under assets/.
 assets/*
-!assets/basegame/
+!assets/game/
 !assets/examples/
 !assets/mods/
 

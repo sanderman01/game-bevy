@@ -1,7 +1,7 @@
 //! Live reload for the `alias://` source.
 //!
 //! Bevy reloads by `AssetPath` and source. The default source's watcher reports
-//! `basegame/core/x.ron`, but every handle was loaded as `alias://core::x`, so nothing matches. This
+//! `game/core/x.ron`, but every handle was loaded as `alias://core::x`, so nothing matches. This
 //! watcher runs a second platform watcher over the asset root and forwards its events renamed to
 //! the aliases that resolve to each path.
 //!

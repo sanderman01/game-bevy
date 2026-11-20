@@ -5,7 +5,7 @@ asset gets a name.
 
 ## Search paths
 
-Package search paths (`basegame`, `mods`) are game policy, not engine policy. `EnginePlugins`
+Package search paths (`game`, `mods`) are game policy, not engine policy. `EnginePlugins`
 defaults to none; each example binary's `main` passes them in with `with_content_search_paths`.
 
 `ename_asset_package` sits above the alias scan and adds the one thing it has no opinion about: an

@@ -18,7 +18,7 @@ fn main() -> AppExit {
         resolution: WindowResolution::new(1360, 710),
         ..default()
     })
-    .with_content_search_paths(["basegame", "mods", "examples"]);
+    .with_content_search_paths(["game", "mods", "examples"]);
 
     app.add_plugins(engine)
         .add_plugins(example_game_lib::GamePlugins);

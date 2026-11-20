@@ -35,7 +35,7 @@ fn zip(files: &[(&str, &[u8])]) -> Vec<u8> {
 }
 
 fn read(root: &TempDir, arg: &str) -> Result<ename_xtask::read_asset::AssetFile, ReadError> {
-    let search_paths = ["basegame".to_owned()];
+    let search_paths = ["game".to_owned()];
     read_asset(arg, &ScanPolicy::new(root.path(), &search_paths, None))
 }
 
@@ -46,7 +46,7 @@ fn a_label_or_a_drive_relative_sibling_is_refused() {
         read(&root, "core::ship#Mesh0"),
         Err(ReadError::Label(_))
     ));
-    let file = read(&root, "basegame/core/ships/ship.gltf").unwrap();
+    let file = read(&root, "game/core/ships/ship.gltf").unwrap();
     assert!(matches!(
         file.read_sibling("/etc/passwd"),
         Err(ReadError::OutsideRoot(_))
@@ -55,21 +55,21 @@ fn a_label_or_a_drive_relative_sibling_is_refused() {
 
 fn tree() -> TempDir {
     root_with(&[
-        ("basegame/core/package-info.toml", MANIFEST.as_bytes()),
-        ("basegame/core/ships/ship.gltf", b"gltf"),
+        ("game/core/package-info.toml", MANIFEST.as_bytes()),
+        ("game/core/ships/ship.gltf", b"gltf"),
         (
-            "basegame/core/ships/ship.gltf.alias",
+            "game/core/ships/ship.gltf.alias",
             b"alias = \"core::ship\"\n",
         ),
-        ("basegame/core/ships/ship_data.bin", b"bin"),
-        ("basegame/core/ships/ship.gltf.meta", b"meta"),
+        ("game/core/ships/ship_data.bin", b"bin"),
+        ("game/core/ships/ship.gltf.meta", b"meta"),
     ])
 }
 
 #[test]
 fn a_filesystem_path_reads_the_file_and_names_it_as_given() {
     let root = tree();
-    let path = root.path().join("basegame/core/ships/ship.gltf");
+    let path = root.path().join("game/core/ships/ship.gltf");
     let file = read(&root, path.to_str().unwrap()).unwrap();
     assert_eq!(file.bytes, b"gltf");
     assert_eq!(file.name(), path.display().to_string());
@@ -81,9 +81,9 @@ fn a_filesystem_path_reads_the_file_and_names_it_as_given() {
 #[test]
 fn a_path_under_the_asset_root_reads_through_the_vfs() {
     let root = tree();
-    let file = read(&root, "basegame/core/ships/ship.gltf").unwrap();
+    let file = read(&root, "game/core/ships/ship.gltf").unwrap();
     assert_eq!(file.bytes, b"gltf");
-    assert_eq!(file.name(), "basegame/core/ships/ship.gltf");
+    assert_eq!(file.name(), "game/core/ships/ship.gltf");
     assert_eq!(file.read_sibling("./ship_data.bin").unwrap(), b"bin");
     assert!(matches!(
         file.read_sibling("../../../../x"),
@@ -96,7 +96,7 @@ fn an_alias_resolves_through_the_scan() {
     let root = tree();
     let file = read(&root, "core::ship").unwrap();
     assert_eq!(file.bytes, b"gltf");
-    assert_eq!(file.name(), "basegame/core/ships/ship.gltf");
+    assert_eq!(file.name(), "game/core/ships/ship.gltf");
     assert_eq!(
         read(&root, "core::nothing").err(),
         Some(ReadError::UnknownAlias("core::nothing".into()))
@@ -110,8 +110,8 @@ fn an_asset_inside_an_archive_reads_with_its_siblings() {
         ("img/a.png", b"png"),
         ("img/a.png.meta", b"meta"),
     ]);
-    let root = root_with(&[("basegame/core.zip", &archive)]);
-    let file = read(&root, "basegame/core/img/a.png").unwrap();
+    let root = root_with(&[("game/core.zip", &archive)]);
+    let file = read(&root, "game/core/img/a.png").unwrap();
     assert_eq!(file.bytes, b"png");
     assert_eq!(file.meta().unwrap().as_deref(), Some(&b"meta"[..]));
 }
@@ -120,9 +120,9 @@ fn an_asset_inside_an_archive_reads_with_its_siblings() {
 fn a_missing_asset_is_not_found_and_a_missing_meta_is_none() {
     let root = tree();
     assert_eq!(
-        read(&root, "basegame/none.png").err(),
-        Some(ReadError::NotFound("basegame/none.png".into()))
+        read(&root, "game/none.png").err(),
+        Some(ReadError::NotFound("game/none.png".into()))
     );
-    let file = read(&root, "basegame/core/ships/ship_data.bin").unwrap();
+    let file = read(&root, "game/core/ships/ship_data.bin").unwrap();
     assert_eq!(file.meta().unwrap(), None);
 }

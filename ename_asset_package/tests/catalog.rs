@@ -12,7 +12,7 @@ use ename_asset_vfs::StdVfs;
 use futures_lite::future::block_on;
 use std::path::Path;
 
-const SEARCH_PATHS: [&str; 2] = ["basegame", "mods"];
+const SEARCH_PATHS: [&str; 2] = ["game", "mods"];
 
 fn kinds() -> ContentKinds {
     let mut kinds = ContentKinds::default();
@@ -69,10 +69,10 @@ fn problem_kinds(report: &ContentReport) -> Vec<ProblemKind> {
 
 /// The base tree: `core` holds one map and one landscape, and a texture that is no content.
 fn base(root: &Path) {
-    package(root, "basegame/core", "");
-    write(root, "basegame/core/island.map.ron", "()");
-    write(root, "basegame/core/island_land.landscape.ron", "()");
-    write(root, "basegame/core/island_colour.png", "");
+    package(root, "game/core", "");
+    write(root, "game/core/island.map.ron", "()");
+    write(root, "game/core/island_land.landscape.ron", "()");
+    write(root, "game/core/island_colour.png", "");
 }
 
 #[test]
@@ -188,11 +188,11 @@ fn an_override_with_another_extension_changes_the_kind_and_says_so() {
 #[test]
 fn a_duplicate_alias_of_a_content_file_in_one_package_is_its_own_problem() {
     let root = tempfile::tempdir().unwrap();
-    package(root.path(), "basegame/core", "");
-    write(root.path(), "basegame/core/island.landscape.ron", "()");
-    write(root.path(), "basegame/core/island.map.ron", "()");
-    write(root.path(), "basegame/core/rock.png", "");
-    write(root.path(), "basegame/core/rock.webp", "");
+    package(root.path(), "game/core", "");
+    write(root.path(), "game/core/island.landscape.ron", "()");
+    write(root.path(), "game/core/island.map.ron", "()");
+    write(root.path(), "game/core/rock.png", "");
+    write(root.path(), "game/core/rock.webp", "");
     let (catalog, report) = catalog(root.path());
 
     let mut kinds = problem_kinds(&report);
@@ -216,9 +216,9 @@ fn a_duplicate_alias_of_a_content_file_in_one_package_is_its_own_problem() {
 #[test]
 fn a_content_file_and_a_texture_with_one_stem_are_a_duplicate_content_alias() {
     let root = tempfile::tempdir().unwrap();
-    package(root.path(), "basegame/core", "");
-    write(root.path(), "basegame/core/island.map.ron", "()");
-    write(root.path(), "basegame/core/island.png", "");
+    package(root.path(), "game/core", "");
+    write(root.path(), "game/core/island.map.ron", "()");
+    write(root.path(), "game/core/island.png", "");
     let (catalog, report) = catalog(root.path());
 
     assert_eq!(problem_kinds(&report), [ProblemKind::DuplicateContentAlias]);
@@ -376,7 +376,7 @@ fn a_disabled_packages_content_is_not_catalogued() {
 fn a_hidden_file_is_not_content() {
     let root = tempfile::tempdir().unwrap();
     base(root.path());
-    write(root.path(), "basegame/core/.map.ron", "()");
+    write(root.path(), "game/core/.map.ron", "()");
     let (catalog, _) = catalog(root.path());
 
     assert_eq!(catalog.len(), 2);
