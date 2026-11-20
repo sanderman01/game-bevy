@@ -1,0 +1,30 @@
+ename_engine/src/lib.rs
+  s_0a3f8eb77a8294::t_99a0dabd029d92 204-206
+  s_0a3f8eb77a8294::t_59b5fa3b829287 3
+  s_0a3f8eb77a8294::t_ecad426c31e947 162
+  s_0a3f8eb77a8294::t_adabdefc3851c0 46-48
+.github/workflows/ci.yml
+  s_0a3f8eb77a8294::t_cf0008c54a3179 70-73
+ename_engine/Cargo.toml
+  s_0a3f8eb77a8294::t_d190a281aea23f 25
+scripts/check-layers.sh
+  s_0a3f8eb77a8294::t_37ab1bd8511f98 51-53
+Cargo.lock
+  s_0a3f8eb77a8294::t_d24b75c24b9712 3228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eb6817ad087bfaaa5edc9c097366729555ac16dc",
+  "prompts": {},
+  "sessions": {
+    "s_0a3f8eb77a8294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "800cc546-8045-488b-88c8-b2833b144bf5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
