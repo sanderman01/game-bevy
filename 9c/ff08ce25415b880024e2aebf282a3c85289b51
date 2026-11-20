@@ -1,0 +1,55 @@
+.gitignore
+  s_87b61c4beffc44::t_a045beb6bead6f 9
+docs/assets-aliases.md
+  s_87b61c4beffc44::t_7de0e1b5d9420f 107
+docs/assets-archives.md
+  s_87b61c4beffc44::t_d400d552dbd42c 9-10,18-19
+docs/assets-packages.md
+  s_87b61c4beffc44::t_060f83e5584bb4 8
+ename_asset_alias/src/index.rs
+  s_87b61c4beffc44::t_f3723a2a608fc0 289,293,305,312,335,339,341-343,365,373,375,385,387,396
+ename_asset_alias/src/watcher.rs
+  s_87b61c4beffc44::t_3640588b52c647 4
+ename_asset_package/src/scan.rs
+  s_87b61c4beffc44::t_5d2748ef138e6d 145,314,321-322,337,356,359,364
+ename_asset_package/tests/catalog.rs
+  s_87b61c4beffc44::t_e65bb0314d8573 15,72-75,191-195,219-221,379
+ename_asset_vfs/src/lib.rs
+  s_87b61c4beffc44::t_76a3b92ec25c14 7-8
+ename_xtask/src/policy.rs
+  s_87b61c4beffc44::t_e802737461e978 18,20
+ename_xtask/src/web/bake.rs
+  s_87b61c4beffc44::t_45e63222e3a371 81-84
+ename_xtask/tests/archives.rs
+  s_87b61c4beffc44::t_31a9701e524d06 31,51,54,59-60,64,72-73,77,83,86,93,97
+ename_xtask/tests/check.rs
+  s_87b61c4beffc44::t_8ad05574a89e4a 34,37,44,52,61,67,74-75
+ename_xtask/tests/fix.rs
+  s_87b61c4beffc44::t_e989ee0a7b6a66 12,19,27,42,45,64,73,104,107,123,129,136
+ename_xtask/tests/list.rs
+  s_87b61c4beffc44::t_bdb9864283ca4b 18,40,54,76,88,100
+ename_xtask/tests/mv.rs
+  s_87b61c4beffc44::t_d12e18894455dd 13-14,22-25,32,34-35,43,50,52-53,61-62,69-70,81-82,105-106,124-125,141,172-173,192-193
+ename_xtask/tests/read_asset.rs
+  s_87b61c4beffc44::t_bd41e7e5be8127 38,49,58-59,61,64-65,72,84,86,99,113-114,123-124,126
+example_game_bin/src/main.rs
+  s_87b61c4beffc44::t_d483d3a9897da6 20
+example_game_editor_bin/src/main.rs
+  s_87b61c4beffc44::t_7e797b49815f1d 21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9cff08ce25415b880024e2aebf282a3c85289b51",
+  "prompts": {},
+  "sessions": {
+    "s_87b61c4beffc44": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d5e5570e-9172-47e6-85d4-44fc783c2bf3",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
