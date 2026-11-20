@@ -1,0 +1,29 @@
+ename_storage/src/plugin.rs
+  s_0a3f8eb77a8294::t_11e2a3a5910d0c 13-14
+  s_0a3f8eb77a8294::t_35221fdddb86e2 27-30
+  s_0a3f8eb77a8294::t_2467d972a7dbe0 86
+docs/user-storage.md
+  s_0a3f8eb77a8294::t_25a56c34b43fca 86,92,95
+  s_0a3f8eb77a8294::t_aa37641159a59c 70-71
+  s_0a3f8eb77a8294::t_48a257299b2fb8 96
+ename_storage/tests/plugin.rs
+  s_0a3f8eb77a8294::t_18ac93b6f0751e 62-65
+ename_storage/src/lib.rs
+  s_0a3f8eb77a8294::t_2933bfebbd1794 44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "18ae4dd4fa65f7f6c06bbe77990ef0d1de1b55fd",
+  "prompts": {},
+  "sessions": {
+    "s_0a3f8eb77a8294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "800cc546-8045-488b-88c8-b2833b144bf5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
