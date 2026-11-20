@@ -59,12 +59,10 @@ fn local_with_a_persistent_directory_is_the_filesystem() {
     let storage = app.world().resource::<UserStorage>().clone();
     finish(&mut app, StorageTask::spawn(storage.ready())).unwrap();
     assert_eq!(storage.status(), SyncStatus::Synced);
-    assert!(
-        root.path()
-            .join(ename_storage::STORAGE_DIR)
-            .join("lock")
-            .exists()
-    );
+    // The persistent data directory is the store's root.
+    for name in ["lock", "records", "staging", "trash"] {
+        assert!(root.path().join(name).exists(), "{name}");
+    }
 }
 
 #[test]
@@ -82,7 +80,6 @@ fn exiting_waits_for_commits_nobody_awaited() {
     app.update();
     let blob = root
         .path()
-        .join(ename_storage::STORAGE_DIR)
         .join("records")
         .join("saves.s.quit")
         .join("meta");

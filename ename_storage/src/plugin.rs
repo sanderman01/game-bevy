@@ -7,14 +7,11 @@ use bevy::{
 };
 use std::path::{Path, PathBuf};
 
-/// The directory under the persistent data directory that the filesystem backend owns.
-pub const STORAGE_DIR: &str = "storage";
-
 /// Installs the app's user storage as the [`UserStorage`] resource, and logs once it is ready or
 /// why it is not.
 ///
-/// [`StoragePlugin::local`] is the default: the filesystem backend in [`STORAGE_DIR`] under the
-/// persistent data directory, or the in-memory backend where there is none (the browser), so
+/// [`StoragePlugin::local`] is the default: the filesystem backend with the persistent data
+/// directory as its root, or the in-memory backend where there is none (the browser), so
 /// game code never branches. [`StoragePlugin::with_backend`] installs any other backend, such as
 /// a cloud one built with the platform user it needs.
 pub struct StoragePlugin {
@@ -27,8 +24,10 @@ enum Backend {
 }
 
 impl StoragePlugin {
-    /// The filesystem backend under `persistent_data_path`, or memory when it is `None`. The store
-    /// opens when the plugin builds.
+    /// The filesystem backend rooted at `persistent_data_path` itself, or memory when it is
+    /// `None`. The store opens when the plugin builds. Its files (`lock`, `journal`,
+    /// `journal.tmp`, `records/`, `staging/`, `trash/`) sit beside whatever else the app keeps
+    /// there, so nothing else may use those names.
     pub fn local(persistent_data_path: Option<&Path>) -> Self {
         Self {
             backend: Backend::Local(persistent_data_path.map(Path::to_path_buf)),
@@ -84,8 +83,7 @@ fn finish_commits_on_exit(mut exits: MessageReader<AppExit>, storage: Res<UserSt
 
 fn local_storage(persistent_data_path: Option<&Path>) -> UserStorage {
     #[cfg(not(target_arch = "wasm32"))]
-    if let Some(path) = persistent_data_path {
-        let root = path.join(STORAGE_DIR);
+    if let Some(root) = persistent_data_path {
         info!("user storage: {}", root.display());
         return UserStorage::new(crate::FsStorage::open(root));
     }

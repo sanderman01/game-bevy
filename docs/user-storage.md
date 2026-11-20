@@ -67,8 +67,8 @@ if let Some(result) = task.poll() { /* ... */ }
 ## Backends
 
 `EnginePlugins` adds `StoragePlugin::local` with the persistent data directory: the filesystem
-backend in `storage/` under it, or the in-memory backend where there is none (the browser), so
-game code never branches. A target installs another backend with
+backend with that directory as its root, or the in-memory backend where there is none (the
+browser), so game code never branches. A target installs another backend with
 `.set(StoragePlugin::with_backend(..))`.
 
 A backend implements the object-safe `StorageBackend` trait in its own crate. Platform context,
@@ -83,13 +83,16 @@ wasm.
 ## The filesystem backend
 
 ```
-<persistent data>/storage/
+<persistent data>/        `~/.local/share/<project>/` on Linux
   lock                    held by the open store
   records/<key>/<blob>    one directory per record, `/` in the key written as `.`
   staging/<txn>/<i>/      new record versions being prepared
   journal.tmp, journal    the transaction being committed
   trash/<txn>-<i>/        old record versions on their way out
+  load_order.toml, ...    the app's other files, which the store ignores
 ```
+
+The store's files share the directory with the app's own, so those six names are reserved.
 
 Records are siblings, so no record nests in another and a record directory is replaced whole.
 Files that are not blobs (`.DS_Store`) are ignored, and a directory holding no blob is not a

@@ -41,4 +41,4 @@ pub use crate::{
 #[cfg(not(target_arch = "wasm32"))]
 pub use crate::fs::FsStorage;
 #[cfg(feature = "bevy")]
-pub use crate::plugin::{STORAGE_DIR, StoragePlugin, StorageTask};
+pub use crate::plugin::{StoragePlugin, StorageTask};
