@@ -1,0 +1,79 @@
+ename_storage/tests/conformance.rs
+  s_0a3f8eb77a8294::t_b68bf842b447c2 1-59
+ename_storage/src/backend.rs
+  s_0a3f8eb77a8294::t_59e72d03a442c8 1-247
+  s_0a3f8eb77a8294::t_7366a29a4c2909 248-249
+ename_storage/src/fs/io.rs
+  s_0a3f8eb77a8294::t_c651f6a731b96d 10
+  s_0a3f8eb77a8294::t_5605a3bc4659de 1-9,11-105
+ename_storage/src/lib.rs
+  s_0a3f8eb77a8294::t_06f3f2d55c0ea8 1-44
+ename_storage/src/fs/tests.rs
+  s_0a3f8eb77a8294::t_69cbbfee1d8b66 1-124
+  s_0a3f8eb77a8294::t_94f85f37ccb66d 125-138
+ename_storage/src/key.rs
+  s_0a3f8eb77a8294::t_f3bac8b1c682c2 1-433
+ename_storage/src/fs/journal.rs
+  s_0a3f8eb77a8294::t_11622631d721cd 282-283
+  s_0a3f8eb77a8294::t_26682bc4d89c88 149
+  s_0a3f8eb77a8294::t_ae83b0fdc98e93 1-148,150-281,284-486
+  s_0a3f8eb77a8294::t_9e1135e734a280 487
+ename_storage/src/fs/mod.rs
+  s_0a3f8eb77a8294::t_90745192b7fd65 128-129,134-136
+  s_0a3f8eb77a8294::t_0f72729cd947dc 96-103
+  s_0a3f8eb77a8294::t_334b83e08cc7f8 1-82,85-95,104-127,130-133,137-295
+  s_0a3f8eb77a8294::t_4ad58f4d626e30 83-84
+ename_storage/src/plugin.rs
+  s_0a3f8eb77a8294::t_eb7f9f5cc00d4e 3
+  s_0a3f8eb77a8294::t_d580e8b6095a08 75-77
+  s_0a3f8eb77a8294::t_bb029432f3039b 1-2,4-74,78-111
+ename_storage/Cargo.toml
+  s_0a3f8eb77a8294::t_2bb4538e6570a6 31-34
+  s_0a3f8eb77a8294::t_981f958ea938f5 1-8,16-30
+  s_0a3f8eb77a8294::t_8e8dc4d0d72a31 9-15,35-37
+ename_storage/src/conformance.rs
+  s_0a3f8eb77a8294::t_4d4b7abdac37b3 407
+  s_0a3f8eb77a8294::t_43dba564a30cac 140,142,149
+  s_0a3f8eb77a8294::t_22a61f03e18b2b 193
+  s_0a3f8eb77a8294::t_fef1e7ef2af547 271,290,369,426-427,431
+  s_0a3f8eb77a8294::t_e04a87c402643d 1-139,141,143-148,150-192,194-221,223-227,229-270,272-289,292-368,370-406,408-424,428-429,432-504
+  s_0a3f8eb77a8294::t_d049500d62335b 222,228,291,425,430
+  s_0a3f8eb77a8294::t_774e7e00772ce9 505-506
+ename_storage/src/fault.rs
+  s_0a3f8eb77a8294::t_ce437faed3c79a 1-143
+ename_storage/tests/plugin.rs
+  s_0a3f8eb77a8294::t_948cdbb46362bc 4
+  s_0a3f8eb77a8294::t_51113c2f56bf2a 1-3,5-63
+  s_0a3f8eb77a8294::t_e7b4c4cd3b11db 64-68
+Cargo.toml
+  s_0a3f8eb77a8294::t_a969fe43e82c4e 68
+ename_storage/src/storage.rs
+  s_0a3f8eb77a8294::t_f673b8871be67e 59-61
+  s_0a3f8eb77a8294::t_69e8b0989de8ee 1-58,62-126,130-141
+  s_0a3f8eb77a8294::t_506c6dacc0d46c 127-129
+ename_storage/src/memory.rs
+  s_0a3f8eb77a8294::t_0f15971a8b1704 78
+  s_0a3f8eb77a8294::t_5026d1d2de0deb 99
+  s_0a3f8eb77a8294::t_79a76b96de60dc 91
+  s_0a3f8eb77a8294::t_b20376279bc391 1-77,79-90,92-98,100-111,113-117,119-124
+  s_0a3f8eb77a8294::t_4c610474df2ca8 112
+  s_0a3f8eb77a8294::t_785d35856b8d52 118
+Cargo.lock
+  s_0a3f8eb77a8294::t_391b78789e38ae 3275-3287
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "580d1a344378b0be8432702f6b3bbb48eff29ed2",
+  "prompts": {},
+  "sessions": {
+    "s_0a3f8eb77a8294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "800cc546-8045-488b-88c8-b2833b144bf5",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
