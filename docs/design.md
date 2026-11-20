@@ -19,6 +19,8 @@ acting on it.
   asset tree.
 - [User storage](user-storage.md). Records, keys and transactions for saves and other player
   data, pluggable backends, the filesystem backend's journal, and the backend conformance suite.
+- [Save sections](save-sections.md). Named, versioned sections of saved state, each owned by one
+  system: capture, check before applying, migrations, and sections kept for a later write.
 - [Commands and jobs](design/commands.md). How a crate registers functionality once for the
   agent tools and a future console, and how slow work is tracked.
 - [Waiting](design/waiting.md). How an agent waits for the game to settle or for a condition,

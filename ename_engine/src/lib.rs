@@ -1,6 +1,6 @@
 //! `ename_engine` -- the runtime layer: camera rig, big_space integration, physics glue, input,
 //! time control, log capture, the command registry, waiting for the world to settle, screenshots,
-//! video capture. It installs user storage (`ename_storage`) in the persistent data directory.
+//! video capture, save sections. It installs user storage (`ename_storage`) in the persistent data directory.
 //!
 //! Sits directly above the asset crates. It must never depend on `ename_editor` or `example_game_lib`:
 //! if engine code needs something from a higher layer, move the shared type down or invert the
@@ -13,6 +13,7 @@ pub mod asset_info;
 pub mod bigspace;
 pub mod camera;
 pub mod capture;
+pub mod clock;
 pub mod command;
 pub mod debug_overlay;
 pub mod debug_switch;
@@ -24,6 +25,7 @@ pub mod physics;
 // Only screenshots and video read frames back, and the browser has neither.
 #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 mod readback;
+pub mod save;
 // Desktop only: they write files, and video runs ffmpeg. See `docs/web.md`.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod screenshot;
