@@ -1,0 +1,19 @@
+ename_engine/src/stage/commands.rs
+  s_ebb1073751fea6::t_0c902990cf8dbd 254-255,258
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e12fe9859ebcabae441e6343713031476bbf464d",
+  "prompts": {},
+  "sessions": {
+    "s_ebb1073751fea6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0ba7109c-c997-46df-ae24-33e54f4b6f4c",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
