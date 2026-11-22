@@ -56,6 +56,7 @@ Requires bevy = "0.19".
 | `ename_asset_package` | Content packages: manifests, versions, load order, overrides. |
 | `ename_asset_content` | Where the previous two meet, plus the plugin that installs both. |
 | `ename_storage` | User storage for saves and presets: transactions over pluggable backends, a journaled filesystem backend. |
+| `ename_cache` | Disk cache for derived data such as baked textures: content-hashed keys, checksummed entries, pruning. |
 | `ename_remote` | BRP server and custom methods for agent access. (Development only, never ship it.) |
 | `ename_mcp` | MCP sidecar process. Lets a coding agent read and change the running game's world. |
 | `ename_xtask` | Command line content pipeline tooling. |

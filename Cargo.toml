@@ -44,8 +44,12 @@ bevy = { version = "0.20.1", default-features = true, features = ["bevy_feathers
 bevy-inspector-egui = { version = "0.38.0", features = ["highlight_changes"] }
 bevy_egui = "0.43"
 big_space = { version = "0.14.0-rc.0", features = ["debug", "camera"] }
+# `ename_cache`'s keys. Already in `Cargo.lock` via Bevy.
+blake3 = "1.8.7"
 # Positioned archive reads off Bevy's task threads. Already in `Cargo.lock` via Bevy.
 blocking = "1.7.0"
+# Plain data as bytes, for `ename_cache`'s keys. Already in `Cargo.lock` via Bevy.
+bytemuck = "1.25.2"
 # The zip member checksum. Already in `Cargo.lock` via `zip` and Bevy.
 crc32fast = "1.5.1"
 dirs = "7.0.0"
@@ -62,6 +66,7 @@ ename_asset_package = { path = "ename_asset_package", version = "0.0.0", default
 # `default-features = false` for the same reason again, and so every consumer names the archive
 # formats it wants: `zip` and `tar` are off unless asked for.
 ename_asset_vfs = { path = "ename_asset_vfs", version = "0.0.0", default-features = false }
+ename_cache = { path = "ename_cache", version = "0.0.0" }
 ename_editor = { path = "ename_editor", version = "0.0.0" }
 ename_engine = { path = "ename_engine", version = "0.0.0" }
 ename_remote = { path = "ename_remote", version = "0.0.0" }

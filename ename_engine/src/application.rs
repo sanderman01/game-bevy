@@ -34,6 +34,11 @@ impl ApplicationPaths {
         &self.project
     }
 
+    /// For crates below the engine that take plain [`Paths`], such as `ename_cache`.
+    pub fn paths(&self) -> &Paths {
+        &self.paths
+    }
+
     pub fn persistent_data_path(&self) -> Option<&Path> {
         self.paths.persistent_data_path()
     }
