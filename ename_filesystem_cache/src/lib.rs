@@ -1,4 +1,4 @@
-//! `ename_cache` -- a disk cache for derived data: output that is slow to compute and a pure
+//! `ename_filesystem_cache` -- a disk cache for derived data: output that is slow to compute and a pure
 //! function of its inputs, such as baked textures or captures.
 //!
 //! Entries are content addressed. A [`CacheKey`] hashes everything the output depends on, built

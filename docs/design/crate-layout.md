@@ -7,7 +7,7 @@ The long-form analysis behind this is in `scratch/crate-structure-review.md`.
 ## Naming
 
 Project codename is `ename`. Every engine-side crate is prefixed with it: `ename_engine`,
-`ename_application`, `ename_cache`, `ename_asset_vfs`, `ename_asset_alias`, `ename_asset_package`,
+`ename_application`, `ename_filesystem_cache`, `ename_asset_vfs`, `ename_asset_alias`, `ename_asset_package`,
 `ename_asset_content`, `ename_storage`, `ename_editor`, `ename_remote`, `ename_mcp`, `ename_xtask`. Bare names like `engine` and `editor` collide with anything and
 resolve independently once there is more than one workspace.
 
@@ -29,7 +29,7 @@ ename_editor                  -> ename_engine
 ename_engine                  -> ename_application, ename_asset_content, ename_storage, bevy, avian3d,
                                  big_space, serde, schemars
 ename_application             -> dirs, thiserror   (no first-party deps, no bevy)
-ename_cache                   -> ename_application, blake3, bytemuck, tracing   (no bevy)
+ename_filesystem_cache        -> ename_application, blake3, bytemuck, tracing   (no bevy)
 ename_storage                 -> futures-lite, thiserror, tracing   (no first-party deps)
                                  + async-channel, async-lock, blocking, off wasm
                                  + bevy, behind the default `bevy` feature
@@ -56,7 +56,7 @@ ename_xtask (bin)             -> ename_application, ename_asset_alias, ename_ass
 an organisation and project name. It is its own crate, re-exported as `ename_engine::application`,
 because `ename_xtask` computes the same load order path and must not link the engine.
 
-`ename_cache` is the disk cache for derived data (baked textures, captures): content-addressed
+`ename_filesystem_cache` is the disk cache for derived data (baked textures, captures): content-addressed
 entries under the cache directory, safe to lose. It is a crate, not an engine module, so games,
 tools and crates below the engine can use it, and it stays apart from `ename_storage`: user storage
 is precious and journaled, a cache entry is disposable and written with a plain rename. It takes

@@ -50,7 +50,7 @@ check ename_mcp 'ename_.*'
 check ename_application 'ename_.*|example_.*|bevy|bevy_.*'
 # The disk cache: per-user directories are the only first-party crate it may name, and no Bevy,
 # so tools and crates below the engine can use it.
-check ename_cache 'ename_engine|ename_editor|ename_remote|ename_mcp|ename_xtask|ename_storage|ename_asset_.*|example_.*|bevy|bevy_.*'
+check ename_filesystem_cache 'ename_engine|ename_editor|ename_remote|ename_mcp|ename_xtask|ename_storage|ename_asset_.*|example_.*|bevy|bevy_.*'
 # User storage: a leaf with no first-party deps, so a crate below the engine (the content scan,
 # for the load order file) can use it too.
 check ename_storage 'ename_.*|example_.*'

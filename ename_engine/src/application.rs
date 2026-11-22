@@ -34,7 +34,7 @@ impl ApplicationPaths {
         &self.project
     }
 
-    /// For crates below the engine that take plain [`Paths`], such as `ename_cache`.
+    /// For crates below the engine that take plain [`Paths`], such as `ename_filesystem_cache`.
     pub fn paths(&self) -> &Paths {
         &self.paths
     }

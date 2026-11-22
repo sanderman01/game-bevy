@@ -3198,17 +3198,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ename_cache"
-version = "0.0.0"
-dependencies = [
- "blake3",
- "bytemuck",
- "ename_application",
- "tempfile",
- "tracing",
-]
-
-[[package]]
 name = "ename_editor"
 version = "0.0.0"
 dependencies = [
@@ -3249,6 +3238,17 @@ dependencies = [
  "uuid",
  "web-time",
  "wgpu",
+]
+
+[[package]]
+name = "ename_filesystem_cache"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "bytemuck",
+ "ename_application",
+ "tempfile",
+ "tracing",
 ]
 
 [[package]]
