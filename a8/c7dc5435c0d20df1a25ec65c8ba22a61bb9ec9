@@ -1,0 +1,43 @@
+Cargo.toml
+  s_8381374ad22104::t_42c74202b3c293 117-118
+docs/design/crate-layout.md
+  s_8381374ad22104::t_2190e8e17e9e49 29-30
+docs/conventions.md
+  s_8381374ad22104::t_fd787b3ab4f945 36-38,42-52,54-56
+ename_engine/Cargo.toml
+  s_8381374ad22104::t_601091d31bd982 34
+  s_8381374ad22104::t_c3b2a7494ef8d0 25
+ename_engine/src/lib.rs
+  s_8381374ad22104::t_3c366a8c5a9f7b 229-230
+ename_engine/src/texture/process.rs
+  s_8381374ad22104::t_20b6e3caaa0a5b 1-14,16-18,20-22,24-93,95-104,106-158,160-233,237-287,289-338,340-347,352-358,360-363,365-368,370-373,375-379,381-388,390-398
+  s_8381374ad22104::t_a1b8c981440388 105
+  s_8381374ad22104::t_506659939bf836 348-351
+  s_8381374ad22104::t_0ea11f7d5fab8a 234-236
+  s_8381374ad22104::t_4952b4aff1890b 288
+  s_8381374ad22104::t_80993eab0bbe5d 15,19,23,94,159,339,359,364,369,374,380,389,399-404
+ename_engine/src/texture/loader.rs
+  s_8381374ad22104::t_0c0e32d0479dd3 1-115
+  s_8381374ad22104::t_b0d6f88f890082 116-117
+ename_engine/src/texture/mod.rs
+  s_8381374ad22104::t_464fa4ff1e1022 1-64
+  s_8381374ad22104::t_3640b433f9b810 65-67
+Cargo.lock
+  s_8381374ad22104::t_c972bc027f9ed3 3228,3238,7275-7283
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a8c7dc5435c0d20df1a25ec65c8ba22a61bb9ec9",
+  "prompts": {},
+  "sessions": {
+    "s_8381374ad22104": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bbe34543-dd29-47fb-9505-81c7dc966dee",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
