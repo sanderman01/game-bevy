@@ -226,6 +226,8 @@ impl PluginGroup for EnginePlugins {
             // No longer bundled with BigSpaceDefaultPlugins as of big_space 0.13.
             .add_group(BigSpaceDebugPlugins::default())
             .add(bigspace::BigSpacePlugin)
+            // After `DefaultPlugins`: its `finish` must follow the render plugin's.
+            .add(texture::TextureLoadPlugin)
             .add(debug_switch::DebugSwitchPlugin)
             .add(diagnostics::DiagnosticsLogPlugin)
             .add(debug_overlay::DebugOverlayPlugin)

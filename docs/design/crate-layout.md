@@ -26,8 +26,8 @@ example_game_editor_bin (bin) -> ename_engine, example_game_lib, ename_editor, e
 ename_remote                  -> ename_engine
 example_game_lib              -> ename_engine, ename_asset_alias
 ename_editor                  -> ename_engine
-ename_engine                  -> ename_application, ename_asset_content, ename_storage, bevy, avian3d,
-                                 big_space, serde, schemars
+ename_engine                  -> ename_application, ename_asset_content, ename_filesystem_cache,
+                                 ename_storage, bevy, avian3d, big_space, serde, schemars, texpresso
 ename_application             -> dirs, thiserror   (no first-party deps, no bevy)
 ename_filesystem_cache        -> ename_application, blake3, bytemuck, tracing   (no bevy)
 ename_storage                 -> futures-lite, thiserror, tracing   (no first-party deps)

@@ -114,6 +114,8 @@ sysinfo = { version = "0.39.5", default-features = false }
 # `default-features = false` drops `xattr`, which only matters for unpacking.
 tar = { version = "0.4.46", default-features = false }
 tempfile = "3.27.0"
+# BC1, BC3 and BC5 encoding of textures at load, in pure Rust so it runs in the browser too.
+texpresso = "2.0.2"
 thiserror = "2.0.18"
 tokio = { version = "1.48.0", default-features = false }
 toml = "1.1.2"

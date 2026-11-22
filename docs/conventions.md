@@ -33,15 +33,27 @@ when moving an asset, their corresponding .meta and .alias should be moved with 
 
 ## Textures
 
-Textures have mipmaps and are sampled trilinearly with anisotropic filtering, unless a texture
-says otherwise for a reason, such as a data texture read texel by texel.
+Textures have mipmaps, are block compressed where the GPU decodes BC, and are sampled trilinearly
+with anisotropic filtering, unless a texture says otherwise for a reason, such as a data texture
+read texel by texel.
 
 - `EnginePlugins` sets `ename_engine::texture::default_sampler` (anisotropy 16) as the sampler of
   every image at `ImageSampler::Default` and of every glTF texture; a glTF file's wrap modes stay.
+- `ename_engine::texture::TextureLoadPlugin` replaces Bevy's image loader for every image file.
+  A *default texture* is one loaded to be drawn (`RENDER_WORLD`), as a single 2D RGBA8 image,
+  with the default or an anisotropic sampler. The loader gives it a mip chain if the file has
+  none, then encodes it as BC1 (opaque), BC3 (with alpha) or BC5 (a normal map, recognised by
+  its texels) where the GPU decodes BC and its size is whole 4 x 4 blocks; else it stays RGBA8.
+  The result goes in the disk cache (`engine/textures`), keyed by the file's bytes, so only the
+  first load pays. A data texture opts out by loading with a sampler of its own without
+  anisotropy, or with `MAIN_WORLD` usage only. Bevy warns once at startup that two image loaders
+  share their extensions; the engine's, registered last, is the one used.
+- Images embedded in a `.glb` are decoded by the glTF loader itself and get none of this; models
+  reference their textures as files instead.
 - A texture made at runtime builds its own mip chain and sets `mip_level_count`.
-- A texture exported with a model carries its mip chain on disk (KTX2), so nothing is generated at
-  load. Models reference shared textures by `alias://` URI rather than embedding them, so models
-  share one copy.
+- A texture exported with a model carries its mip chain on disk (KTX2), so no mips are generated
+  at load. Models reference shared textures by `alias://` URI rather than embedding them, so
+  models share one copy.
 
 ## glTF colliders
 
