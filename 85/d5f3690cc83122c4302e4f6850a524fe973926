@@ -1,0 +1,37 @@
+ename_xtask/src/gltf_info/mod.rs
+  s_8381374ad22104::t_0d9eb15a253b30 69
+  s_8381374ad22104::t_144d3ad4a48f98 176
+  s_8381374ad22104::t_f7edc058791d88 103-104,106
+  s_8381374ad22104::t_b632fbf5f1729f 14
+  s_8381374ad22104::t_c3ebfe217c1d8b 582
+  s_8381374ad22104::t_da85189b9ffa44 52-53
+  s_8381374ad22104::t_67cf99078ede47 724-725
+  s_8381374ad22104::t_b6aed01e47699d 188,192,195
+  s_8381374ad22104::t_cc2ccf3746ba96 84
+  s_8381374ad22104::t_9cb98ac3ef61eb 105
+ename_xtask/src/gltf_info/accessor.rs
+  s_8381374ad22104::t_df3c0ebb648cfa 71-85
+  s_8381374ad22104::t_306213fa20fff9 30
+  s_8381374ad22104::t_fbd46cac03d757 4
+  s_8381374ad22104::t_b78d6100f90f2c 16-21
+ename_xtask/tests/gltf_info.rs
+  s_8381374ad22104::t_090e22ec03bf84 101
+ename_xtask/src/main.rs
+  s_8381374ad22104::t_bb9e385ee7fdd5 173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "85d5f3690cc83122c4302e4f6850a524fe973926",
+  "prompts": {},
+  "sessions": {
+    "s_8381374ad22104": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bbe34543-dd29-47fb-9505-81c7dc966dee",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
