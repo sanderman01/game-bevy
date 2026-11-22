@@ -30,6 +30,7 @@ pub mod save;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod screenshot;
 pub mod stage;
+pub mod texture;
 pub mod time;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod video;
@@ -37,7 +38,7 @@ pub mod wait;
 
 use application::{ApplicationPaths, ApplicationPlugin, OrganisationName, Paths, ProjectName};
 use bevy::{
-    app::PluginGroupBuilder, asset::AssetPlugin, log::LogPlugin, prelude::*,
+    app::PluginGroupBuilder, asset::AssetPlugin, gltf::GltfPlugin, log::LogPlugin, prelude::*,
     transform::TransformPlugin,
 };
 use big_space::plugin::{BigSpaceDebugPlugins, BigSpaceDefaultPlugins};
@@ -184,6 +185,20 @@ impl PluginGroup for EnginePlugins {
                 },
                 custom_layer: log::capture_layer,
                 fmt_layer: log::terminal_layer,
+                ..default()
+            })
+            .set(
+                #[allow(
+                    clippy::needless_update,
+                    reason = "Bevy's compressed image saver features add fields"
+                )]
+                ImagePlugin {
+                    default_sampler: texture::default_sampler(),
+                    ..default()
+                },
+            )
+            .set(GltfPlugin {
+                default_sampler: texture::default_sampler(),
                 ..default()
             })
             // Before `AssetPlugin`, not merely early: `register_asset_source` fills a resource

@@ -31,6 +31,18 @@ eg:
 
 when moving an asset, their corresponding .meta and .alias should be moved with it.
 
+## Textures
+
+Textures have mipmaps and are sampled trilinearly with anisotropic filtering, unless a texture
+says otherwise for a reason, such as a data texture read texel by texel.
+
+- `EnginePlugins` sets `ename_engine::texture::default_sampler` (anisotropy 16) as the sampler of
+  every image at `ImageSampler::Default` and of every glTF texture; a glTF file's wrap modes stay.
+- A texture made at runtime builds its own mip chain and sets `mip_level_count`.
+- A texture exported with a model carries its mip chain on disk (KTX2), so nothing is generated at
+  load. Models reference shared textures by `alias://` URI rather than embedding them, so models
+  share one copy.
+
 ## glTF colliders
 
 A glTF node named `COL_<what>` with the extras `{"collider": "<shape>"}` becomes an avian
