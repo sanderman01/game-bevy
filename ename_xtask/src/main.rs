@@ -170,7 +170,7 @@ fn main() -> ExitCode {
             );
             match read_asset(&asset, &scan) {
                 Ok(file) => {
-                    let report = gltf_info(&file, &GltfOptions { mesh, images });
+                    let report = gltf_info(&file, &GltfOptions { mesh, images }, &scan);
                     print!("{}", report.text);
                     // A file only summarized from its raw JSON is a malformed one.
                     if report.read_fully {

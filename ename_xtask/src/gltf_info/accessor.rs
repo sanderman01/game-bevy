@@ -1,7 +1,7 @@
 //! Reading accessor data from the buffers, with every length checked first: `gltf`'s own readers
 //! slice without checking, so a short buffer would panic there.
 
-use crate::read_asset::AssetFile;
+use crate::read_asset::{AssetFile, ScanPolicy, read_asset};
 use base64::Engine;
 use gltf::{
     Accessor, Document,
@@ -13,7 +13,12 @@ use gltf::{
 pub(super) struct Buffers(Vec<Result<Vec<u8>, String>>);
 
 impl Buffers {
-    pub(super) fn load(document: &Document, blob: Option<&[u8]>, file: &AssetFile) -> Self {
+    pub(super) fn load(
+        document: &Document,
+        blob: Option<&[u8]>,
+        file: &AssetFile,
+        scan: &ScanPolicy,
+    ) -> Self {
         Self(
             document
                 .buffers()
@@ -22,7 +27,7 @@ impl Buffers {
                         Source::Bin => blob
                             .map(<[u8]>::to_vec)
                             .ok_or_else(|| "no BIN chunk".to_owned()),
-                        Source::Uri(uri) => read_uri(uri, file).map(|(bytes, _)| bytes),
+                        Source::Uri(uri) => read_uri(uri, file, scan).map(|(bytes, _)| bytes),
                     }?;
                     if bytes.len() < buffer.length() {
                         return Err(format!(
@@ -63,8 +68,21 @@ impl Buffers {
     }
 }
 
-/// Reads a data URI or a file next to the asset. Returns the bytes and the data URI's MIME type.
-pub(super) fn read_uri(uri: &str, file: &AssetFile) -> Result<(Vec<u8>, Option<String>), String> {
+/// Reads a data URI, an `alias://` URI, or a file next to the asset. Returns the bytes and the
+/// MIME type a data URI names or an alias's file extension gives.
+pub(super) fn read_uri(
+    uri: &str,
+    file: &AssetFile,
+    scan: &ScanPolicy,
+) -> Result<(Vec<u8>, Option<String>), String> {
+    if let Some(alias) = uri.strip_prefix("alias://") {
+        let target = read_asset(&percent_decode(alias), scan).map_err(|err| err.to_string())?;
+        let mime = target
+            .extension()
+            .and_then(|extension| super::mime_from_extension(&format!(".{extension}")))
+            .map(str::to_owned);
+        return Ok((target.bytes, mime));
+    }
     if let Some(data) = uri.strip_prefix("data:") {
         let (header, payload) = data.split_once(',').ok_or("data URI without a comma")?;
         let mime = header.split(';').next().filter(|m| !m.is_empty());

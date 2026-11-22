@@ -98,7 +98,7 @@ fn report_and_status(bytes: &[u8], options: &GltfOptions) -> (String, bool) {
     std::fs::write(&path, bytes).unwrap();
     let policy = ScanPolicy::new(dir.path(), &[], None);
     let file = read_asset(path.to_str().unwrap(), &policy).unwrap();
-    let report = gltf_info(&file, options);
+    let report = gltf_info(&file, options, &policy);
     (report.text, report.read_fully)
 }
 

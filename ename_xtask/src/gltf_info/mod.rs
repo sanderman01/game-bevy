@@ -11,7 +11,7 @@ mod raw;
 
 use crate::{
     image_info,
-    read_asset::{AssetFile, human_size},
+    read_asset::{AssetFile, ScanPolicy, human_size},
 };
 use accessor::Buffers;
 use gltf::{
@@ -49,7 +49,8 @@ pub struct GltfReport {
 }
 
 /// The whole report for one file.
-pub fn gltf_info(file: &AssetFile, options: &GltfOptions) -> GltfReport {
+/// `scan` resolves the `alias://` URIs a model may reference shared textures by.
+pub fn gltf_info(file: &AssetFile, options: &GltfOptions, scan: &ScanPolicy) -> GltfReport {
     let container = if file.bytes.starts_with(b"glTF") {
         "glb"
     } else {
@@ -65,7 +66,7 @@ pub fn gltf_info(file: &AssetFile, options: &GltfOptions) -> GltfReport {
         return raw_report(header, file, &problems);
     }
     // Last resort: `gltf` unwraps in places no check here foresaw.
-    match without_panicking(|| typed_report(&header, file, options)) {
+    match without_panicking(|| typed_report(&header, file, options, scan)) {
         Ok(Ok(text)) => GltfReport {
             text,
             read_fully: true,
@@ -80,6 +81,7 @@ fn typed_report(
     header: &str,
     file: &AssetFile,
     options: &GltfOptions,
+    scan: &ScanPolicy,
 ) -> Result<String, Vec<String>> {
     let gltf =
         Gltf::from_slice_without_validation(&file.bytes).map_err(|err| vec![err.to_string()])?;
@@ -98,7 +100,10 @@ fn typed_report(
         fatal.extend(unsupported);
         return Err(fatal);
     }
-    Ok(Report::new(&gltf.document, gltf.blob.as_deref(), file, options).render(header.to_owned()))
+    Ok(
+        Report::new(&gltf.document, gltf.blob.as_deref(), file, options, scan)
+            .render(header.to_owned()),
+    )
 }
 
 /// Runs `f`, turning a panic into its message, with the default hook silenced so the panic does
@@ -168,6 +173,7 @@ struct Report<'a> {
     buffers: Buffers,
     file: &'a AssetFile,
     options: &'a GltfOptions,
+    scan: &'a ScanPolicy<'a>,
     /// Accessor data read once, by accessor index.
     data: HashMap<usize, Result<Vec<f32>, String>>,
     notes: Vec<String>,
@@ -179,12 +185,14 @@ impl<'a> Report<'a> {
         blob: Option<&[u8]>,
         file: &'a AssetFile,
         options: &'a GltfOptions,
+        scan: &'a ScanPolicy<'a>,
     ) -> Self {
         Self {
             document,
-            buffers: Buffers::load(document, blob, file),
+            buffers: Buffers::load(document, blob, file, scan),
             file,
             options,
+            scan,
             data: HashMap::new(),
             notes: Vec::new(),
         }
@@ -571,7 +579,7 @@ impl<'a> Report<'a> {
                     self.buffers.view(&view).map(<[u8]>::to_vec),
                 ),
                 ImageSource::Uri { uri, mime_type } => {
-                    let read = accessor::read_uri(uri, self.file);
+                    let read = accessor::read_uri(uri, self.file, self.scan);
                     let mime = mime_type
                         .map(str::to_owned)
                         .or_else(|| read.as_ref().ok().and_then(|(_, mime)| mime.clone()))
@@ -713,12 +721,12 @@ fn texture_slots(material: &Material) -> Vec<(&'static str, u32)> {
     slots
 }
 
-/// The Bevy cargo feature an image type needs beyond the default `png`.
+/// The Bevy cargo feature an image type needs beyond Bevy's defaults, which include `png` and
+/// `ktx2` with zstd.
 fn bevy_feature(mime: &str) -> Option<&'static str> {
     match mime {
         "image/jpeg" => Some("jpeg"),
         "image/webp" => Some("webp"),
-        "image/ktx2" => Some("ktx2"),
         "image/vnd-ms.dds" | "image/vnd.ms-dds" => Some("dds"),
         "image/basis" => Some("basis-universal"),
         _ => None,
