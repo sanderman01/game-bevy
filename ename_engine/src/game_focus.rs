@@ -3,7 +3,7 @@
 
 use bevy::prelude::*;
 
-/// Registers [`PointerOverGame`] and [`KeyboardOnGame`].
+/// Registers [`PointerOverGame`], [`KeyboardOnGame`] and [`KeyboardOnSceneView`].
 pub struct GameFocusPlugin;
 
 impl Plugin for GameFocusPlugin {
@@ -11,7 +11,9 @@ impl Plugin for GameFocusPlugin {
         app.register_type::<PointerOverGame>()
             .register_type::<KeyboardOnGame>()
             .init_resource::<PointerOverGame>()
-            .init_resource::<KeyboardOnGame>();
+            .register_type::<KeyboardOnSceneView>()
+            .init_resource::<KeyboardOnGame>()
+            .init_resource::<KeyboardOnSceneView>();
     }
 }
 
@@ -43,3 +45,11 @@ impl Default for KeyboardOnGame {
         Self(true)
     }
 }
+
+/// Whether key presses are meant for the editor's Scene View: its tab has focus and no control
+/// takes text. A game may read it for editor-only keys it handles while the Scene View is shown.
+///
+/// False by default: without an editor there is no Scene View. The editor keeps it current.
+#[derive(Resource, Reflect, Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[reflect(Resource)]
+pub struct KeyboardOnSceneView(pub bool);
