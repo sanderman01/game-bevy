@@ -17,7 +17,9 @@ use bevy_inspector_egui::bevy_inspector::{
 };
 use egui::{LayerId, UiBuilder};
 use egui_dock::{DockArea, DockState, NodeIndex, Style};
-use ename_engine::game_focus::{KeyboardOnGame, KeyboardOnSceneView, PointerOverGame};
+use ename_engine::game_focus::{
+    KeyboardOnGame, KeyboardOnSceneView, PointerInGameView, PointerOverGame,
+};
 use std::any::TypeId;
 
 /// Owns the dock layout, the egui context, and the inspector panels.
@@ -132,6 +134,20 @@ impl UiState {
             && pointer.0 != over_game
         {
             pointer.0 = over_game;
+        }
+        let rect = self.viewport_rect;
+        let in_game_view = ui
+            .ctx()
+            .pointer_latest_pos()
+            .filter(|_| over_game)
+            .map(|pos| {
+                Vec2::new(
+                    (pos.x - rect.min.x) / rect.width(),
+                    (pos.y - rect.min.y) / rect.height(),
+                )
+            });
+        if let Some(mut pointer) = world.get_resource_mut::<PointerInGameView>() {
+            pointer.set_if_neq(PointerInGameView(in_game_view));
         }
         // Keys go to a view only while its tab has the dock's focus and no widget takes text.
         let takes_text = ui.ctx().egui_wants_keyboard_input();
