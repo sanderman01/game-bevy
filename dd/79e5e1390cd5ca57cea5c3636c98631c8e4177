@@ -1,0 +1,29 @@
+ename_editor/src/panels.rs
+  s_c270ba39dacfb9::t_f063680b26a774 20-22
+  s_c270ba39dacfb9::t_7789f6b3335e00 138-146
+  s_c270ba39dacfb9::t_93def7483e3798 147-151
+ename_engine/src/game_focus.rs
+  s_c270ba39dacfb9::t_de1218b6fa778c 11
+  s_c270ba39dacfb9::t_4175e55007b00f 97-100,104-109
+  s_c270ba39dacfb9::t_92431fef83b95e 101-103
+  s_c270ba39dacfb9::t_36d66fbc3395a2 12-14
+  s_c270ba39dacfb9::t_439dba4c92937f 94-96
+  s_c270ba39dacfb9::t_dace3f5a11d861 110-112
+  s_c270ba39dacfb9::t_f08040d42535d1 4-9,15,21,24,27-29,48-57,79-93,113-163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dd79e5e1390cd5ca57cea5c3636c98631c8e4177",
+  "prompts": {},
+  "sessions": {
+    "s_c270ba39dacfb9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "168a1d31-5dd1-4f07-b8b3-60ac0e05861f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Alexander Verbeek <sanderman@gmail.com>"
+    }
+  }
+}
